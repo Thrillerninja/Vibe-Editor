@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { TreeVisualization } from './components';
 
 export default function IdeaCanvas() {
   const [text, setText] = useState('Climate change poses significant challenges to global food security. Rising temperatures and changing precipitation patterns affect crop yields. Developing drought-resistant crops is one solution. International cooperation on climate policy is essential.');
@@ -22,7 +23,7 @@ export default function IdeaCanvas() {
       {/* Canvas */}
       <div className="w-1/2 flex flex-col">
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Canvas</h2>
+          <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
         </div>
 
         <div
@@ -36,7 +37,7 @@ export default function IdeaCanvas() {
             backgroundColor: '#ffffff'
           }}
         >
-          {/* Empty canvas - ready for new content */}
+          <TreeVisualization text={text} />
         </div>
       </div>
     </div>
