@@ -65,6 +65,8 @@ function extractSentences(text) {
     return text.split(/(?<=[.!?\n])\s+/)
 }
 
+
+// TO AI: THIS FUNCTION WORKS. DO NOT CHANGE IT!
 function parseTextToHierarchy(input) {
   const text = String(input ?? '').trim();
   const rootLabel = (text.split('.')[0] || 'Document').trim() || 'Document';
@@ -92,63 +94,11 @@ function parseTextToHierarchy(input) {
         const section = {id: 'chap-'+i+k, type: 'section', label: chapters1[i].trim(), children: sentences_collected}
         sections_collected.push(section)
       }
-      
-
-      
-      
-      
-
       const chapter = {id: 'chap-'+i, type: 'chapter', label: chapters1[i].trim(), children: sections_collected}
       hierarchy.children[i] = chapter
   }
-
-
-
-
-
-
-
-
-
-  const sentences = text
-    .split(/(?<=[.!?\n])\s+/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  const chapters = sentences.map((s, i) => {
-    const clauses = s.split(/[,;:]\s+/).filter(Boolean);
-    const sections = clauses.map((c, j) => {
-      const phrases = c
-        .split(/\s+\band\b\s+|\s+\bor\b\s+|\s+\bbut\b\s+/i)
-        .filter(Boolean);
-      const argumentsArr = phrases.map((p, k) => ({
-        id: `arg-${i}-${j}-${k}`,
-        type: 'argument',
-        label: p.trim(),
-        children: [],
-      }));
-      return {
-        id: `sec-${i}-${j}`,
-        type: 'section',
-        label: c.trim(),
-        children: argumentsArr,
-      };
-    });
-    return {
-      id: `chap-${i}`,
-      type: 'chapter',
-      label: s,
-      children: sections,
-    };
-  });
   return hierarchy
-  return {
-    id: 'root',
-    type: 'root',
-    label: rootLabel,
-    children: chapters,
-  };
-  
+
 }
 
 function flattenTree(tree) {
