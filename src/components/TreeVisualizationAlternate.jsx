@@ -91,7 +91,7 @@ function parseTextToHierarchy(input) {
           sentences_collected.push({id: 'sentence-'+i+k+j, type: 'argument', label: sentence_strings[j].trim(), children:[]})
         }
  
-        const section = {id: 'chap-'+i+k, type: 'section', label: chapters1[i].trim(), children: sentences_collected}
+        const section = {id: 'chap-'+i+k, type: 'section', label: sections[k].trim(), children: sentences_collected}
         sections_collected.push(section)
       }
       const chapter = {id: 'chap-'+i, type: 'chapter', label: chapters1[i].trim(), children: sections_collected}
