@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { TreeVisualization, TreeVisualizationAlternate } from './components';
+import React from "react";
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
@@ -7,14 +8,22 @@ const EXAMPLE_TEXT =
   'Developing drought-resistant crops is one solution. ' +
   'International cooperation on climate policy is essential.';
 
+
+
 export default function IdeaCanvas() {
   const [text, setText] = useState('');
+  const [textTree, setTextTree] = useState('');
+  const [trigger, setTrigger] = useState(0);
 
   const insertExample = () => {
     setText(EXAMPLE_TEXT);
   };
 
   const clearText = () => setText('');
+  function handleRendering(text) {
+    setTextTree(text);
+  }
+
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -23,6 +32,7 @@ export default function IdeaCanvas() {
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Text</h2>
           <div className="flex items-center gap-2">
+            <button className='px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700' onClick={() => {handleRendering(text)}}>Render</button>
             <button
               onClick={insertExample}
               className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
@@ -67,7 +77,7 @@ export default function IdeaCanvas() {
           }}
         >
           {/* <TreeVisualization text={text} /> */}
-          <TreeVisualizationAlternate text={text} />
+          <TreeVisualizationAlternate text={textTree} />
         </div>
       </div>
     </div>
