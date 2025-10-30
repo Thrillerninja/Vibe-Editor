@@ -61,6 +61,10 @@ function measureLabel(label) {
   return { width: NODE_WIDTH, height: h };
 }
 
+function extractSentences(text) {
+    return text.split(/(?<=[.!?\n])\s+/)
+}
+
 function parseTextToHierarchy(input) {
   const text = String(input ?? '').trim();
   const rootLabel = (text.split('.')[0] || 'Document').trim() || 'Document';
@@ -69,8 +73,45 @@ function parseTextToHierarchy(input) {
     return { id: 'root', type: 'root', label: 'Document', children: [] };
   }
 
+  const chapters1 = text.trim().split(/(?:\r\n|\n){2,}/);
+  const hierarchy = {id: 'root', type: 'root', label: 'Document', children: new Array(chapters1.length)}
+  
+  for (let i = 0; i < chapters1.length; i++) {
+      console.log("CHAPTER"+i+": "+chapters1[i])
+      const sections = chapters1[i].trim().split("\n");
+      const sections_collected = []
+      for (let k=0; k<sections.length; k++) {
+        console.log("   Section"+k+": "+sections[k])
+        const sentence_strings = sections[k].trim().split(/(?<=[.!?\n])\s+/)
+        const sentences_collected = [] 
+        for (let j = 0; j<sentence_strings.length; j++) {
+                 console.log("       Sentence"+j+": "+sentence_strings[j])
+          sentences_collected.push({id: 'sentence-'+i+k+j, type: 'argument', label: sentence_strings[j].trim(), children:[]})
+        }
+ 
+        const section = {id: 'chap-'+i+k, type: 'section', label: chapters1[i].trim(), children: sentences_collected}
+        sections_collected.push(section)
+      }
+      
+
+      
+      
+      
+
+      const chapter = {id: 'chap-'+i, type: 'chapter', label: chapters1[i].trim(), children: sections_collected}
+      hierarchy.children[i] = chapter
+  }
+
+
+
+
+
+
+
+
+
   const sentences = text
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?\n])\s+/)
     .map((s) => s.trim())
     .filter(Boolean);
 
@@ -100,13 +141,14 @@ function parseTextToHierarchy(input) {
       children: sections,
     };
   });
-
+  return hierarchy
   return {
     id: 'root',
     type: 'root',
     label: rootLabel,
     children: chapters,
   };
+  
 }
 
 function flattenTree(tree) {
