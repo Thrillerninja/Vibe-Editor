@@ -62,6 +62,52 @@ export const NODE_STYLES = {
   },
 };
 
+// Emotion configuration
+export const EMOTIONS = {
+  NEUTRAL: 'neutral',
+  POSITIVE: 'positive',
+  NEGATIVE: 'negative',
+  UNCERTAIN: 'uncertain',
+  EMPHASIS: 'emphasis',
+};
+
+export const EMOTION_LABELS = {
+  [EMOTIONS.NEUTRAL]: 'Neutral',
+  [EMOTIONS.POSITIVE]: 'Positive',
+  [EMOTIONS.NEGATIVE]: 'Negative',
+  [EMOTIONS.UNCERTAIN]: 'Uncertain',
+  [EMOTIONS.EMPHASIS]: 'Strong Emphasis',
+};
+
+// Emotion colors by intensity (0-100)
+export const EMOTION_COLORS = {
+  [EMOTIONS.NEUTRAL]: {
+    light: '#f3f4f6',
+    medium: '#e5e7eb',
+    strong: '#d1d5db',
+  },
+  [EMOTIONS.POSITIVE]: {
+    light: '#d1fae5',
+    medium: '#6ee7b7',
+    strong: '#10b981',
+  },
+  [EMOTIONS.NEGATIVE]: {
+    light: '#fecaca',
+    medium: '#f87171',
+    strong: '#dc2626',
+  },
+  [EMOTIONS.UNCERTAIN]: {
+    light: '#fef3c7',
+    medium: '#fbbf24',
+    strong: '#f59e0b',
+  },
+  [EMOTIONS.EMPHASIS]: {
+    light: '#ddd6fe',
+    medium: '#a78bfa',
+    strong: '#7c3aed',
+  },
+};
+
 // Logging configuration
 export const LOGGING_ENABLED = true;
 export const LOG_PREFIX = {

@@ -11,6 +11,7 @@ const elk = new ELK();
 
 /**
  * Runs ELK layout algorithm on nodes and edges
+ * Respects node order for same-level positioning
  * @param {Array} nodes - ReactFlow nodes
  * @param {Array} edges - ReactFlow edges
  * @returns {Promise<Array>} Nodes with calculated positions

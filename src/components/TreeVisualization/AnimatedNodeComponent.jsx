@@ -3,20 +3,58 @@
  * Displays tree nodes with type-specific styling and automatic sizing
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Handle, Position, useUpdateNodeInternals } from 'reactflow';
 import { motion } from 'framer-motion';
 import { measureLabel } from '../../utils/measurements';
-import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
+import {
+  NODE_STYLES,
+  NODE_WIDTH,
+  LOGGING_ENABLED,
+  LOG_PREFIX,
+  EMOTION_COLORS,
+  EMOTIONS,
+} from '../../utils/constants';
+import { EmotionSelector } from '../EmotionSelector';
+
+/**
+ * Gets node background color based on emotion
+ */
+function getEmotionColor(emotion, intensity, type) {
+  if (!emotion || emotion === EMOTIONS.NEUTRAL) {
+    return NODE_STYLES[type]?.background || NODE_STYLES.argument.background;
+  }
+
+  const colors = EMOTION_COLORS[emotion];
+  if (!colors) return NODE_STYLES[type]?.background;
+
+  if (intensity < 33) return colors.light;
+  if (intensity < 66) return colors.medium;
+  return colors.strong;
+}
+
+/**
+ * Gets border color based on emotion
+ */
+function getBorderColor(emotion, intensity, type) {
+  if (!emotion || emotion === EMOTIONS.NEUTRAL) {
+    return NODE_STYLES[type]?.border || NODE_STYLES.argument.border;
+  }
+
+  const colors = EMOTION_COLORS[emotion];
+  return colors?.strong || NODE_STYLES[type]?.border;
+}
 
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
  * @param {string} id - Unique node identifier
- * @param {Object} data - Node data containing label and type
+ * @param {Object} data - Node data containing label, type, emotion, intensity, onEmotionChange
  */
 export function AnimatedNodeComponent({ id, data }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const size = measureLabel(data.label);
+  const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Update internal dimensions when label changes
   useEffect(() => {
@@ -27,42 +65,112 @@ export function AnimatedNodeComponent({ id, data }) {
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
 
-  // Get styling based on node type
-  const style = NODE_STYLES[data.type] || NODE_STYLES.argument;
+  const handleEmotionClick = (e) => {
+    e.stopPropagation();
+    console.log(`[Node] Opening emotion selector for ${id}`);
+    setIsEmotionModalOpen(true);
+  };
+
+  const handleEmotionSelect = (emotion, intensity) => {
+    console.log(`[Node] Selected emotion for ${id}:`, emotion, intensity);
+    if (data.onEmotionChange) {
+      data.onEmotionChange(id, emotion, intensity);
+    }
+  };
+
+  const bg = getEmotionColor(data.emotion, data.intensity || 50, data.type);
+  const border = getBorderColor(data.emotion, data.intensity || 50, data.type);
+  const color = data.type === 'root' ? 'white' : '#1f2937';
 
   return (
-    <div style={{ position: 'relative' }}>
-      {/* Connection handles */}
-      <Handle type="target" position={Position.Left} />
-      <Handle type="source" position={Position.Right} />
+    <>
+      <div style={{ position: 'relative' }}>
+        {/* Connection handles */}
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
 
-      {/* Animated node content */}
-      <motion.div
-        layout
-        transition={{ type: 'spring', stiffness: 520, damping: 44 }}
-        style={{
-          width: NODE_WIDTH,
-          height: size.height,
-          background: style.background,
-          border: `1px solid ${style.border}`,
-          borderRadius: 8,
-          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 8,
-          textAlign: 'center',
-          fontSize: 13,
-          fontWeight: data.type === 'root' ? 600 : 500,
-          color: style.color,
-          lineHeight: 1.45,
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
-          userSelect: 'none',
-        }}
-      >
-        {data.label}
-      </motion.div>
-    </div>
+        {/* Animated node content */}
+        <motion.div
+          layout
+          transition={{ type: 'spring', stiffness: 520, damping: 44 }}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{
+            width: NODE_WIDTH,
+            height: size.height,
+            background: bg,
+            border: `1px solid ${border}`,
+            borderRadius: 8,
+            boxShadow: isHovered
+              ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+              : '0 1px 2px rgba(0,0,0,0.04)',
+            display: 'flex',
+            flexDirection: 'column',
+            position: 'relative',
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
+            userSelect: 'none',
+            transition: 'box-shadow 0.2s',
+          }}
+        >
+          {/* Emotion Button (top-right) */}
+          <button
+            onClick={handleEmotionClick}
+            onMouseDown={(e) => e.stopPropagation()}
+            style={{
+              position: 'absolute',
+              top: 6,
+              right: 6,
+              width: 24,
+              height: 24,
+              borderRadius: 6,
+              border: `1px solid ${border}`,
+              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 14,
+              padding: 0,
+              opacity: isHovered ? 1 : 0.6,
+              transition: 'opacity 0.2s',
+            }}
+            title="Set emotion"
+          >
+            😊
+          </button>
+
+          {/* Node Label */}
+          <div
+            style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '8px 32px 8px 8px',
+              textAlign: 'center',
+              fontSize: 13,
+              fontWeight: data.type === 'root' ? 600 : 500,
+              color,
+              lineHeight: 1.45,
+              wordWrap: 'break-word',
+              overflowWrap: 'break-word',
+            }}
+          >
+            {data.label}
+          </div>
+        </motion.div>
+      </div>
+
+      {/* Emotion Selector Modal */}
+      <EmotionSelector
+        isOpen={isEmotionModalOpen}
+        onClose={() => setIsEmotionModalOpen(false)}
+        onSelect={handleEmotionSelect}
+        currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
+        currentIntensity={data.intensity || 50}
+        nodeLabel={data.label}
+      />
+    </>
   );
 }

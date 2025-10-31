@@ -8,7 +8,7 @@ const EXAMPLE_TEXT =
   'Developing drought-resistant crops is one solution. ' +
   'International cooperation on climate policy is essential.';
 
-export default function IdeaCanvas() {
+export default function App() {
   const [text, setText] = useState('');
   const [textTree, setTextTree] = useState('');
 
@@ -19,7 +19,7 @@ export default function IdeaCanvas() {
   const clearText = () => setText('');
 
   function handleRendering(text) {
-    console.log('[IdeaCanvas] Rendering tree with text length:', text.length);
+    console.log('[App] Rendering tree with text length:', text.length);
     setTextTree(text);
   }
 

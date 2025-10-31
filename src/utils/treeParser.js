@@ -6,15 +6,6 @@
 import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
 
 /**
- * Splits text into sentences based on punctuation
- * @param {string} text - Text to split
- * @returns {string[]} Array of sentences
- */
-function extractSentences(text) {
-  return text.split(/(?<=[.!?\n])\s+/);
-}
-
-/**
  * Parses plain text into a hierarchical tree structure
  * Structure: Document → Chapters (double newline) → Sections (single newline) → Sentences
  * 
