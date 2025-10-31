@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react';
-import { TreeVisualization, TreeVisualizationAlternate, MyBasicFlow } from './components';
-import React from "react";
+import { useState } from 'react';
+import { TreeVisualization } from './components';
+import React from 'react';
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
@@ -8,25 +8,20 @@ const EXAMPLE_TEXT =
   'Developing drought-resistant crops is one solution. ' +
   'International cooperation on climate policy is essential.';
 
-
-
 export default function IdeaCanvas() {
   const [text, setText] = useState('');
   const [textTree, setTextTree] = useState('');
-  const [trigger, setTrigger] = useState(0);
 
   const insertExample = () => {
     setText(EXAMPLE_TEXT);
   };
 
   const clearText = () => setText('');
+
   function handleRendering(text) {
+    console.log('[IdeaCanvas] Rendering tree with text length:', text.length);
     setTextTree(text);
   }
-
-  useEffect(() => {
-    handleRendering(text);
-  }, [text]);
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -35,7 +30,14 @@ export default function IdeaCanvas() {
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Text</h2>
           <div className="flex items-center gap-2">
-            <button className='px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700' onClick={() => {handleRendering(text)}}>Render</button>
+            <button
+              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+              onClick={() => {
+                handleRendering(text);
+              }}
+            >
+              Render
+            </button>
             <button
               onClick={insertExample}
               className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
@@ -65,7 +67,9 @@ export default function IdeaCanvas() {
       {/* Canvas */}
       <div className="w-1/2 flex flex-col">
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Tree Structure
+          </h2>
         </div>
 
         <div
@@ -79,8 +83,7 @@ export default function IdeaCanvas() {
             backgroundColor: '#ffffff',
           }}
         >
-          {/* <TreeVisualization text={text} /> */}
-          <TreeVisualizationAlternate text={textTree} />
+          <TreeVisualization text={textTree} />
         </div>
       </div>
     </div>

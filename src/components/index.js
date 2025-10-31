@@ -1,3 +1,7 @@
-export { default as TreeNode } from './TreeNode';
-export { default as TreeVisualization } from './TreeVisualization';
-export { default as TreeVisualizationAlternate } from './TreeVisualizationAlternate';
+/**
+ * Tree Visualization exports
+ */
+
+export { default as TreeVisualization } from './TreeVisualization/TreeVisualization';
+export { TreeInner } from './TreeVisualization/TreeInner';
+export { AnimatedNodeComponent } from './TreeVisualization/AnimatedNodeComponent';
