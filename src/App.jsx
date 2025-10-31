@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { TreeVisualization, TreeVisualizationAlternate } from './components';
+import { useState, useEffect } from 'react';
+import { TreeVisualization, TreeVisualizationAlternate, MyBasicFlow } from './components';
 import React from "react";
 
 const EXAMPLE_TEXT =
@@ -24,6 +24,9 @@ export default function IdeaCanvas() {
     setTextTree(text);
   }
 
+  useEffect(() => {
+    handleRendering(text);
+  }, [text]);
 
   return (
     <div className="flex h-screen bg-gray-50">

@@ -62,7 +62,7 @@ function measureLabel(label) {
 }
 
 function extractSentences(text) {
-    return text.split(/(?<=[.!?\n])\s+/)
+  return text.split(/(?<=[.!?\n])\s+/)
 }
 
 
@@ -76,26 +76,26 @@ function parseTextToHierarchy(input) {
   }
 
   const chapters1 = text.trim().split(/(?:\r\n|\n){2,}/);
-  const hierarchy = {id: 'root', type: 'root', label: 'Document', children: new Array(chapters1.length)}
-  
+  const hierarchy = { id: 'root', type: 'root', label: 'Document', children: new Array(chapters1.length) }
+
   for (let i = 0; i < chapters1.length; i++) {
-      console.log("CHAPTER"+i+": "+chapters1[i])
-      const sections = chapters1[i].trim().split("\n");
-      const sections_collected = []
-      for (let k=0; k<sections.length; k++) {
-        console.log("   Section"+k+": "+sections[k])
-        const sentence_strings = sections[k].trim().split(/(?<=[.!?\n])\s+/)
-        const sentences_collected = [] 
-        for (let j = 0; j<sentence_strings.length; j++) {
-                 console.log("       Sentence"+j+": "+sentence_strings[j])
-          sentences_collected.push({id: 'sentence-'+i+k+j, type: 'argument', label: sentence_strings[j].trim(), children:[]})
-        }
- 
-        const section = {id: 'chap-'+i+k, type: 'section', label: sections[k].trim(), children: sentences_collected}
-        sections_collected.push(section)
+    console.log("CHAPTER" + i + ": " + chapters1[i])
+    const sections = chapters1[i].trim().split("\n");
+    const sections_collected = []
+    for (let k = 0; k < sections.length; k++) {
+      console.log("   Section" + k + ": " + sections[k])
+      const sentence_strings = sections[k].trim().split(/(?<=[.!?\n])\s+/)
+      const sentences_collected = []
+      for (let j = 0; j < sentence_strings.length; j++) {
+        console.log("       Sentence" + j + ": " + sentence_strings[j])
+        sentences_collected.push({ id: 'sentence-' + i + k + j, type: 'argument', label: sentence_strings[j].trim(), children: [] })
       }
-      const chapter = {id: 'chap-'+i, type: 'chapter', label: chapters1[i].trim(), children: sections_collected}
-      hierarchy.children[i] = chapter
+
+      const section = { id: 'chap-' + i + k, type: 'section', label: sections[k].trim(), children: sentences_collected }
+      sections_collected.push(section)
+    }
+    const chapter = { id: 'chap-' + i, type: 'chapter', label: chapters1[i].trim(), children: sections_collected }
+    hierarchy.children[i] = chapter
   }
   return hierarchy
 
@@ -166,19 +166,19 @@ function AnimatedNodeComponent({ id, data }) {
     data.type === 'root'
       ? '#2563eb'
       : data.type === 'chapter'
-      ? '#f3f4f6'
-      : data.type === 'section'
-      ? '#eef2ff'
-      : '#ecfeff';
+        ? '#f3f4f6'
+        : data.type === 'section'
+          ? '#eef2ff'
+          : '#ecfeff';
 
   const border =
     data.type === 'root'
       ? '#1e40af'
       : data.type === 'chapter'
-      ? '#d1d5db'
-      : data.type === 'section'
-      ? '#c7d2fe'
-      : '#a5f3fc';
+        ? '#d1d5db'
+        : data.type === 'section'
+          ? '#c7d2fe'
+          : '#a5f3fc';
 
   const color = data.type === 'root' ? 'white' : '#1f2937';
 
@@ -282,8 +282,10 @@ function useLocalPhysics() {
   const rafRef = useRef(null);
   const neighborhoodIdsRef = useRef(new Set());
   const draggedIdRef = useRef(null);
+  const isRunningRef = useRef(false); // Add running flag
 
   const stop = useCallback(() => {
+    isRunningRef.current = false;
     if (simRef.current) {
       simRef.current.stop();
       simRef.current = null;
@@ -298,13 +300,13 @@ function useLocalPhysics() {
 
   const start = useCallback((draggedId) => {
     stop();
+    isRunningRef.current = true;
     draggedIdRef.current = draggedId;
 
     const rfNodes = getNodes();
     const dragged = rfNodes.find((n) => n.id === draggedId);
     if (!dragged) return;
 
-    // Neighborhood selection
     const LAYER_GAP = 240;
     const RADIUS = 260;
     const layerByX = (x) => Math.round(x / LAYER_GAP);
@@ -319,22 +321,19 @@ function useLocalPhysics() {
     });
     neighborhoodIdsRef.current = new Set(neighborhood.map((n) => n.id));
 
-    // Build sim nodes
     const simNodes = neighborhood.map((n) => ({
       id: n.id,
       x: n.position.x,
       y: n.position.y,
-      // Mark dragged as fixed (we'll update fx/fy per drag)
       fx: n.id === draggedId ? n.position.x : null,
       fy: n.id === draggedId ? n.position.y : null,
       r: Math.max(28, measureLabel(n.data.label).height / 2),
       type: n.data.type,
     }));
 
-    // Forces
     const repulsion = -120;
     const collide = 26;
-    const kx = 0.15; // neighbors align to their original column center
+    const kx = 0.15;
     const ky = 0.2;
 
     const originalX = new Map(neighborhood.map((n) => [n.id, n.position.x]));
@@ -371,14 +370,23 @@ function useLocalPhysics() {
     simRef.current = sim;
 
     const tick = () => {
-      if (!simRef.current) return;
+      // Guard: check if still running before updating
+      if (!simRef.current || !isRunningRef.current) {
+        if (rafRef.current) {
+          cancelAnimationFrame(rafRef.current);
+          rafRef.current = null;
+        }
+        return;
+      }
+
       const map = new Map(sim.nodes().map((n) => [n.id, n]));
       setNodes((nds) =>
         nds.map((n) => {
           const s = map.get(n.id);
           if (!s) return n;
-          // Write back sim positions only for neighborhood to avoid jitter elsewhere
           if (!neighborhoodIdsRef.current.has(n.id)) return n;
+          // Don't update the dragged node - React Flow handles it
+          if (n.id === draggedIdRef.current) return n;
           return {
             ...n,
             position: { x: s.x, y: s.y },
@@ -390,9 +398,8 @@ function useLocalPhysics() {
     rafRef.current = requestAnimationFrame(tick);
   }, [getNodes, setNodes, stop]);
 
-  // Cursor drives dragged node exactly: set fx/fy to cursor in flow coords
   const updateDraggedPosition = useCallback((x, y) => {
-    if (!simRef.current || !draggedIdRef.current) return;
+    if (!simRef.current || !draggedIdRef.current || !isRunningRef.current) return;
     const id = draggedIdRef.current;
     const node = simRef.current.nodes().find((d) => d.id === id);
     if (!node) return;
@@ -412,7 +419,7 @@ function TreeInner({ text }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const rfRef = useRef(null);
-  const draggingRef = useRef(null);
+  const isDraggingRef = useRef(false); // Track dragging state
 
   const flat = useMemo(() => {
     const t = parseTextToHierarchy(safeText);
@@ -447,38 +454,68 @@ function TreeInner({ text }) {
   const physics = useLocalPhysics();
   const { screenToFlowPosition } = useReactFlow();
 
+
+  // Cleanup physics on unmount
+  useEffect(() => {
+    return () => {
+      physics.stop();
+    };
+  }, [physics]);
+
+  useEffect(() => {
+    // Don't update layout while dragging
+    if (isDraggingRef.current) return;
+
+    let cancelled = false;
+    const apply = async () => {
+      const withData = flat.nodes.map((n) => {
+        const existing = nodes.find((x) => x.id === n.id);
+        return existing ? { ...n, data: existing.data } : n;
+      });
+      const laidOut = await runElk(withData, flat.edges);
+      if (!cancelled && !isDraggingRef.current) {
+        setNodes(laidOut);
+        setEdges(flat.edges);
+      }
+    };
+    apply();
+    return () => {
+      cancelled = true;
+    };
+  }, [safeText]); // Remove nodes from deps to avoid stale closure
+
   const onNodeDragStart = useCallback(
     (e, node) => {
+      isDraggingRef.current = true;
       physics.start(node.id);
-      // Immediately move the dragged node to the cursor to avoid an initial jump
-      const p = screenToFlowPosition({ x: e.clientX - (NODE_WIDTH/2), y: e.clientY });
-      physics.updateDraggedPosition(p.x, p.y);
+      physics.updateDraggedPosition(node.position.x, node.position.y);
     },
-    [physics, screenToFlowPosition]
+    [physics]
   );
 
   const onNodeDrag = useCallback(
-    (e) => {
-      const p = screenToFlowPosition({ x: e.clientX - (NODE_WIDTH/2), y: e.clientY });
-      physics.updateDraggedPosition(p.x, p.y);
+    (e, node) => {
+      physics.updateDraggedPosition(node.position.x, node.position.y);
     },
-    [physics, screenToFlowPosition]
+    [physics]
   );
 
   const onNodeDragStop = useCallback(
     (e, node) => {
-      // re-parent if dropped over node
+      isDraggingRef.current = false;
       onDropToReparent(node.id, e.clientX, e.clientY);
-
-      // stop physics and snap to clean ELK layout
       physics.stop();
+
+      // Use a longer delay to ensure RAF has fully stopped
       setTimeout(async () => {
-        const laidOut = await runElk(
-          rfRef.current.getNodes(),
-          rfRef.current.getEdges()
-        );
-        setNodes(laidOut);
-      }, 0);
+        if (!isDraggingRef.current) {
+          const laidOut = await runElk(
+            rfRef.current.getNodes(),
+            rfRef.current.getEdges()
+          );
+          setNodes(laidOut);
+        }
+      }, 50); // Increased from 0 to 50ms
     },
     [onDropToReparent, physics, setNodes]
   );
@@ -511,7 +548,7 @@ function TreeInner({ text }) {
       maxZoom={1.5}
       panOnDrag
       zoomOnScroll
-      proOptions={{ hideAttribution: true }}
+    // proOptions={{ hideAttribution: true }}
     >
       <Background gap={20} color="#e5e7eb" />
       <MiniMap pannable zoomable />
