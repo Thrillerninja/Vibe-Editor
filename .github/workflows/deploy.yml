@@ -25,9 +25,6 @@ jobs:
             # Pull latest code
             git pull origin main
             
-            # Navigate to docker directory
-            cd docker
-            
             # Rebuild and restart only the vibe-frontend service
             docker-compose -f ../thrillstudio.dev/docker/compose.yml build vibe-frontend
             docker-compose -f ../thrillstudio.dev/docker/compose.yml up -d --no-deps vibe-frontend
