@@ -2,7 +2,7 @@ name: Build and Deploy Vite App
 
 on:
   push:
-    branches: ["actions-dev"]  # or your production branch
+    branches: ["main"]  # or your production branch
   workflow_dispatch:
 
 jobs:
@@ -23,14 +23,14 @@ jobs:
             cd ${{ secrets.DEPLOY_PATH }}
             
             # Pull latest code
-            git pull origin actions-dev
+            git pull origin main
             
             # Navigate to docker directory
             cd docker
             
             # Rebuild and restart only the vibe-frontend service
-            docker-compose build vibe-frontend
-            docker-compose up -d vibe-frontend
+            docker-compose -f ../thrillstudio.dev/docker/compose.yml build vibe-frontend
+            docker-compose -f ../thrillstudio.dev/docker/compose.yml up -d --no-deps vibe-frontend
             
             echo "✅ Deployment complete!"
           EOF
