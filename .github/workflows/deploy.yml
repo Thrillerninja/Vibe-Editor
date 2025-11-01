@@ -2,7 +2,7 @@ name: Build and Deploy Vite App
 
 on:
   push:
-    branches: ["main"] # change if you deploy from a different branch
+    branches: ["actions-dev"]
   workflow_dispatch:
 
 jobs:
