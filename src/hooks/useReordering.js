@@ -62,7 +62,14 @@ export function useReordering() {
       const nodes = getNodes();
       const siblings = getSiblings(draggedId);
 
-      if (siblings.length === 0) return null;
+      console.log(
+        `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(1)}, ${siblings.length} siblings`
+      );
+
+      if (siblings.length === 0) {
+        console.log(`${LOG_PREFIX.DRAG}   ❌ No siblings found`);
+        return null;
+      }
 
       let closestSibling = null;
       let minDistance = Infinity;
@@ -73,6 +80,10 @@ export function useReordering() {
         if (!siblingNode) continue;
 
         const distance = Math.abs(siblingNode.position.y - currentY);
+        console.log(
+          `${LOG_PREFIX.DRAG}   Sibling ${siblingId}: Y=${siblingNode.position.y.toFixed(1)}, distance=${distance.toFixed(1)}px`
+        );
+
         if (distance < minDistance) {
           minDistance = distance;
           closestSibling = siblingNode;
@@ -81,9 +92,15 @@ export function useReordering() {
       }
 
       if (closestSibling && minDistance < REORDER_THRESHOLD) {
+        console.log(
+          `${LOG_PREFIX.DRAG}   ✅ Found closest sibling: ${closestSibling.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
+        );
         return { node: closestSibling, insertBefore };
       }
 
+      console.log(
+        `${LOG_PREFIX.DRAG}   ❌ Closest sibling too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
+      );
       return null;
     },
     [getNodes, getSiblings]
@@ -100,8 +117,7 @@ export function useReordering() {
       if (closest) {
         const parent = getParent(draggedId);
         console.log(
-          `${LOG_PREFIX.DRAG} Reorder detected: ${draggedId} ${
-            closest.insertBefore ? 'before' : 'after'
+          `${LOG_PREFIX.DRAG} Reorder detected: ${draggedId} ${closest.insertBefore ? 'before' : 'after'
           } ${closest.node.id}`
         );
         return {
@@ -133,7 +149,7 @@ export function useReordering() {
 
         // Get current sibling IDs
         const siblings = parentEdges.map((e) => e.target);
-        
+
         // Remove dragged node
         const filtered = siblings.filter((id) => id !== draggedId);
 
