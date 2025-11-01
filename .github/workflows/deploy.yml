@@ -1,0 +1,36 @@
+name: Build and Deploy Vite App
+
+on:
+  push:
+    branches: ["main"]  # or your production branch
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        run: |
+          ssh -i ~/.ssh/id_ed25519 ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'EOF'
+            cd ${{ secrets.DEPLOY_PATH }}
+            
+            # Pull latest code
+            git pull origin main
+            
+            # Navigate to docker directory
+            cd docker
+            
+            # Rebuild and restart only the vibe-frontend service
+            docker-compose -f ../thrillstudio.dev/docker/compose.yml build vibe-frontend
+            docker-compose -f ../thrillstudio.dev/docker/compose.yml up -d --no-deps vibe-frontend
+            
+            echo "✅ Deployment complete!"
+          EOF
