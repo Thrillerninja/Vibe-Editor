@@ -69,12 +69,24 @@ export function useReparenting() {
     const nodeWidth = node.width || 200;
     const nodeHeight = node.height || 60;
 
-    return (
+    const isInside = (
       point.x >= node.position.x &&
       point.x <= node.position.x + nodeWidth &&
       point.y >= node.position.y &&
       point.y <= node.position.y + nodeHeight
     );
+
+    if (LOGGING_ENABLED) {
+      console.log(
+        `${LOG_PREFIX.REPARENT}     Hitbox check for ${node.id}:`,
+        `\n      Node bounds: X[${node.position.x.toFixed(1)} → ${(node.position.x + nodeWidth).toFixed(1)}] Y[${node.position.y.toFixed(1)} → ${(node.position.y + nodeHeight).toFixed(1)}]`,
+        `\n      Point: (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`,
+        `\n      Size: ${nodeWidth}x${nodeHeight}`,
+        `\n      Result: ${isInside ? '✅ INSIDE' : '❌ OUTSIDE'}`
+      );
+    }
+
+    return isInside;
   }, []);
 
   /**
@@ -96,6 +108,8 @@ export function useReparenting() {
       }
 
       // Calculate the center point of the dragged node
+      const draggedWidth = draggedNode.width || 200;
+      const draggedHeight = draggedNode.height || 60;
       const draggedCenter = {
         x: flowX + (draggedNode.width || 200) / 2,
         y: flowY + (draggedNode.height || 60) / 2,
@@ -103,6 +117,8 @@ export function useReparenting() {
 
       console.log(
         `${LOG_PREFIX.REPARENT} Checking reparent: node ${draggedId}`,
+        `\n  Dragged size: ${draggedWidth}x${draggedHeight}`,
+        `\n  Dragged position: (${flowX.toFixed(1)}, ${flowY.toFixed(1)})`,
         `\n  Dragged center: (${draggedCenter.x.toFixed(1)}, ${draggedCenter.y.toFixed(1)})`
       );
 

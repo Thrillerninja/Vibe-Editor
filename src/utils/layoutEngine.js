@@ -45,23 +45,40 @@ export async function runElk(nodes, edges) {
     const elapsed = performance.now() - startTime;
     console.log(`${LOG_PREFIX.LAYOUT} ELK layout complete in ${elapsed.toFixed(2)}ms`);
 
-    // Extract positions
+    // Extract positions and dimensions
     const positionMap = new Map();
     (result.children || []).forEach((child) => {
-      positionMap.set(child.id, { x: child.x, y: child.y });
+      positionMap.set(
+        child.id, 
+        { 
+          x: child.x, 
+          y: child.y,
+          width: child.width,
+          height: child.height,
+        }
+      );
       if (LOGGING_ENABLED) {
         console.log(
-          `${LOG_PREFIX.LAYOUT}   Node ${child.id}: (${child.x.toFixed(1)}, ${child.y.toFixed(1)})`
+          `${LOG_PREFIX.LAYOUT}   Node ${child.id}: (${child.x.toFixed(1)}, ${child.y.toFixed(1)}) ${child.width}x${child.height}`
         );
       }
     });
 
     // Apply positions to nodes
-    return nodes.map((node) => ({
-      ...node,
-      position: positionMap.get(node.id) || node.position,
-      draggable: true,
-    }));
+    return nodes.map((node) => {
+      const p = positionMap.get(node.id);
+      if (!p) return node; // fallback if ELK didn’t return this child
+
+      return {
+        ...node,
+        position: { x: p.x, y: p.y },
+        width: p.width,
+        height: p.height,
+        // Important for React Flow so it doesn’t try to auto-position:
+        // if you're on v11+, use `positionAbsolute` carefully; typically just `position` is fine.
+        draggable: true,
+      };
+    });
   } catch (error) {
     console.error(`${LOG_PREFIX.LAYOUT} ELK layout failed:`, error);
     return nodes;

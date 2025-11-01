@@ -17,6 +17,7 @@ import { ReparentIndicator } from './ReparentIndicator';
 import { parseTextToHierarchy, flattenTree } from '../../utils/treeParser';
 import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
+import { useFlowScreenConverters } from '../../utils/coords';
 
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
@@ -29,15 +30,30 @@ export function TreeInner({ text, onNodeEmotionChange }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reorderIndicator, setReorderIndicator] = useState(null);
   const [reparentTarget, setReparentTarget] = useState(null);
+  const [showDebugHitboxes, setShowDebugHitboxes] = useState(false); // Debugging reparenting/-ordering hitboxes
   const rfRef = useRef(null);
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
 
   // Custom hooks
+  const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
   const { checkReorderDrop, reorderNodes, findClosestSibling } = useReordering();
   const { flowToScreenPosition } = useReactFlow();
+
+  // Toggle debug mode with 'D' key
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F8') {
+        setShowDebugHitboxes((prev) => !prev);
+        console.log(`${LOG_PREFIX.DRAG} Debug hitboxes: ${!showDebugHitboxes}`);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showDebugHitboxes]);
 
   // Parse text into flat structure
   const flat = useMemo(() => {
@@ -127,10 +143,11 @@ const onNodeDrag = useCallback(
     
     if (closest) {
       // Sibling reordering takes priority
-      const screenPos = flowToScreenPosition({
+      const screenPos = toScreenPoint({
         x: closest.node.position.x,
         y: closest.node.position.y,
       });
+      const screenSize = toScreenSize({ width: closest.node.width ?? 200, height: closest.node.height ?? 60 });
       
       console.log(
         `${LOG_PREFIX.DRAG} 🔵 REORDER INDICATOR ACTIVE:`,
@@ -139,12 +156,12 @@ const onNodeDrag = useCallback(
         `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`,
         `\n  Flow pos: (${closest.node.position.x.toFixed(1)}, ${closest.node.position.y.toFixed(1)})`
       );
-      
+
       setReorderIndicator({
-        x: screenPos.x,
-        y: screenPos.y,
+        x: screenPos.x + screenSize.width / 2,
+        y: screenPos.y + (closest.insertBefore ? 0 : screenSize.height), // top or bottom edge
+        width: screenSize.width, // scale line width with zoom
         isAbove: closest.insertBefore,
-        targetNode: closest.node,
       });
       setReparentTarget(null);
     } else {
@@ -153,11 +170,11 @@ const onNodeDrag = useCallback(
       
       const target = findReparentTarget(node.id, node.position.x, node.position.y);
       if (target) {
-        const screenPos = flowToScreenPosition({
-          x: target.position.x,
-          y: target.position.y,
+        const screenPos = toScreenPoint({ x: target.position.x, y: target.position.y });
+        const screenSize = toScreenSize({
+          width: target.width || 200,
+          height: target.height || 60,
         });
-        
         console.log(
           `${LOG_PREFIX.DRAG} 🟢 REPARENT INDICATOR ACTIVE:`,
           `\n  Target: ${target.id}`,
@@ -170,6 +187,7 @@ const onNodeDrag = useCallback(
         setReparentTarget({
           node: target,
           screenPosition: screenPos,
+          screenSize: screenSize,
         });
       } else {
         setReparentTarget(null);
@@ -318,17 +336,16 @@ const onNodeDrag = useCallback(
     {reorderIndicator && (
       <div
         style={{
-          position: 'fixed', // Changed from absolute to fixed
-          left: reorderIndicator.x,
+          position: 'fixed',
+          left: reorderIndicator.x - reorderIndicator.width / 2,
           top: reorderIndicator.y + (reorderIndicator.isAbove ? -10 : 10),
-          width: 200,
+          width: reorderIndicator.width,
           height: 4,
           backgroundColor: '#3b82f6',
           borderRadius: 2,
           pointerEvents: 'none',
-          zIndex: 10000, // Increased z-index
+          zIndex: 10000,
           boxShadow: '0 0 10px rgba(59, 130, 246, 0.7)',
-          transform: 'translateX(-100px)',
         }}
       >
         {/* Debug label */}
@@ -359,8 +376,8 @@ const onNodeDrag = useCallback(
           position: 'fixed', // Changed from absolute to fixed
           left: reparentTarget.screenPosition.x,
           top: reparentTarget.screenPosition.y,
-          width: reparentTarget.node.width || 200,
-          height: reparentTarget.node.height || 60,
+          width: reparentTarget.screenSize.width || 200,
+          height: reparentTarget.screenSize.height || 60,
           border: '3px solid #10b981',
           borderRadius: 10,
           pointerEvents: 'none',
@@ -396,6 +413,44 @@ const onNodeDrag = useCallback(
         </div>
       </div>
     )}
+    {/* Debug: Show all node hitboxes (press 'D' to toggle) */}
+    {showDebugHitboxes && nodes.map((node) => {
+      const screenPos = toScreenPoint({
+        x: node.position.x,
+        y: node.position.y,
+      });
+      const screenSize = toScreenSize({
+        width: node.width || 200,
+        height: node.height || 60,
+      });
+      
+      return (
+        <div
+          key={`hitbox-${node.id}`}
+          style={{
+            position: 'fixed',
+            left: screenPos.x,
+            top: screenPos.y,
+            width: screenSize.width,
+            height: screenSize.height,
+            border: '2px dashed rgba(255, 0, 255, 0.5)',
+            backgroundColor: 'rgba(255, 0, 255, 0.05)',
+            pointerEvents: 'none',
+            zIndex: 8888,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 10,
+            color: 'magenta',
+            fontWeight: 'bold',
+          }}
+        >
+          {node.id}
+          <br />
+          {(node.width).toFixed(0)}x{(node.height).toFixed(0)}
+        </div>
+      );
+    })}
   </div>
 );
 }
