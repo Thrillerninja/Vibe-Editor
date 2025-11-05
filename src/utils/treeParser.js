@@ -19,7 +19,7 @@ export function parseTextToHierarchy(input) {
   
   if (!text) {
     console.log(`${LOG_PREFIX.PARSER} Empty input, returning default root`);
-    return { id: 'root', type: 'root', label: 'Document', children: [] };
+    return { id: 'root', startIdx: 0, type: 'root', label: 'Document', children: [] };
   }
 
   // Split by double newlines to get chapters
@@ -31,20 +31,24 @@ export function parseTextToHierarchy(input) {
     type: 'root',
     label: 'Document',
     children: new Array(chapters.length),
+    startIdx: 0,
   };
-
+  var chapterIdx = 0
+  var sectionIdx = 0
+  var sentenceIdx = 0
+  
   for (let i = 0; i < chapters.length; i++) {
     console.log(`${LOG_PREFIX.PARSER} Processing chapter ${i}: "${chapters[i].substring(0, 30)}..."`);
     
     // Split by single newlines to get sections
-    const sections = chapters[i].trim().split('\n');
+    const sections = chapters[i].split('\n');
     const sectionsCollected = [];
 
     for (let k = 0; k < sections.length; k++) {
       console.log(`${LOG_PREFIX.PARSER}   Section ${k}: "${sections[k].substring(0, 30)}..."`);
       
       // Split into sentences
-      const sentenceStrings = sections[k].trim().split(/(?<=[.!?\n])\s+/);
+      const sentenceStrings = sections[k].split(/(?<=[.!?\n])\s+/);
       const sentencesCollected = [];
 
       for (let j = 0; j < sentenceStrings.length; j++) {
@@ -52,9 +56,11 @@ export function parseTextToHierarchy(input) {
         sentencesCollected.push({
           id: `sentence-${i}${k}${j}`,
           type: 'argument',
-          label: sentenceStrings[j].trim(),
+          label: sentenceStrings[j] + "|" + sentenceIdx + "|" + (sentenceIdx+sentenceStrings[j].length),
           children: [],
+          startIdx: sentenceIdx,
         });
+        sentenceIdx += sentenceStrings[j].length
       }
 
       const section = {
@@ -62,16 +68,20 @@ export function parseTextToHierarchy(input) {
         type: 'section',
         label: sections[k].trim(),
         children: sentencesCollected,
+        startIdx: 0,
       };
       sectionsCollected.push(section);
+      sectionIdx += sectionsCollected[k].length
     }
 
     const chapter = {
       id: `chapter-${i}`,
       type: 'chapter',
-      label: chapters[i].trim(),
+      label: chapters[i],
       children: sectionsCollected,
+      startIdx: chapterIdx,
     };
+    chapterIdx += chapters[i].length
     hierarchy.children[i] = chapter;
   }
 
