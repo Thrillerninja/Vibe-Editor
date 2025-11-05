@@ -66,7 +66,7 @@ export function parseTextToHierarchy(input) {
       const section = {
         id: `section-${i}${k}`,
         type: 'section',
-        label: sections[k].trim(),
+        label: sections[k] + "|" + sectionIdx + "|" + (sectionIdx+sections[k].length),
         children: sentencesCollected,
         startIdx: 0,
       };
@@ -77,7 +77,7 @@ export function parseTextToHierarchy(input) {
     const chapter = {
       id: `chapter-${i}`,
       type: 'chapter',
-      label: chapters[i],
+      label: chapters[i]+ "|" + chapterIdx + "|" + (chapterIdx+chapters[i].length),
       children: sectionsCollected,
       startIdx: chapterIdx,
     };
