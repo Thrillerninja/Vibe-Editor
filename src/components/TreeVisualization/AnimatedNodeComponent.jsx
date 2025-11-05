@@ -164,12 +164,24 @@ export function AnimatedNodeComponent({ id, data }) {
 
       {/* Emotion Selector Modal */}
       <EmotionSelector
-        isOpen={isEmotionModalOpen}
-        onClose={() => setIsEmotionModalOpen(false)}
-        onSelect={handleEmotionSelect}
-        currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
-        currentIntensity={data.intensity || 50}
-        nodeLabel={data.label}
+        data={{
+          isOpen: isEmotionModalOpen,
+          onClose: () => setIsEmotionModalOpen(false),
+          onSelect: ({ emotion, notes, id }) => {
+            if (typeof onEmotionChange === "function") {
+              onEmotionChange(id, emotion, data.intensity ?? 50);
+            }
+            // optional: save notes back to node data
+          },
+
+          id,
+          startIdx: data.startIdx,
+          emotion: data.emotion,
+          intensity: data.intensity,
+          label: data.label,
+          notes: data.notes ?? "",
+          type: data.type,
+        }}
       />
     </>
   );

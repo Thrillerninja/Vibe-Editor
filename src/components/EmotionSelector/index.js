@@ -1,1 +1,1 @@
-export { EmotionSelector } from './EmotionSelector';
+export { EmotionSelector } from './EmotionSelector.jsx';

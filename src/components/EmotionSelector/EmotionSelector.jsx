@@ -1,282 +1,379 @@
 /**
- * EmotionSelector - Modal card for selecting node emotion
+ * Single-file EmotionSelector – wide, vertically stacked, beautified with CSS
+ * - One file only (component + styles)
+ * - Titles for dialog, palette, text, actions
+ * - Emotion coloring via CSS variables on the modal root
+ * - Native resizable textarea with visually hidden scrollbars
+ * - Keyboard: Esc to close, Ctrl/Cmd+Enter to submit
+ * - API: { data: { isOpen, onClose, onSelect, id, startIdx, emotion, label } }
  */
 
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { EMOTIONS, EMOTION_LABELS, EMOTION_COLORS } from '../../utils/constants';
+import React, { useEffect, useRef, useState } from "react";
+import { EMOTIONS, EMOTION_LABELS, EMOTION_COLORS } from "../../utils/constants";
 
-/**
- * EmotionSelector Component
- * @param {boolean} isOpen - Whether modal is open
- * @param {Function} onClose - Close handler
- * @param {Function} onSelect - Selection handler (emotion, intensity)
- * @param {string} currentEmotion - Currently selected emotion
- * @param {number} currentIntensity - Current intensity (0-100)
- * @param {string} nodeLabel - Label of the node being edited
- */
-export function EmotionSelector({
-  isOpen,
-  onClose,
-  onSelect,
-  currentEmotion = EMOTIONS.NEUTRAL,
-  currentIntensity = 50,
-  nodeLabel = '',
-}) {
-  const [selectedEmotion, setSelectedEmotion] = useState(currentEmotion);
-  const [intensity, setIntensity] = useState(currentIntensity);
+const ES_STYLES = `
+/* Backdrop */
+.es-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 24, 39, 0.45);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+  z-index: 9998;
+  animation: es-fade-in 160ms ease-out;
+}
 
+/* Modal shell */
+.es-modal {
+  position: fixed;
+  inset: 50% auto auto 50%;
+  transform: translate(-50%, -50%);
+  width: min(95vw, 800px);
+  height: 800px; /* wide, short rectangle */
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(15, 23, 42, 0.06);
+
+  z-index: 9999;
+  padding: 16px;
+
+  /* Theme variables with fallbacks */
+  --tone-50: #eef2ff;
+  --tone-200: #c7d2fe;
+  --tone-600: #4338ca;
+
+  animation: es-pop 180ms cubic-bezier(.2,.8,.2,1);
+}
+
+/* Header */
+.es-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+.es-title {
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: 0.1px;
+}
+.es-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: #475569;
+}
+
+/* Section scaffold */
+.es-section { display: flex; flex-direction: column; gap: 10px; }
+.es-section-title {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: #64748b;
+}
+
+/* Palette */
+.es-palette {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 2px 2px 4px 2px;
+  scrollbar-width: none;           /* Firefox */
+}
+.es-palette::-webkit-scrollbar { display: none; }  /* WebKit */
+
+.es-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1.5px solid #d1d5db;
+  background: #ffffff;
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease, background 120ms ease;
+  white-space: nowrap;
+}
+.es-chip:hover {
+  border-color: var(--chip-600, #334155);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.03), 0 0 0 4px var(--chip-50, #f1f5f9);
+  background: var(--chip-50, #ffffff);
+}
+.es-chip:active { transform: translateY(1px); }
+
+.es-chip-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--chip-600, #334155);
+  box-shadow: inset 0 0 0 2px #ffffff;
+}
+
+.es-chip.is-selected {
+  border-color: var(--chip-600, #334155);
+  background: var(--chip-50, #f1f5f9);
+  color: var(--chip-600, #111827);
+}
+
+/* Growable middle section */
+.es-section-grow { flex: 1 1 auto; }
+
+/* Textarea */
+.es-textarea-wrap { position: relative; flex: 1 1 auto; display: flex; }
+
+.es-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  flex: 1 1 auto;
+
+  font-size: 16px;
+  line-height: 1.5;
+  color: #0f172a;
+
+  border-radius: 12px;
+  border: 1px solid #d0d5dd;
+  background: #ffffff;
+
+  padding: 12px 14px;
+  outline: none;
+  box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.04);
+
+  resize: vertical;
+  overflow: auto;
+  scrollbar-width: none;
+}
+.es-textarea::-webkit-scrollbar { display: none; }
+.es-textarea:focus {
+  border-color: var(--tone-600);
+  box-shadow:
+    0 0 0 4px var(--tone-50),
+    inset 0 1px 2px rgba(2, 6, 23, 0.04);
+}
+
+/* Hint */
+.es-hint { margin-top: 6px; font-size: 12px; color: #64748b; }
+
+/* Actions */
+.es-actions { display: flex; justify-content: flex-end; gap: 10px; }
+
+.es-btn {
+  appearance: none;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 16px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 80ms ease, box-shadow 140ms ease, background 140ms ease, filter 120ms ease;
+}
+.es-btn:active { transform: translateY(1px); }
+
+.es-btn-secondary {
+  background: #eef2f7;
+  color: #0f172a;
+  box-shadow: 0 1px 0 rgba(0,0,0,0.02);
+}
+.es-btn-secondary:hover {
+  background: #e3e9f2;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+
+.es-btn-primary {
+  background: #3B82F6;
+  color: #ffffff;
+  box-shadow: 0 2px 0 rgba(0,0,0,0.04);
+}
+.es-btn-primary:hover {
+  filter: brightness(0.98);
+  box-shadow: 0 8px 20px rgba(67, 56, 202, 0.25);
+}
+
+/* Animations */
+@keyframes es-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes es-pop {
+  from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)) scale(0.995); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .es-modal { height: 85vh; padding: 12px; }
+  .es-title { font-size: 18px; }
+}
+`;
+
+function EmotionSelector({ data = {} }) {
+  const {
+    isOpen = false,
+    onClose,
+    onSelect,                 // ({ emotion, text, id, startIdx })
+    id,
+    startIdx,
+    emotion = EMOTIONS.NEUTRAL,
+    label = ""
+  } = data;
+
+  const [selectedEmotion, setSelectedEmotion] = useState(emotion);
+  const [textValue, setTextValue] = useState(label);
+  const textareaRef = useRef(null);
+
+  // Inject styles once while open (keeps one-file constraint)
+  const Styles = () => <style>{ES_STYLES}</style>;
+
+  // Reset on open
   useEffect(() => {
     if (isOpen) {
-      setSelectedEmotion(currentEmotion);
-      setIntensity(currentIntensity);
+      setSelectedEmotion(emotion);
+      setTextValue(label);
+      setTimeout(() => textareaRef.current?.focus(), 0);
     }
-  }, [isOpen, currentEmotion, currentIntensity]);
+  }, [isOpen, emotion, label]);
 
-  const handleApply = () => {
-    console.log('[EmotionSelector] Applying:', selectedEmotion, intensity);
-    onSelect(selectedEmotion, intensity);
-    onClose();
+  // Block background scroll while open
+  useEffect(() => {
+    if (isOpen) document.body.style.overflow = "hidden";
+    else document.body.style.overflow = "";
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  // Keyboard affordances
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "enter") submit();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, selectedEmotion, textValue]);
+
+  const submit = () => {
+    onSelect?.({ emotion: selectedEmotion, text: textValue, id, startIdx });
+    onClose?.();
   };
 
-  const getIntensityColor = () => {
-    const colors = EMOTION_COLORS[selectedEmotion];
-    if (intensity < 33) return colors.light;
-    if (intensity < 66) return colors.medium;
-    return colors.strong;
-  };
+  if (!isOpen) return null;
+
+  // Resolve color set and expose as CSS variables
+  const colors =
+    EMOTION_COLORS?.[selectedEmotion] ||
+    { light: "#eef2ff", medium: "#c7d2fe", strong: "#4338ca" };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              zIndex: 9998,
-              backdropFilter: 'blur(2px)',
-            }}
-          />
+    <>
+      <Styles />
 
-          {/* Modal Card */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            style={{
-              position: 'fixed',
-              top: '50%',
-              left: '50%',
-              transform: 'translate(-50%, -50%)',
-              width: '90%',
-              maxWidth: 480,
-              backgroundColor: 'white',
-              borderRadius: 16,
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
-              zIndex: 9999,
-              overflow: 'hidden',
-            }}
-          >
-            {/* Header */}
-            <div
-              style={{
-                padding: '20px 24px',
-                borderBottom: '1px solid #e5e7eb',
-              }}
+      <div className="es-backdrop" onClick={onClose} />
+
+      <div
+        role="dialog"
+        aria-modal="true"
+        className="es-modal"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          ["--tone-50"]: colors.light,
+          ["--tone-200"]: colors.medium,
+          ["--tone-600"]: colors.strong
+        }}
+      >
+        {/* Dialog Title */}
+        <header className="es-header">
+          <h2 className="es-title">Edit Emotion & Text</h2>
+          <p className="es-subtitle">Select an emotion, then refine your note.</p>
+        </header>
+
+        {/* Emotion Palette */}
+        <section className="es-section">
+          <h3 className="es-section-title">Emotion</h3>
+          <div className="es-palette" role="listbox" aria-label="Emotion palette">
+            {Object.entries(EMOTIONS).map(([_, value]) => {
+              const isSelected = selectedEmotion === value;
+              const paletteColors =
+                EMOTION_COLORS?.[value] ||
+                { light: "#f3f4f6", medium: "#e5e7eb", strong: "#9ca3af" };
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  className={`es-chip ${isSelected ? "is-selected" : ""}`}
+                  title={EMOTION_LABELS[value]}
+                  onClick={() => setSelectedEmotion(value)}
+                  style={{
+                    ["--chip-50"]: paletteColors.light,
+                    ["--chip-200"]: paletteColors.medium,
+                    ["--chip-600"]: paletteColors.strong
+                  }}
+                >
+                  <span className="es-chip-dot" />
+                  {EMOTION_LABELS[value]}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Text Input */}
+        <section className="es-section es-section-grow">
+          <h3 className="es-section-title">Text</h3>
+          <div className="es-textarea-wrap">
+            <textarea
+              ref={textareaRef}
+              className="es-textarea"
+              value={textValue}
+              onChange={(e) => setTextValue(e.target.value)}
+              placeholder="Type your note…"
+            />
+          </div>
+          <div className="es-hint">Tip: Press Ctrl/⌘ + Enter to submit.</div>
+        </section>
+
+        {/* Actions */}
+        <section className="es-section">
+          <h3 className="es-section-title">Actions</h3>
+          <div className="es-actions">
+            <button
+              type="button"
+              className="es-btn es-btn-secondary"
+              onClick={onClose}
             >
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 18,
-                  fontWeight: 600,
-                  color: '#111827',
-                  marginBottom: 8,
-                }}
-              >
-                Set Emotion
-              </h3>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 13,
-                  color: '#6b7280',
-                  lineHeight: 1.5,
-                  maxHeight: 40,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  display: '-webkit-box',
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: 'vertical',
-                }}
-              >
-                {nodeLabel}
-              </p>
-            </div>
+              Cancel
+            </button>
 
-            {/* Content */}
-            <div style={{ padding: 24 }}>
-              {/* Emotion Selection */}
-              <div style={{ marginBottom: 24 }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: '#374151',
-                    marginBottom: 12,
-                  }}
-                >
-                  Emotion Type
-                </label>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(2, 1fr)',
-                    gap: 8,
-                  }}
-                >
-                  {Object.entries(EMOTIONS).map(([key, value]) => {
-                    const isSelected = selectedEmotion === value;
-                    const colors = EMOTION_COLORS[value];
-
-                    return (
-                      <button
-                        key={value}
-                        onClick={() => setSelectedEmotion(value)}
-                        style={{
-                          padding: '12px 16px',
-                          border: `2px solid ${isSelected ? colors.strong : '#e5e7eb'}`,
-                          borderRadius: 8,
-                          backgroundColor: isSelected ? colors.light : 'white',
-                          cursor: 'pointer',
-                          fontSize: 13,
-                          fontWeight: 500,
-                          color: isSelected ? colors.strong : '#6b7280',
-                          transition: 'all 0.2s',
-                          textAlign: 'left',
-                        }}
-                      >
-                        {EMOTION_LABELS[value]}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Intensity Slider */}
-              <div style={{ marginBottom: 24 }}>
-                <label
-                  style={{
-                    display: 'block',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    color: '#374151',
-                    marginBottom: 8,
-                  }}
-                >
-                  Intensity: {intensity}%
-                </label>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={intensity}
-                  onChange={(e) => setIntensity(Number(e.target.value))}
-                  style={{
-                    width: '100%',
-                    height: 6,
-                    borderRadius: 3,
-                    outline: 'none',
-                    background: `linear-gradient(to right, ${getIntensityColor()} ${intensity}%, #e5e7eb ${intensity}%)`,
-                    cursor: 'pointer',
-                  }}
-                />
-                <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    marginTop: 4,
-                    fontSize: 11,
-                    color: '#9ca3af',
-                  }}
-                >
-                  <span>Subtle</span>
-                  <span>Strong</span>
-                </div>
-              </div>
-
-              {/* Preview */}
-              <div
-                style={{
-                  padding: 16,
-                  borderRadius: 8,
-                  backgroundColor: getIntensityColor(),
-                  border: `1px solid ${EMOTION_COLORS[selectedEmotion].strong}`,
-                  fontSize: 12,
-                  color: '#374151',
-                  textAlign: 'center',
-                  fontWeight: 500,
-                }}
-              >
-                Preview: {EMOTION_LABELS[selectedEmotion]} ({intensity}%)
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div
-              style={{
-                padding: '16px 24px',
-                borderTop: '1px solid #e5e7eb',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 8,
-              }}
+            <button
+              type="button"
+              className="es-btn es-btn-primary"
+              onClick={submit}
             >
-              <button
-                onClick={onClose}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 6,
-                  border: '1px solid #d1d5db',
-                  backgroundColor: 'white',
-                  color: '#374151',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleApply}
-                style={{
-                  padding: '8px 16px',
-                  borderRadius: 6,
-                  border: 'none',
-                  backgroundColor: '#2563eb',
-                  color: 'white',
-                  fontSize: 13,
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                }}
-              >
-                Apply
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+              Submit
+            </button>
+          </div>
+        </section>
+      </div>
+    </>
   );
 }
+
+export default EmotionSelector;
+export { EmotionSelector };
