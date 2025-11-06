@@ -28,6 +28,33 @@ export default function App() {
     setTextTree(t);
   }
 
+  function applyTreeModification(newText, oldText, startIdx) {
+    // Use the functional form of setText to get the most recent 'currentFullText'.
+    console.log(newText)
+    console.log(oldText)
+    console.log("---")
+    console.log(startIdx)
+    console.log("---")
+    setText(currentFullText => {
+      
+      // 1. Get the text *before* the part we're replacing.
+      const textBefore = currentFullText.substring(0, startIdx);
+      
+      // 2. Get the text *after* the part we're replacing.
+      const textAfter = currentFullText.substring(startIdx + oldText.length);
+      
+      // 3. Construct the new full text string.
+      const newFullText = textBefore + newText + textAfter;
+
+      console.log(`[App] Tree modification applied. New text length: ${newFullText.length}`);
+      
+      // 4. Update both states with the new full text.
+      setTextTree(newFullText);
+      console.log(newFullText)
+      return newFullText; // This updates the 'text' state.
+    });
+  }
+
   // Handle drag start
   const onHandleMouseDown = (e) => {
     e.preventDefault();
@@ -65,7 +92,7 @@ export default function App() {
       window.removeEventListener('touchend', endDrag);
     };
   }, []);
-
+  console.log("typeof setText in EmotionSelector:", typeof applyTreeModification);
   return (
     <div
       ref={containerRef}
@@ -142,7 +169,7 @@ export default function App() {
             backgroundColor: '#ffffff',
           }}
         >
-          <TreeVisualization text={textTree} setText={setText} setTextTree={setTextTree}/>
+          <TreeVisualization text={textTree} applyTreeModification={applyTreeModification}/>
         </div>
       </div>
     </div>

@@ -12,82 +12,121 @@ import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
  * @param {string} input - The raw text input
  * @returns {Object} Tree structure with id, type, label, and children
  */
-export function parseTextToHierarchy(input) {
+export function parseTextToHierarchy(text) {
   console.log(`${LOG_PREFIX.PARSER} Starting parse...`);
-  
-  const text = String(input ?? '').trim();
   
   if (!text) {
     console.log(`${LOG_PREFIX.PARSER} Empty input, returning default root`);
     return { id: 'root', startIdx: 0, type: 'root', label: 'Document', children: [] };
   }
 
-  // Split by double newlines to get chapters
-  const chapters = text.trim().split(/(?:\r\n|\n){2,}/);
-  console.log(`${LOG_PREFIX.PARSER} Found ${chapters.length} chapters`);
-
   const hierarchy = {
     id: 'root',
     type: 'root',
     label: 'Document',
-    children: new Array(chapters.length),
+    children: [],
     startIdx: 0,
   };
-  var chapterIdx = 0
-  var sectionIdx = 0
-  var sentenceIdx = 0
-  
-  for (let i = 0; i < chapters.length; i++) {
-    console.log(`${LOG_PREFIX.PARSER} Processing chapter ${i}: "${chapters[i].substring(0, 30)}..."`);
-    
-    // Split by single newlines to get sections
-    const sections = chapters[i].split('\n');
-    const sectionsCollected = [];
 
-    for (let k = 0; k < sections.length; k++) {
-      console.log(`${LOG_PREFIX.PARSER}   Section ${k}: "${sections[k].substring(0, 30)}..."`);
-      
-      // Split into sentences
-      const sentenceStrings = sections[k].split(/(?<=[.!?\n])\s+/);
-      const sentencesCollected = [];
+  // globalIndex tracks our position in the *original* text
+  let globalIndex = 0;
+  let i = 0, k = 0, j = 0; // Node counters
 
-      for (let j = 0; j < sentenceStrings.length; j++) {
-        console.log(`${LOG_PREFIX.PARSER}     Sentence ${j}: "${sentenceStrings[j].substring(0, 20)}..."`);
-        sentencesCollected.push({
-          id: `sentence-${i}${k}${j}`,
-          type: 'argument',
-          label: sentenceStrings[j] + "|" + sentenceIdx + "|" + (sentenceIdx+sentenceStrings[j].length),
-          children: [],
-          startIdx: sentenceIdx,
-        });
-        sentenceIdx += sentenceStrings[j].length
-      }
+  // --- FIX 1: Split by *exactly* two newlines (and capture them) ---
+  const chapterStrings = text.split(/(\r\n\r\n|\n\n)/);
 
-      const section = {
-        id: `section-${i}${k}`,
-        type: 'section',
-        label: sections[k] + "|" + sectionIdx + "|" + (sectionIdx+sections[k].length),
-        children: sentencesCollected,
-        startIdx: 0,
-      };
-      sectionsCollected.push(section);
-      sectionIdx += sectionsCollected[k].length
+  for (const chapterText of chapterStrings) {
+    // Check if the *entire string* is a delimiter
+    if (chapterText === '\n\n' || chapterText === '\r\n\r\n') {
+      // This is a delimiter, just advance the index
+      globalIndex += chapterText.length;
+      continue;
+    }
+    // --- FIX: Use .trim() to skip empty AND whitespace-only strings ---
+    if (chapterText.trim() === '') {
+      // **THE FIX**: We must still advance the index by the length of the whitespace
+      globalIndex += chapterText.length;
+      continue; 
     }
 
-    const chapter = {
+    const chapterStartIndex = globalIndex;
+    const chapterNode = {
       id: `chapter-${i}`,
       type: 'chapter',
-      label: chapters[i]+ "|" + chapterIdx + "|" + (chapterIdx+chapters[i].length),
-      children: sectionsCollected,
-      startIdx: chapterIdx,
+      label: `${chapterText}|${chapterStartIndex}|${chapterStartIndex + chapterText.length}`,
+      children: [],
+      startIdx: chapterStartIndex,
     };
-    chapterIdx += chapters[i].length
-    hierarchy.children[i] = chapter;
+
+    // --- FIX 2: Split by *exactly* one newline (and capture it) ---
+    const sectionStrings = chapterText.split(/(\r\n|\n)/);
+
+    for (const sectionText of sectionStrings) {
+      // Check if the *entire string* is a delimiter
+      if (sectionText === '\n' || sectionText === '\r\n') {
+        // This is a delimiter, advance the index
+        globalIndex += sectionText.length;
+        continue;
+      }
+      // --- FIX: Use .trim() to skip empty AND whitespace-only strings ---
+      if (sectionText.trim() === '') {
+        // **THE FIX**: We must still advance the index by the length of the whitespace
+        globalIndex += sectionText.length;
+        continue;
+      }
+
+      const sectionStartIndex = globalIndex;
+      const sectionNode = {
+        id: `section-${i}-${k}`,
+        type: 'section',
+        label: `${sectionText}|${sectionStartIndex}|${sectionStartIndex + sectionText.length}`,
+        children: [],
+        startIdx: sectionStartIndex,
+      };
+
+      // --- FIX 3: Split by sentence-ending punctuation + space (and capture it) ---
+      const sentenceStrings = sectionText.split(/((?<=[.!?])\s+)/);
+
+      for (const sentenceText of sentenceStrings) {
+        // Check if the *entire string* is a delimiter (e.g., " ")
+        if (/^((?<=[.!?])\s+)$/.test(sentenceText)) {
+           // This is a delimiter, advance the index
+          globalIndex += sentenceText.length;
+          continue;
+        }
+        // --- FIX: Use .trim() to skip empty AND whitespace-only strings ---
+        if (sentenceText.trim() === '') {
+          // **THE FIX**: We must still advance the index by the length of the whitespace
+          globalIndex += sentenceText.length;
+          continue;
+        }
+
+        const sentenceStartIndex = globalIndex;
+        const sentenceNode = {
+          id: `sentence-${i}-${k}-${j}`,
+          type: 'argument',
+          label: `${sentenceText}|${sentenceStartIndex}|${sentenceStartIndex + sentenceText.length}`,
+          children: [],
+          startIdx: sentenceStartIndex,
+        };
+        
+        sectionNode.children.push(sentenceNode);
+        globalIndex += sentenceText.length; // Advance index by sentence length
+        j++;
+      }
+      
+      chapterNode.children.push(sectionNode);
+      k++;
+    }
+    
+    hierarchy.children.push(chapterNode);
+    i++;
   }
 
   console.log(`${LOG_PREFIX.PARSER} Parse complete. Total nodes: ${countNodes(hierarchy)}`);
   return hierarchy;
 }
+
 
 /**
  * Flattens tree structure into nodes and edges for ReactFlow

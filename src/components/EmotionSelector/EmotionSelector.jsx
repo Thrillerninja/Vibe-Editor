@@ -229,8 +229,7 @@ function EmotionSelector({ data = {}}) {
     startIdx,
     emotion = EMOTIONS.NEUTRAL,
     label = "",
-    setText,
-    setTextTree
+    applyTreeModification
   } = data;
 
   const [selectedEmotion, setSelectedEmotion] = useState(emotion);
@@ -240,15 +239,13 @@ function EmotionSelector({ data = {}}) {
 
   // EmotionSelector.jsx (already present)
   const submit = () => {
-    console.log("typeof setText in EmotionSelector:", typeof setTextTree, { setText, setTextTree, id, startIdx, label });
+    console.log("typeof setText in EmotionSelector:", typeof applyTreeModification, { applyTreeModification, id, startIdx, label });
     //alert("HANDLE FUCNTION CALLED!")
     console.log(data)
-    setText(textValue);
-    setTextTree(textValue);
-    setTextTree("Hallo")
+    applyTreeModification(textValue, label, startIdx)
     onSelect?.({
       emotion: selectedEmotion,
-      text: textValue,   // ✅ now the latest textarea content
+      text: textValue,
       id,
       startIdx
     });
@@ -266,8 +263,6 @@ function EmotionSelector({ data = {}}) {
       setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }, [isOpen, emotion, label]);
-
-  console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
 
   // Block background scroll while open
   useEffect(() => {
