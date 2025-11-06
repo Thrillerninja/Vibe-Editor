@@ -12,11 +12,14 @@ export default function App() {
   const [text, setText] = useState('');
   const [textTree, setTextTree] = useState('');
 
+
   // Split state: percentage of total width for the left pane (0–100)
   const [leftPct, setLeftPct] = useState(50);
   const containerRef = useRef(null);
   const draggingRef = useRef(false);
 
+
+  console.log("TEST0typeof setText in EmotionSelector:", typeof setTextTree);
   const insertExample = () => setText(EXAMPLE_TEXT);
   const clearText = () => setText('');
 
@@ -139,7 +142,7 @@ export default function App() {
             backgroundColor: '#ffffff',
           }}
         >
-          <TreeVisualization text={textTree} />
+          <TreeVisualization text={textTree} setText={setText} setTextTree={setTextTree}/>
         </div>
       </div>
     </div>

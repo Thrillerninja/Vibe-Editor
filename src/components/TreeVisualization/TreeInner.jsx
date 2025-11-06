@@ -22,7 +22,7 @@ import { useFlowScreenConverters } from '../../utils/coords';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
-export function TreeInner({ text, onNodeEmotionChange }) {
+export function TreeInner({ text, onNodeEmotionChange , setText, setTextTree}) {
   const safeText = String(text ?? '');
   
   // ReactFlow state
@@ -77,7 +77,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
       console.log(`${LOG_PREFIX.LAYOUT} Skipping layout update (dragging)`);
       return;
     }
-
+    console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
     let cancelled = false;
 
     const applyLayout = async () => {
@@ -286,6 +286,7 @@ const onNodeDrag = useCallback(
   );
 
   // Pass emotion handler to nodes via data
+  
   const nodesWithHandlers = useMemo(
     () =>
       nodes.map((node) => ({
@@ -293,11 +294,13 @@ const onNodeDrag = useCallback(
         data: {
           ...node.data,
           onEmotionChange: handleEmotionChange,
+          setText,
+          setTextTree
         },
       })),
-    [nodes, handleEmotionChange]
+    [nodes, handleEmotionChange, safeText, setText, setTextTree]
   );
-
+  
   return (
   <div 
     ref={containerRef}

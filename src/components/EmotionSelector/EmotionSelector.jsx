@@ -220,7 +220,7 @@ const ES_STYLES = `
 }
 `;
 
-function EmotionSelector({ data = {} }) {
+function EmotionSelector({ data = {}}) {
   const {
     isOpen = false,
     onClose,
@@ -228,12 +228,32 @@ function EmotionSelector({ data = {} }) {
     id,
     startIdx,
     emotion = EMOTIONS.NEUTRAL,
-    label = ""
+    label = "",
+    setText,
+    setTextTree
   } = data;
 
   const [selectedEmotion, setSelectedEmotion] = useState(emotion);
   const [textValue, setTextValue] = useState(label);
   const textareaRef = useRef(null);
+
+
+  // EmotionSelector.jsx (already present)
+  const submit = () => {
+    console.log("typeof setText in EmotionSelector:", typeof setTextTree, { setText, setTextTree, id, startIdx, label });
+    //alert("HANDLE FUCNTION CALLED!")
+    console.log(data)
+    setText(textValue);
+    setTextTree(textValue);
+    setTextTree("Hallo")
+    onSelect?.({
+      emotion: selectedEmotion,
+      text: textValue,   // ✅ now the latest textarea content
+      id,
+      startIdx
+    });
+    onClose?.();
+  };
 
   // Inject styles once while open (keeps one-file constraint)
   const Styles = () => <style>{ES_STYLES}</style>;
@@ -246,6 +266,8 @@ function EmotionSelector({ data = {} }) {
       setTimeout(() => textareaRef.current?.focus(), 0);
     }
   }, [isOpen, emotion, label]);
+
+  console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
 
   // Block background scroll while open
   useEffect(() => {
@@ -265,11 +287,6 @@ function EmotionSelector({ data = {} }) {
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, selectedEmotion, textValue]);
-
-  const submit = () => {
-    onSelect?.({ emotion: selectedEmotion, text: textValue, id, startIdx });
-    onClose?.();
-  };
 
   if (!isOpen) return null;
 
@@ -342,7 +359,7 @@ function EmotionSelector({ data = {} }) {
               ref={textareaRef}
               className="es-textarea"
               value={textValue}
-              onChange={(e) => setTextValue(e.target.value)}
+              onChange={(e) => setTextValue(e.target.value)}  // ✅ update the correct state
               placeholder="Type your note…"
             />
           </div>

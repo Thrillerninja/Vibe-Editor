@@ -51,6 +51,9 @@ function getBorderColor(emotion, intensity, type) {
  * @param {Object} data - Node data containing label, type, emotion, intensity, onEmotionChange
  */
 export function AnimatedNodeComponent({ id, data }) {
+
+  const {onEmotionChange, label, startIdx, setText, setTextTree} = data;
+  
   const updateNodeInternals = useUpdateNodeInternals();
   const size = measureLabel(data.label);
   const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
@@ -67,6 +70,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
   const handleEmotionClick = (e) => {
     e.stopPropagation();
+    console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
     console.log(`[Node] Opening emotion selector for ${id}`);
     setIsEmotionModalOpen(true);
   };
@@ -167,20 +171,19 @@ export function AnimatedNodeComponent({ id, data }) {
         data={{
           isOpen: isEmotionModalOpen,
           onClose: () => setIsEmotionModalOpen(false),
-          onSelect: ({ emotion, notes, id }) => {
-            if (typeof onEmotionChange === "function") {
-              onEmotionChange(id, emotion, data.intensity ?? 50);
-            }
-            // optional: save notes back to node data
-          },
+          onSelect: ({ emotion, text, id, startIdx }) => {
+            // 1) update emotion color in the node
+            onEmotionChange?.(id, data.emotion, data.intensity ?? 50);
 
+            // 3) close modal
+            setIsEmotionModalOpen(false);
+          },
           id,
-          startIdx: data.startIdx,
+          startIdx: startIdx,
+          label: label,
           emotion: data.emotion,
-          intensity: data.intensity,
-          label: data.label,
-          notes: data.notes ?? "",
-          type: data.type,
+          setText: setText,
+          setTextTree: setTextTree
         }}
       />
     </>

@@ -1,7 +1,4 @@
-/**
- * TreeVisualizationAlternate - Main tree visualization component
- * Wrapper that provides ReactFlow context
- */
+// File: TreeVisualization.jsx
 
 import React from 'react';
 import { ReactFlowProvider } from 'reactflow';
@@ -9,14 +6,19 @@ import { TreeInner } from './TreeInner';
 import 'reactflow/dist/style.css';
 
 /**
- * TreeVisualizationAlternate Component
+ * TreeVisualization Component
  * @param {string} text - Text to visualize as a tree
  */
-export default function TreeVisualization({ text }) {
+// 1. Destructure setTextTree from props
+export function TreeVisualization({ text, setText, setTextTree }) { 
+
+  console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
+  //setText(0, "TEST")
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <ReactFlowProvider>
-        <TreeInner text={text} />
+        {/* 2. Pass setTextTree down to the child */}
+        <TreeInner text={text} setText={setText} setTextTree={setTextTree}/> 
       </ReactFlowProvider>
     </div>
   );

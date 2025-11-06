@@ -100,12 +100,15 @@ export function flattenTree(tree) {
   const nodes = [];
   const edges = [];
   const stack = [tree];
-
   while (stack.length) {
     const curr = stack.pop();
     nodes.push({
       id: curr.id,
-      data: { label: curr.label, type: curr.type },
+      data: {
+        label: curr.label,
+        type: curr.type,
+        startIdx: curr.startIdx,     // <-- add this line
+      },
       position: { x: 0, y: 0 },
       style: { width: NODE_WIDTH },
       type: 'animatedNode',
@@ -116,12 +119,10 @@ export function flattenTree(tree) {
         id: `${curr.id}-${child.id}`,
         source: curr.id,
         target: child.id,
-        animated: false,
       });
       stack.push(child);
     }
   }
-
   console.log(`${LOG_PREFIX.PARSER} Flattened to ${nodes.length} nodes, ${edges.length} edges`);
   return { nodes, edges };
 }
