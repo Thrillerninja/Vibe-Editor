@@ -15,7 +15,7 @@ import {
   EMOTION_COLORS,
   EMOTIONS,
 } from '../../utils/constants';
-import { EmotionSelector } from '../EmotionSelector';
+import { EmotionSelector } from '../EmotionSelector/EmotionSelector';
 
 /**
  * Gets node background color based on emotion
@@ -64,7 +64,7 @@ export function AnimatedNodeComponent({ id, data }) {
     const timer = setTimeout(() => updateNodeInternals(id), 0);
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
-
+  
   const handleEmotionClick = (e) => {
     e.stopPropagation();
     console.log(`[Node] Opening emotion selector for ${id}`);
@@ -116,7 +116,6 @@ export function AnimatedNodeComponent({ id, data }) {
           {/* Emotion Button (top-right) */}
           <button
             onClick={handleEmotionClick}
-            onMouseDown={(e) => e.stopPropagation()}
             style={{
               position: 'absolute',
               top: 6,
@@ -136,6 +135,9 @@ export function AnimatedNodeComponent({ id, data }) {
               transition: 'opacity 0.2s',
             }}
             title="Set emotion"
+            draggable={false}
+            className="nodrag"
+            
           >
             😊
           </button>
@@ -163,14 +165,19 @@ export function AnimatedNodeComponent({ id, data }) {
       </div>
 
       {/* Emotion Selector Modal */}
-      <EmotionSelector
-        isOpen={isEmotionModalOpen}
-        onClose={() => setIsEmotionModalOpen(false)}
-        onSelect={handleEmotionSelect}
-        currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
-        currentIntensity={data.intensity || 50}
-        nodeLabel={data.label}
-      />
+      <div
+        style={{ width: '500px' }}
+        className="nodrag"
+      >
+        <EmotionSelector
+          isOpen={isEmotionModalOpen}
+          onClose={() => setIsEmotionModalOpen(false)}
+          onSelect={handleEmotionSelect}
+          currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
+          currentIntensity={data.intensity || 50}
+          nodeLabel={data.label}
+        />
+      </div>
     </>
   );
 }
