@@ -96,7 +96,7 @@ export function EmotionSelector({
     if (!position) {
       // Fallback to center
       return {
-        position: "fixed",
+        position: "absolute",
         top: "50%",
         left: "50%",
         transform: "translate(-50%, -50%)",
@@ -126,8 +126,8 @@ export function EmotionSelector({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             style={{
-              position: 'absolute',  // was fixed
-              inset: 0,              // fill the graph-pane only
+              position: 'absolute',
+              inset: 0,
               backgroundColor: 'rgba(0, 0, 0, 0.3)',
               zIndex: 9998,
               backdropFilter: 'blur(2px)',
