@@ -1,4 +1,6 @@
-import React, { useState, useEffect } from "react";
+// In EmotionSelector.jsx
+
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import EmotionPad from "./EmotionPad";
 import {
@@ -20,22 +22,13 @@ export function EmotionSelector({
   currentEmotion = EMOTIONS.NEUTRAL,
   currentIntensity = 50,
   nodeLabel = "",
-  plutchikImage = "/public/Plutchiks-emotional-wheel.png", // pass your image URL here
+  nodeScreenPosition = null, // { x, y, width, height }
+  plutchikImage = "/Plutchiks-emotional-wheel.png",
 }) {
   const [activeTab, setActiveTab] = useState("emotion");
   const [selectedEmotion, setSelectedEmotion] = useState(currentEmotion);
   const [intensity, setIntensity] = useState(currentIntensity);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e) => {
-      if (e.key === 'Escape') onClose();
-    };
-
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
+  const modalRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -45,6 +38,18 @@ export function EmotionSelector({
     }
   }, [isOpen, currentEmotion, currentIntensity]);
 
+  // Close on ESC key
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [isOpen, onClose]);
+
   const handleApply = () => {
     const payload = {
       model: "plutchik",
@@ -53,6 +58,31 @@ export function EmotionSelector({
     };
     onSelect(payload, intensity);
     onClose();
+  };
+
+  // Calculate modal position
+  const getModalStyle = () => {
+    if (!nodeScreenPosition) {
+      // Fallback to center
+      return {
+        position: "fixed",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+      };
+    }
+
+    const { x, y, width, height } = nodeScreenPosition;
+    const nodeCenterX = x + width / 2;
+    const nodeBottom = y + height;
+
+    // Position modal below node, centered
+    return {
+      position: "fixed",
+      top: nodeBottom + 12, // 12px gap below node
+      left: nodeCenterX,
+      transform: "translateX(-50%)",
+    };
   };
 
   const previewBg =
@@ -66,6 +96,7 @@ export function EmotionSelector({
     <AnimatePresence>
       {isOpen && (
         <>
+          {/* Backdrop - closes on click */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -74,32 +105,31 @@ export function EmotionSelector({
             style={{
               position: "fixed",
               inset: 0,
-              backgroundColor: "rgba(111, 111, 111, 0.2)",
-              zIndex: 9998,
-              // backdropFilter: "blur(2px)",
-              borderRadius: '8px',
+              backgroundColor: "rgba(0, 0, 0, 0.3)",
+              zIndex: 99998,
+              backdropFilter: "blur(2px)",
             }}
           />
 
+          {/* Modal content - stops propagation */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            ref={modalRef}
+            initial={{ opacity: 0, scale: 0.9, y: -10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
+            exit={{ opacity: 0, scale: 0.9, y: -10 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            onClick={(e) => e.stopPropagation()} // Prevent backdrop click
             style={{
-              position: "fixed",
-              top: "15%",
-              left: "50%",
-              transform: "translate(-50%, -50%)",
+              ...getModalStyle(),
               backgroundColor: "white",
               borderRadius: 16,
               boxShadow:
-                "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              zIndex: 9909,
-              overflow: 'hidden',
-              maxHeight: '90vh',
-              maxWidth: '400px',
-              overflowY: 'auto',
+                "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)",
+              zIndex: 99999,
+              overflow: "hidden",
+              maxWidth: 420,
+              maxHeight: "90vh",
+              overflowY: "auto",
             }}
           >
             {/* Header */}

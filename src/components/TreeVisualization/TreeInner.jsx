@@ -287,7 +287,7 @@ const onNodeDrag = useCallback(
     [nodes, onNodeEmotionChange, setNodes]
   );
   
-  // Pass modal state handlers to nodes
+  // Pass emotion handler and position to nodes via data
   const nodesWithHandlers = useMemo(
     () =>
       nodes.map((node) => ({
@@ -298,6 +298,7 @@ const onNodeDrag = useCallback(
           isEmotionModalOpen: openEmotionNodeId === node.id,
           setIsEmotionModalOpen: (isOpen) =>
             setOpenEmotionNodeId(isOpen ? node.id : null),
+          nodePosition: node.position, // Pass position for screen calculation
         },
       })),
     [nodes, handleEmotionChange, openEmotionNodeId]

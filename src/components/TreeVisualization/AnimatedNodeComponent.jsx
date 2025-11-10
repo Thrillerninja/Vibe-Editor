@@ -1,10 +1,7 @@
-/**
- * Custom animated node component for ReactFlow
- * Displays tree nodes with type-specific styling and automatic sizing
- */
+// In AnimatedNodeComponent.jsx
 
 import React, { useEffect, useState } from 'react';
-import { Handle, Position, useUpdateNodeInternals } from 'reactflow';
+import { Handle, Position, useUpdateNodeInternals, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { measureLabel } from '../../utils/measurements';
 import {
@@ -15,7 +12,6 @@ import {
   EMOTION_COLORS,
   EMOTIONS,
 } from '../../utils/constants';
-import { EmotionSelector } from '../EmotionSelector/EmotionSelector';
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 
 /**
@@ -48,17 +44,35 @@ function getBorderColor(emotion, intensity, type) {
 
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
- * @param {string} id - Unique node identifier
- * @param {Object} data - Node data containing label, type, emotion, intensity, onEmotionChange
  */
 export function AnimatedNodeComponent({ id, data }) {
   const updateNodeInternals = useUpdateNodeInternals();
+  const { flowToScreenPosition, getZoom } = useReactFlow();
   const size = measureLabel(data.label);
   const [isHovered, setIsHovered] = useState(false);
 
-  // Use state from parent instead of local state
+  // Use state from parent
   const isEmotionModalOpen = data.isEmotionModalOpen || false;
   const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => {});
+
+  // Get screen position for modal
+  const getNodeScreenPosition = () => {
+    if (!data.nodePosition) return null;
+    
+    const screenPos = flowToScreenPosition({
+      x: data.nodePosition.x,
+      y: data.nodePosition.y,
+    });
+    
+    const zoom = getZoom();
+    
+    return {
+      x: screenPos.x,
+      y: screenPos.y,
+      width: NODE_WIDTH * zoom,
+      height: size.height * zoom,
+    };
+  };
 
   // Update internal dimensions when label changes
   useEffect(() => {
@@ -140,8 +154,7 @@ export function AnimatedNodeComponent({ id, data }) {
             }}
             title="Set emotion"
             draggable={false}
-            className="nodrag"
-            
+            className="nodrag nopan"
           >
             😊
           </button>
@@ -168,7 +181,7 @@ export function AnimatedNodeComponent({ id, data }) {
         </motion.div>
       </div>
 
-      {/* Move modal to portal at document root */}
+      {/* Emotion Selector Modal via Portal */}
       {isEmotionModalOpen && (
         <EmotionSelectorPortal
           isOpen={isEmotionModalOpen}
@@ -177,6 +190,7 @@ export function AnimatedNodeComponent({ id, data }) {
           currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
           currentIntensity={data.intensity || 50}
           nodeLabel={data.label}
+          nodeScreenPosition={getNodeScreenPosition()}
         />
       )}
     </>
