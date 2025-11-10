@@ -152,11 +152,24 @@ export function AnimatedNodeComponent({ id, data }) {
               padding: 0,
               opacity: isHovered ? 1 : 0.6,
               transition: 'opacity 0.2s',
+              backgroundImage: `url(/pen.png)`,
+              backgroundSize: "12px",
+              backgroundPosition: "center",
+
             }}
             title="Set emotion"
             className="nodrag nopan" // Prevent ReactFlow interaction
           >
-            😊
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundImage: `url(/pen2.png)`,
+                backgroundSize: "12px",
+                backgroundPosition: "center",
+                backgroundRepeat: "no-repeat"
+              }}
+            />
           </button>
 
           {/* Node Label */}
