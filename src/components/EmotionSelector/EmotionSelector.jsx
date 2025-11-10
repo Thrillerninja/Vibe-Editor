@@ -22,13 +22,16 @@ export function EmotionSelector({
   currentEmotion = EMOTIONS.NEUTRAL,
   currentIntensity = 50,
   nodeLabel = "",
-  nodeScreenPosition = null, // { x, y, width, height }
+  nodeScreenPosition = null,
   plutchikImage = "/Plutchiks-emotional-wheel.png",
+  getNodeScreenPosition,
 }) {
   const [activeTab, setActiveTab] = useState("emotion");
   const [selectedEmotion, setSelectedEmotion] = useState(currentEmotion);
   const [intensity, setIntensity] = useState(currentIntensity);
+  const [livePosition, setLivePosition] = useState(nodeScreenPosition);
   const modalRef = useRef(null);
+  const animationFrameRef = useRef(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -37,6 +40,32 @@ export function EmotionSelector({
       setActiveTab("emotion");
     }
   }, [isOpen, currentEmotion, currentIntensity]);
+
+  // Update position continuously while open
+  useEffect(() => {
+    if (!isOpen || !getNodeScreenPosition) {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      return;
+    }
+
+    const updatePosition = () => {
+      const newPos = getNodeScreenPosition();
+      setLivePosition(newPos);
+      animationFrameRef.current = requestAnimationFrame(updatePosition);
+    };
+
+    updatePosition();
+
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [isOpen, getNodeScreenPosition]);
 
   // Close on ESC key
   useEffect(() => {
@@ -62,7 +91,9 @@ export function EmotionSelector({
 
   // Calculate modal position
   const getModalStyle = () => {
-    if (!nodeScreenPosition) {
+    const position = livePosition || nodeScreenPosition;
+    
+    if (!position) {
       // Fallback to center
       return {
         position: "fixed",
@@ -72,107 +103,138 @@ export function EmotionSelector({
       };
     }
 
-    const { x, y, width, height } = nodeScreenPosition;
+    const { x, y, width, height } = position;
     const nodeCenterX = x + width / 2;
     const nodeBottom = y + height;
 
     // Position modal below node, centered
     return {
       position: "fixed",
-      top: nodeBottom + 12, // 12px gap below node
+      top: nodeBottom + 12,
       left: nodeCenterX,
       transform: "translateX(-50%)",
     };
   };
 
-  const previewBg =
-    intensity < 33
-      ? EMOTION_COLORS[selectedEmotion]?.light
-      : intensity < 66
-      ? EMOTION_COLORS[selectedEmotion]?.medium
-      : EMOTION_COLORS[selectedEmotion]?.strong;
-
   return (
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop - closes on click */}
+          {/* Backdrop - REMOVED onClick to allow canvas interaction */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
             style={{
-              position: "fixed",
-              inset: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.3)",
-              zIndex: 99998,
-              backdropFilter: "blur(2px)",
+              position: 'absolute',  // was fixed
+              inset: 0,              // fill the graph-pane only
+              backgroundColor: 'rgba(0, 0, 0, 0.3)',
+              zIndex: 9998,
+              backdropFilter: 'blur(2px)',
+              pointerEvents: 'none',
             }}
           />
 
-          {/* Modal content - stops propagation */}
+          {/* Modal content */}
           <motion.div
             ref={modalRef}
             initial={{ opacity: 0, scale: 0.9, y: -10 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
+            animate={{ 
+              opacity: 1, 
+              scale: 1, 
+              y: 0,
+              ...getModalStyle() // Apply position in animation
+            }}
             exit={{ opacity: 0, scale: 0.9, y: -10 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            onClick={(e) => e.stopPropagation()} // Prevent backdrop click
+            transition={{ 
+              opacity: { duration: 0.15 },
+              scale: { duration: 0.15 },
+              y: { duration: 0.15 },
+              top: { duration: 0 }, // No transition for position updates
+              left: { duration: 0 },
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="nodrag nopan"
             style={{
-              ...getModalStyle(),
               backgroundColor: "white",
-              borderRadius: 16,
+              borderRadius: 12,
               boxShadow:
                 "0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)",
               zIndex: 99999,
               overflow: "hidden",
-              maxWidth: 420,
-              maxHeight: "90vh",
+              width: 380,
+              maxHeight: "80vh",
               overflowY: "auto",
+              pointerEvents: "auto",
             }}
           >
             {/* Header */}
             <div
               style={{
-                padding: "20px 24px",
+                padding: "16px 20px",
                 borderBottom: "1px solid #e5e7eb",
               }}
             >
-              <h3
-                style={{
-                  margin: 0,
-                  fontSize: 18,
-                  fontWeight: 600,
-                  color: "#111827",
-                  marginBottom: 8,
-                }}
-              >
-                Ton einstellen
-              </h3>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: 13,
-                  color: "#6b7280",
-                  lineHeight: 1.5,
-                  maxHeight: 40,
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  display: "-webkit-box",
-                  WebkitLineClamp: 2,
-                  WebkitBoxOrient: "vertical",
-                }}
-              >
-                {nodeLabel}
-              </p>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+                <div style={{ flex: 1 }}>
+                  <h3
+                    style={{
+                      margin: 0,
+                      fontSize: 16,
+                      fontWeight: 600,
+                      color: "#111827",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Ton einstellen
+                  </h3>
+                  <p
+                    style={{
+                      margin: 0,
+                      fontSize: 12,
+                      color: "#6b7280",
+                      lineHeight: 1.4,
+                      maxHeight: 34,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 2,
+                      WebkitBoxOrient: "vertical",
+                    }}
+                  >
+                    {nodeLabel}
+                  </p>
+                </div>
+                {/* Close button */}
+                <button
+                  onClick={onClose}
+                  style={{
+                    marginLeft: 12,
+                    width: 28,
+                    height: 28,
+                    borderRadius: 6,
+                    border: "1px solid #e5e7eb",
+                    backgroundColor: "white",
+                    color: "#6b7280",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 18,
+                    padding: 0,
+                  }}
+                  title="Close (ESC)"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
             {/* Tabs */}
             <div
               style={{
                 display: "flex",
-                gap: 8,
+                gap: 6,
                 padding: "8px 12px",
                 borderBottom: "1px solid #e5e7eb",
               }}
@@ -184,12 +246,12 @@ export function EmotionSelector({
                     key={t.key}
                     onClick={() => setActiveTab(t.key)}
                     style={{
-                      padding: "8px 12px",
-                      borderRadius: 8,
+                      padding: "6px 12px",
+                      borderRadius: 6,
                       border: `1px solid ${active ? "#2563eb" : "#d1d5db"}`,
                       backgroundColor: active ? "#eff6ff" : "white",
                       color: active ? "#1d4ed8" : "#374151",
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: 600,
                       cursor: "pointer",
                     }}
@@ -201,13 +263,13 @@ export function EmotionSelector({
             </div>
 
             {/* Content */}
-            <div style={{ padding: 20 }}>
+            <div style={{ padding: 16 }}>
               {activeTab === "emotion" && (
-                <div style={{ display: "grid", gap: 16 }}>
+                <div style={{ display: "grid", gap: 12 }}>
                   <label
                     style={{
                       display: "block",
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: 600,
                       color: "#374151",
                     }}
@@ -216,7 +278,7 @@ export function EmotionSelector({
                   </label>
 
                   <EmotionPad
-                    size={360}
+                    size={320} // Reduced from 360
                     emotion={selectedEmotion}
                     intensityPercent={intensity}
                     backgroundImage={plutchikImage}
@@ -229,13 +291,13 @@ export function EmotionSelector({
               )}
 
               {activeTab === "style" && (
-                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
                   Stil-Tab (kommt später).
                 </div>
               )}
 
               {activeTab === "direct" && (
-                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
                   Direktes Bearbeiten (kommt später).
                 </div>
               )}
@@ -244,7 +306,7 @@ export function EmotionSelector({
             {/* Footer */}
             <div
               style={{
-                padding: "16px 24px",
+                padding: "12px 16px",
                 borderTop: "1px solid #e5e7eb",
                 display: "flex",
                 justifyContent: "flex-end",
@@ -254,12 +316,12 @@ export function EmotionSelector({
               <button
                 onClick={onClose}
                 style={{
-                  padding: "8px 16px",
+                  padding: "7px 14px",
                   borderRadius: 6,
                   border: "1px solid #d1d5db",
                   backgroundColor: "white",
                   color: "#374151",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 500,
                   cursor: "pointer",
                 }}
@@ -269,12 +331,12 @@ export function EmotionSelector({
               <button
                 onClick={handleApply}
                 style={{
-                  padding: "8px 16px",
+                  padding: "7px 14px",
                   borderRadius: 6,
                   border: "none",
                   backgroundColor: "#2563eb",
                   color: "white",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 500,
                   cursor: "pointer",
                 }}

@@ -123,7 +123,9 @@ export function TreeInner({ text, onNodeEmotionChange }) {
     (event, node) => {
       console.log(`${LOG_PREFIX.DRAG} Drag start: ${node.id}`);
       isDraggingRef.current = true;
-      setOpenEmotionNodeId(null); // Close emotion modal
+      
+      // Close emotion modal when dragging ANY node
+      setOpenEmotionNodeId(null);
       
       // Start physics and sync initial position
       physics.start(node.id);

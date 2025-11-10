@@ -134,6 +134,7 @@ export function AnimatedNodeComponent({ id, data }) {
           {/* Emotion Button (top-right) */}
           <button
             onClick={handleEmotionClick}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent node drag
             style={{
               position: 'absolute',
               top: 6,
@@ -153,8 +154,7 @@ export function AnimatedNodeComponent({ id, data }) {
               transition: 'opacity 0.2s',
             }}
             title="Set emotion"
-            draggable={false}
-            className="nodrag nopan"
+            className="nodrag nopan" // Prevent ReactFlow interaction
           >
             😊
           </button>
@@ -190,7 +190,7 @@ export function AnimatedNodeComponent({ id, data }) {
           currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
           currentIntensity={data.intensity || 50}
           nodeLabel={data.label}
-          nodeScreenPosition={getNodeScreenPosition()}
+          getNodeScreenPosition={getNodeScreenPosition}
         />
       )}
     </>

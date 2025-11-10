@@ -129,6 +129,7 @@ export default function App() {
         </div>
 
         <div
+          id="graph-pane"
           className="flex-1 relative overflow-hidden"
           style={{
             backgroundImage: `
