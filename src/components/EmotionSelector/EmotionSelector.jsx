@@ -27,6 +27,17 @@ export function EmotionSelector({
   const [intensity, setIntensity] = useState(currentIntensity);
 
   useEffect(() => {
+    if (!isOpen) return;
+
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') onClose();
+    };
+
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (isOpen) {
       setSelectedEmotion(currentEmotion);
       setIntensity(currentIntensity);
@@ -63,9 +74,10 @@ export function EmotionSelector({
             style={{
               position: "fixed",
               inset: 0,
-              backgroundColor: "rgba(0, 0, 0, 0.5)",
+              backgroundColor: "rgba(111, 111, 111, 0.2)",
               zIndex: 9998,
-              backdropFilter: "blur(2px)",
+              // backdropFilter: "blur(2px)",
+              borderRadius: '8px',
             }}
           />
 
@@ -76,15 +88,18 @@ export function EmotionSelector({
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             style={{
               position: "fixed",
-              top: "50%",
+              top: "15%",
               left: "50%",
               transform: "translate(-50%, -50%)",
               backgroundColor: "white",
               borderRadius: 16,
               boxShadow:
                 "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)",
-              zIndex: 9999,
-              overflow: "hidden",
+              zIndex: 9909,
+              overflow: 'hidden',
+              maxHeight: '90vh',
+              maxWidth: '400px',
+              overflowY: 'auto',
             }}
           >
             {/* Header */}

@@ -16,6 +16,7 @@ import {
   EMOTIONS,
 } from '../../utils/constants';
 import { EmotionSelector } from '../EmotionSelector/EmotionSelector';
+import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 
 /**
  * Gets node background color based on emotion
@@ -53,8 +54,11 @@ function getBorderColor(emotion, intensity, type) {
 export function AnimatedNodeComponent({ id, data }) {
   const updateNodeInternals = useUpdateNodeInternals();
   const size = measureLabel(data.label);
-  const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Use state from parent instead of local state
+  const isEmotionModalOpen = data.isEmotionModalOpen || false;
+  const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => {});
 
   // Update internal dimensions when label changes
   useEffect(() => {
@@ -164,12 +168,9 @@ export function AnimatedNodeComponent({ id, data }) {
         </motion.div>
       </div>
 
-      {/* Emotion Selector Modal */}
-      <div
-        style={{ width: '500px' }}
-        className="nodrag"
-      >
-        <EmotionSelector
+      {/* Move modal to portal at document root */}
+      {isEmotionModalOpen && (
+        <EmotionSelectorPortal
           isOpen={isEmotionModalOpen}
           onClose={() => setIsEmotionModalOpen(false)}
           onSelect={handleEmotionSelect}
@@ -177,7 +178,7 @@ export function AnimatedNodeComponent({ id, data }) {
           currentIntensity={data.intensity || 50}
           nodeLabel={data.label}
         />
-      </div>
+      )}
     </>
   );
 }

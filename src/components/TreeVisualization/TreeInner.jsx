@@ -30,6 +30,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reorderIndicator, setReorderIndicator] = useState(null);
   const [reparentTarget, setReparentTarget] = useState(null);
+  const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
   const [showDebugHitboxes, setShowDebugHitboxes] = useState(false); // Debugging reparenting/-ordering hitboxes
   const rfRef = useRef(null);
   const containerRef = useRef(null);
@@ -122,6 +123,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
     (event, node) => {
       console.log(`${LOG_PREFIX.DRAG} Drag start: ${node.id}`);
       isDraggingRef.current = true;
+      setOpenEmotionNodeId(null); // Close emotion modal
       
       // Start physics and sync initial position
       physics.start(node.id);
@@ -284,8 +286,8 @@ const onNodeDrag = useCallback(
     },
     [nodes, onNodeEmotionChange, setNodes]
   );
-
-  // Pass emotion handler to nodes via data
+  
+  // Pass modal state handlers to nodes
   const nodesWithHandlers = useMemo(
     () =>
       nodes.map((node) => ({
@@ -293,9 +295,12 @@ const onNodeDrag = useCallback(
         data: {
           ...node.data,
           onEmotionChange: handleEmotionChange,
+          isEmotionModalOpen: openEmotionNodeId === node.id,
+          setIsEmotionModalOpen: (isOpen) =>
+            setOpenEmotionNodeId(isOpen ? node.id : null),
         },
       })),
-    [nodes, handleEmotionChange]
+    [nodes, handleEmotionChange, openEmotionNodeId]
   );
 
   return (
