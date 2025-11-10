@@ -58,7 +58,10 @@ export default function EmotionPad({
   };
 
   const dotColor = useMemo(
-    () => angleToPlutchikColor(-currentAngleRad-1.5708), // Switch to +90° ~+1.5708 to align dot color with background color
+    () => intensityPercent > 5 ?
+        angleToPlutchikColor(-currentAngleRad-1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
+      :
+        "#000"
     [currentAngleRad]
   );
 
@@ -122,7 +125,7 @@ export default function EmotionPad({
       role="application"
     >
       {/* Optional helper rings (very subtle on top of image) */}
-      {/* {[0.28, 0.55, 0.76, 0.95].map((r, i) => (
+      {[0.28, 0.55, 0.76, 0.95].map((r, i) => (
         <div
           key={i}
           style={{
@@ -136,7 +139,7 @@ export default function EmotionPad({
             pointerEvents: "none",
           }}
         />
-      ))} */}
+      ))}
 
       {/* Optional sector labels (can be removed if the image already has text) */}
       {/* {PLUTCHIK_ORDER.map((lab, idx) => {

@@ -96,8 +96,8 @@ export function AnimatedNodeComponent({ id, data }) {
     }
   };
 
-  const bg = getEmotionColor(data.emotion, data.intensity || 50, data.type);
-  const border = getBorderColor(data.emotion, data.intensity || 50, data.type);
+  const bg = getEmotionColor(data.emotion, data.intensity || 0, data.type);
+  const border = getBorderColor(data.emotion, data.intensity || 0, data.type);
   const color = data.type === 'root' ? 'white' : '#1f2937';
 
   return (
@@ -201,7 +201,7 @@ export function AnimatedNodeComponent({ id, data }) {
           onClose={() => setIsEmotionModalOpen(false)}
           onSelect={handleEmotionSelect}
           currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
-          currentIntensity={data.intensity || 50}
+          currentIntensity={data.intensity || 0}
           nodeLabel={data.label}
           getNodeScreenPosition={getNodeScreenPosition}
         />

@@ -20,7 +20,7 @@ export function EmotionSelector({
   onClose,
   onSelect,
   currentEmotion = EMOTIONS.NEUTRAL,
-  currentIntensity = 50,
+  currentIntensity = 0,
   nodeLabel = "",
   nodeScreenPosition = null,
   plutchikImage = "/Plutchiks-emotional-wheel.png",
