@@ -84,57 +84,65 @@ function buildHierarchyPrompt(sentences, maxDepth) {
         content: s.content
     }));
 
+    // Calculate the range of grouping levels
+    const minGroupLevel = 2;
+    const maxGroupLevel = maxDepth - 1;
+
     return `You are organizing a document into a ${maxDepth}-level hierarchy.
 
 **Sentences (analyze the full content to create meaningful groupings):**
 ${JSON.stringify(sentencesWithContent, null, 2)}
 
-**Hierarchy Rules:**
-1. EXACTLY ${maxDepth} levels total (Level 1 through Level ${maxDepth})
-2. Level 1 (bottom): Individual sentences (the IDs provided above)
-3. Level 2: Groups of sentences (paragraphs, related topics)
-4. Levels 3-${maxDepth - 1}: Progressive groupings of lower levels
-5. Level ${maxDepth} (top/root): Single document title
+**Hierarchy Structure (${maxDepth} levels total):**
+- Level 1: Individual sentences (already provided, IDs: ${sentencesWithContent.map(s => s.id).slice(0, 3).join(', ')}${sentencesWithContent.length > 3 ? ', ...' : ''})
+${maxGroupLevel >= 2 ? `- Level 2: Group sentences into logical units (paragraphs, topics)` : ''}
+${maxGroupLevel >= 3 ? `- Level 3: Group Level 2 nodes into higher-level concepts` : ''}
+${maxGroupLevel >= 4 ? `- Level 4: Group Level 3 nodes into even higher-level themes` : ''}
+${maxGroupLevel >= 5 ? `- Level 5: Group Level 4 nodes into top-level categories` : ''}
+- Level ${maxDepth} (Root): Overall document title
 
-**Critical Requirements:**
-- Sentences MUST be at Level 1 (lowest level)
+**CRITICAL: Create grouping nodes ONLY for levels ${minGroupLevel}${maxGroupLevel > minGroupLevel ? ` through ${maxGroupLevel}` : ''}**
+
+**Requirements:**
 - Every sentence ID must appear in exactly ONE Level 2 node's childIds
-- Every Level 2+ node must have a descriptive title
-- Each level groups nodes from the level below
-- **IMPORTANT: Return ONLY sentence IDs in childIds, NOT the sentence content**
+- Create nodes at levels ${minGroupLevel}${maxGroupLevel > minGroupLevel ? ` through ${maxGroupLevel}` : ''} only
+- Level ${maxDepth} is just the root title, NOT a node in the array
+- Each level groups nodes/sentences from the level below
+- Return ONLY sentence IDs in childIds, NOT content
 
-**JSON Output Format (no markdown, no explanations, IDs only in childIds):**
+**JSON Output Format:**
 {
-  "rootTitle": "Document title (Level ${maxDepth})",
+**JSON Output Format:**
+{
+  "rootTitle": "Document title",
   "nodes": [
     {
       "id": "node-1",
       "level": 2,
-      "title": "First paragraph topic",
+      "title": "First group topic",
       "childIds": ["sentence-0", "sentence-1"]
     },
     {
       "id": "node-2",
       "level": 2,
-      "title": "Second paragraph topic",
-      "childIds": ["sentence-2"]
-    },
+      "title": "Second group topic",
+      "childIds": ["sentence-2", "sentence-3"]
+    }${maxGroupLevel >= 3 ? `,
     {
       "id": "node-3",
       "level": 3,
       "title": "Higher level grouping",
       "childIds": ["node-1", "node-2"]
-    }
+    }` : ''}
   ]
 }
 
-**Example for maxDepth=${maxDepth}:**
-- Level 1: sentence-0, sentence-1, sentence-2, ... (all provided sentences)
-- Level 2: node-1 (contains some sentence IDs), node-2 (contains other sentence IDs), ...
-- Level 3: node-X (contains Level 2 node IDs), ...
-- Level ${maxDepth}: rootTitle (contains top-level node IDs from Level ${maxDepth - 1})
+${maxDepth === 3 ? `**For maxDepth=3 (your current setting):**
+- Create ONLY Level 2 nodes (grouping sentences)
+- Do NOT create Level 3 nodes
+- rootTitle represents Level 3` : ''}
 
-Return valid JSON only.`;
+Return ONLY valid JSON, no markdown blocks or explanations.`;
 }
 
 /**
@@ -161,9 +169,15 @@ function parseClaudeResponse(responseText, maxDepth, sentenceIds) {
                 throw new Error(`Invalid node structure: ${JSON.stringify(node)}`);
             }
 
-            // Validate level range (2 to maxDepth-1, since level 1 is sentences and maxDepth is root)
-            if (node.level < 2 || node.level > maxDepth) {
-                throw new Error(`Invalid level ${node.level} for node ${node.id}. Must be between 2 and ${maxDepth}`);
+            // Validate level range
+            // Level 1 = sentences (implicit, not in nodes array)
+            // Level 2 to (maxDepth-1) = grouping nodes (in nodes array)
+            // Level maxDepth = root (rootTitle, not in nodes array)
+            const minLevel = 2;
+            const maxLevel = maxDepth - 1;
+
+            if (node.level < minLevel || node.level > maxLevel) {
+                throw new Error(`Invalid level ${node.level} for node ${node.id}. Must be between ${minLevel} and ${maxLevel} (maxDepth=${maxDepth})`);
             }
         }
 

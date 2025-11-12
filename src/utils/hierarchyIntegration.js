@@ -165,8 +165,18 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
 
 /**
  * Builds a simple 2-level tree (root -> sentences) without hierarchy
+ * OR creates placeholder hierarchy based on maxDepth from App state
  */
 function buildSimpleTree(sentences, buildTextFromSentences) {
+    // Check if we have a maxDepth hint (passed via sentences metadata)
+    const maxDepth = sentences._maxDepth;
+
+    if (maxDepth && maxDepth > 2) {
+        // Build placeholder hierarchy with the expected depth
+        return buildPlaceholderHierarchy(sentences, buildTextFromSentences, maxDepth);
+    }
+
+    // Default simple tree (no AI, depth = 2)
     return {
         id: 'root',
         type: 'root',
@@ -187,6 +197,52 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
                 intensity: sentence.intensity,
             };
         }),
+        startIdx: 0,
+    };
+}
+
+/**
+ * Builds a placeholder hierarchy showing the structure awaiting AI generation
+ */
+function buildPlaceholderHierarchy(sentences, buildTextFromSentences, maxDepth) {
+    console.log(`${LOG_PREFIX.PARSER} Building placeholder hierarchy with depth ${maxDepth}`);
+
+    // Create sentence nodes at level 1
+    const sentenceNodes = sentences.map(sentence => ({
+        id: sentence.id,
+        type: 'sentence',
+        level: 1,
+        label: sentence.content,
+        content: sentence.content,
+        startIdx: sentence.startIdx,
+        endIdx: sentence.endIdx,
+        children: [],
+        emotion: sentence.emotion,
+        intensity: sentence.intensity,
+    }));
+
+    // Build placeholder nodes from level 2 up to maxDepth-1
+    let currentChildren = sentenceNodes;
+
+    for (let level = 2; level < maxDepth; level++) {
+        const placeholderNode = {
+            id: `placeholder-level-${level}`,
+            type: 'group',
+            level: level,
+            label: `Level ${level} - Awaiting AI generation...`,
+            content: '',
+            children: currentChildren,
+        };
+        currentChildren = [placeholderNode];
+    }
+
+    // Create root node
+    return {
+        id: 'root',
+        type: 'root',
+        label: 'Document - Awaiting AI generation...',
+        content: buildTextFromSentences(sentences),
+        children: currentChildren,
         startIdx: 0,
     };
 }

@@ -26,6 +26,37 @@ export default function App() {
   const [maxDepth, setMaxDepth] = useState(3);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // When maxDepth changes and we have an existing hierarchy, clear it
+  useEffect(() => {
+    if (sentences.length > 0 && sentences._hierarchyMeta) {
+      const hierarchyMaxLevel = sentences._hierarchyMeta.maxLevel;
+      // Check if depth changed
+      // hierarchyMaxLevel is the highest grouping level (e.g., 2 for depth 3)
+      // So maxDepth should equal hierarchyMaxLevel + 1
+      if (hierarchyMaxLevel !== maxDepth - 1) {
+        console.log('[App] Depth changed - clearing hierarchy');
+        console.log('[App]   Old depth:', hierarchyMaxLevel + 1, 'New depth:', maxDepth);
+        const updated = sentences.map(s => ({ ...s }));
+        delete updated._hierarchyMeta;
+        setSentences(updated);
+      }
+    }
+  }, [maxDepth]); // Only depend on maxDepth to avoid loops
+
+  // Derived: sentences with maxDepth hint for placeholder hierarchy
+  const sentencesWithDepth = useMemo(() => {
+    if (sentences.length === 0) return sentences;
+
+    // Attach maxDepth hint for placeholders (if no hierarchy exists)
+    if (!sentences._hierarchyMeta) {
+      const withDepth = [...sentences];
+      withDepth._maxDepth = maxDepth;
+      return withDepth;
+    }
+
+    return sentences;
+  }, [sentences, maxDepth]);
+
   // Split state: percentage of total width for the left pane (0–100)
   const [leftPct, setLeftPct] = useState(50);
   const containerRef = useRef(null);
@@ -237,7 +268,7 @@ export default function App() {
             className="flex-1 relative overflow-hidden"
           >
             <TreeVisualization
-              sentences={sentences}
+              sentences={sentencesWithDepth}
               onTreeUpdate={handleTreeUpdate}
             />
           </div>
