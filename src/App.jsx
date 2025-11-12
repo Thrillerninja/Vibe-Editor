@@ -91,38 +91,42 @@ export default function App() {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="flex h-screen bg-gray-50 select-none"
-      style={{ userSelect: draggingRef.current ? 'none' : undefined }}
-    >
-      {/* Left Pane (Text Editor) */}
-      <div
-        className="flex flex-col border-r border-gray-200"
-        style={{
-          flexBasis: `${leftPct}%`,
-          minWidth: 0,
-          zIndex: 100000
-        }}
-      >
-        <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-gray-900">Text</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={insertExample}
-              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
-            >
-              Insert example
-            </button>
-            <button
-              onClick={clearText}
-              className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
-            >
-              Clear
-            </button>
-          </div>
+    <div className="flex flex-col h-screen bg-gray-50">
+      {/* Main Header - Full Width */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between" style={{ zIndex: 100001 }}>
+        <h1 className="text-xl font-bold text-gray-900">Vibe Editor</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={insertExample}
+            className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
+          >
+            Insert example
+          </button>
+          <button
+            onClick={clearText}
+            className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+          >
+            Clear
+          </button>
         </div>
-        <textarea
+      </div>
+
+      {/* Main Content Area */}
+      <div
+        ref={containerRef}
+        className="flex flex-1 select-none"
+        style={{ userSelect: draggingRef.current ? 'none' : undefined }}
+      >
+        {/* Left Pane (Text Editor) */}
+        <div
+          className="flex flex-col border-r border-gray-200"
+          style={{
+            flexBasis: `${leftPct}%`,
+            minWidth: 0,
+            zIndex: 100000
+          }}
+        >
+          <textarea
           ref={textareaRef}
           value={text}
           onChange={handleTextChange}
@@ -149,14 +153,6 @@ export default function App() {
         style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
       >
         <div
-          className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
-          style={{
-            zIndex: 100000
-          }}>
-          <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
-        </div>
-
-        <div
           id="graph-pane"
           className="flex-1 relative overflow-hidden"
         >
@@ -166,6 +162,7 @@ export default function App() {
           />
         </div>
       </div>
+    </div>
     </div>
   );
 }
