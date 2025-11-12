@@ -159,14 +159,6 @@ export default function App() {
         <div
           id="graph-pane"
           className="flex-1 relative overflow-hidden"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, #e5e7eb 1px, transparent 1px),
-              linear-gradient(to bottom, #e5e7eb 1px, transparent 1px)
-            `,
-            backgroundSize: '20px 20px',
-            backgroundColor: '#ffffff',
-          }}
         >
           <TreeVisualization
             sentences={sentences}

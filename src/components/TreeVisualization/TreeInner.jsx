@@ -411,7 +411,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         zoomOnScroll
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#e5e7eb" />
+        <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
