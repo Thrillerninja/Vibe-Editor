@@ -96,12 +96,12 @@ export function buildTreeFromSentences(sentences) {
       let label = sentence.content;
       const lastChar = sentence.content[sentence.content.length - 1];
       const hasPunctuation = '.!?'.includes(lastChar);
-      
+
       // Add punctuation to label if it's set separately (e.g., from reordering)
       if (!hasPunctuation && sentence.punctuation) {
         label += sentence.punctuation;
       }
-      
+
       return {
         id: sentence.id,
         type: 'sentence',
