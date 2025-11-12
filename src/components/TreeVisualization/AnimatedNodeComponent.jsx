@@ -1,10 +1,7 @@
-/**
- * Custom animated node component for ReactFlow
- * Displays tree nodes with type-specific styling and automatic sizing
- */
+// In AnimatedNodeComponent.jsx
 
 import React, { useEffect, useState } from 'react';
-import { Handle, Position, useUpdateNodeInternals } from 'reactflow';
+import { Handle, Position, useUpdateNodeInternals, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { measureLabel } from '../../utils/measurements';
 import {
@@ -15,7 +12,7 @@ import {
   EMOTION_COLORS,
   EMOTIONS,
 } from '../../utils/constants';
-import { EmotionSelector } from '../EmotionSelector';
+import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 
 /**
  * Gets node background color based on emotion
@@ -47,17 +44,35 @@ function getBorderColor(emotion, intensity, type) {
 
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
- * @param {string} id - Unique node identifier
- * @param {Object} data - Node data containing label, type, emotion, intensity, onEmotionChange
  */
 export function AnimatedNodeComponent({ id, data }) {
-
-  const {onEmotionChange, label, startIdx, setText, setTextTree} = data;
-  
   const updateNodeInternals = useUpdateNodeInternals();
+  const { flowToScreenPosition, getZoom } = useReactFlow();
   const size = measureLabel(data.label);
-  const [isEmotionModalOpen, setIsEmotionModalOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
+
+  // Use state from parent
+  const isEmotionModalOpen = data.isEmotionModalOpen || false;
+  const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => {});
+
+  // Get screen position for modal
+  const getNodeScreenPosition = () => {
+    if (!data.nodePosition) return null;
+    
+    const screenPos = flowToScreenPosition({
+      x: data.nodePosition.x,
+      y: data.nodePosition.y,
+    });
+    
+    const zoom = getZoom();
+    
+    return {
+      x: screenPos.x,
+      y: screenPos.y,
+      width: NODE_WIDTH * zoom,
+      height: size.height * zoom,
+    };
+  };
 
   // Update internal dimensions when label changes
   useEffect(() => {
@@ -67,10 +82,9 @@ export function AnimatedNodeComponent({ id, data }) {
     const timer = setTimeout(() => updateNodeInternals(id), 0);
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
-
+  
   const handleEmotionClick = (e) => {
     e.stopPropagation();
-    console.log("TEST0typeof setTextTree in EmotionSelector:", typeof setTextTree);
     console.log(`[Node] Opening emotion selector for ${id}`);
     setIsEmotionModalOpen(true);
   };
@@ -82,8 +96,8 @@ export function AnimatedNodeComponent({ id, data }) {
     }
   };
 
-  const bg = getEmotionColor(data.emotion, data.intensity || 50, data.type);
-  const border = getBorderColor(data.emotion, data.intensity || 50, data.type);
+  const bg = getEmotionColor(data.emotion, data.intensity || 0, data.type);
+  const border = getBorderColor(data.emotion, data.intensity || 0, data.type);
   const color = data.type === 'root' ? 'white' : '#1f2937';
 
   return (
@@ -120,7 +134,7 @@ export function AnimatedNodeComponent({ id, data }) {
           {/* Emotion Button (top-right) */}
           <button
             onClick={handleEmotionClick}
-            onMouseDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent node drag
             style={{
               position: 'absolute',
               top: 6,
@@ -138,10 +152,24 @@ export function AnimatedNodeComponent({ id, data }) {
               padding: 0,
               opacity: isHovered ? 1 : 0.6,
               transition: 'opacity 0.2s',
+              backgroundImage: `url(/pen.png)`,
+              backgroundSize: "12px",
+              backgroundPosition: "center",
+
             }}
             title="Set emotion"
+            className="nodrag nopan" // Prevent ReactFlow interaction
           >
-            😊
+            <div
+              style={{
+                width: '100%',
+                height: '100%',
+                backgroundImage: `url(/pen2.png)`,
+                backgroundSize: "12px",
+                backgroundPosition: "center",
+                backgroundRepeat: "no-repeat"
+              }}
+            />
           </button>
 
           {/* Node Label */}
@@ -166,26 +194,18 @@ export function AnimatedNodeComponent({ id, data }) {
         </motion.div>
       </div>
 
-      {/* Emotion Selector Modal */}
-      <EmotionSelector
-        data={{
-          isOpen: isEmotionModalOpen,
-          onClose: () => setIsEmotionModalOpen(false),
-          onSelect: ({ emotion, text, id, startIdx }) => {
-            // 1) update emotion color in the node
-            onEmotionChange?.(id, data.emotion, data.intensity ?? 50);
-
-            // 3) close modal
-            setIsEmotionModalOpen(false);
-          },
-          id,
-          startIdx: startIdx,
-          label: label,
-          emotion: data.emotion,
-          setText: setText,
-          setTextTree: setTextTree
-        }}
-      />
+      {/* Emotion Selector Modal via Portal */}
+      {isEmotionModalOpen && (
+        <EmotionSelectorPortal
+          isOpen={isEmotionModalOpen}
+          onClose={() => setIsEmotionModalOpen(false)}
+          onSelect={handleEmotionSelect}
+          currentEmotion={data.emotion || EMOTIONS.NEUTRAL}
+          currentIntensity={data.intensity || 0}
+          nodeLabel={data.label}
+          getNodeScreenPosition={getNodeScreenPosition}
+        />
+      )}
     </>
   );
 }

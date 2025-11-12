@@ -102,7 +102,11 @@ export default function App() {
       {/* Left Pane (Text Editor) */}
       <div
         className="flex flex-col border-r border-gray-200"
-        style={{ flexBasis: `${leftPct}%`, minWidth: 0 }}
+        style={{ 
+          flexBasis: `${leftPct}%`, 
+          minWidth: 0,
+          zIndex: 100000
+        }}
       >
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Text</h2>
@@ -154,11 +158,16 @@ export default function App() {
         className="flex flex-col"
         style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
       >
-        <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
+        <div 
+        className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
+        style={{
+          zIndex: 100000
+        }}>
           <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
         </div>
 
         <div
+          id="graph-pane"
           className="flex-1 relative overflow-hidden"
           style={{
             backgroundImage: `
@@ -192,9 +201,10 @@ function DividerHandle({
         // Wider hit area for usability; visible 2px line in center
         width: '6px',
         cursor: 'col-resize',
-        background: 'transparent',
+        background: 'white',
         border: 'none',
         padding: 0,
+        zIndex: 100000
       }}
     >
       {/* Visible center line */}
