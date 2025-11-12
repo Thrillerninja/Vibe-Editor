@@ -127,42 +127,42 @@ export default function App() {
           }}
         >
           <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={handleTextChange}
-          className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
-          placeholder="Enter your text here..."
-          style={{
-            fontFamily:
-              '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
-          }}
-        />
-      </div>
-
-      {/* Draggable Divider */}
-      <DividerHandle
-        onMouseDown={onHandleMouseDown}
-        onTouchStart={onHandleMouseDown}
-        leftPct={leftPct}
-        setLeftPct={setLeftPct}
-      />
-
-      {/* Right Pane (Canvas) */}
-      <div
-        className="flex flex-col"
-        style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
-      >
-        <div
-          id="graph-pane"
-          className="flex-1 relative overflow-hidden"
-        >
-          <TreeVisualization
-            sentences={sentences}
-            onTreeUpdate={handleTreeUpdate}
+            ref={textareaRef}
+            value={text}
+            onChange={handleTextChange}
+            className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
+            placeholder="Enter your text here..."
+            style={{
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+            }}
           />
         </div>
+
+        {/* Draggable Divider */}
+        <DividerHandle
+          onMouseDown={onHandleMouseDown}
+          onTouchStart={onHandleMouseDown}
+          leftPct={leftPct}
+          setLeftPct={setLeftPct}
+        />
+
+        {/* Right Pane (Canvas) */}
+        <div
+          className="flex flex-col"
+          style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
+        >
+          <div
+            id="graph-pane"
+            className="flex-1 relative overflow-hidden"
+          >
+            <TreeVisualization
+              sentences={sentences}
+              onTreeUpdate={handleTreeUpdate}
+            />
+          </div>
+        </div>
       </div>
-    </div>
     </div>
   );
 }
