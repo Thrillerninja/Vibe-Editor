@@ -15,9 +15,13 @@ export default function EmotionPad({
   onChange,
   backgroundImage,
 }) {
-  const [currentAngleRad, setCurrentAngleRad] = React.useState(
-    (labelToAngleDeg(emotion) * Math.PI) / 180
-  );
+  // Check if emotion is valid, otherwise default to center (no emotion)
+  const isValidEmotion = emotion && labelToAngleDeg(emotion) !== null;
+  const initialAngle = isValidEmotion
+    ? (labelToAngleDeg(emotion) * Math.PI) / 180
+    : 0;
+
+  const [currentAngleRad, setCurrentAngleRad] = React.useState(initialAngle);
   const ref = useRef(null);
   const radius = size / 2;
   const innerPadding = 12;
@@ -26,6 +30,12 @@ export default function EmotionPad({
   // Compute dot position from current emotion + intensity
   const point = useMemo(() => {
     const angleDeg = labelToAngleDeg(emotion);
+
+    // If emotion is invalid or not set, place dot at center
+    if (angleDeg === null) {
+      return { x: radius, y: radius };
+    }
+
     const angleRad = (angleDeg * Math.PI) / 180;
     const r = (clamp01(intensityPercent / 100) || 0) * maxR;
     const cx = radius;
@@ -59,10 +69,10 @@ export default function EmotionPad({
 
   const dotColor = useMemo(
     () => intensityPercent > 5 ?
-        angleToPlutchikColor(-currentAngleRad-1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
+      angleToPlutchikColor(-currentAngleRad - 1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
       :
-        "#000"
-    [currentAngleRad]
+      "#000"
+      [currentAngleRad]
   );
 
   const onMouseDown = (e) => {

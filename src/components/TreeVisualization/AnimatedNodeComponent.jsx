@@ -89,10 +89,12 @@ export function AnimatedNodeComponent({ id, data }) {
     setIsEmotionModalOpen(true);
   };
 
-  const handleEmotionSelect = (emotion, intensity) => {
-    console.log(`[Node] Selected emotion for ${id}:`, emotion, intensity);
+  const handleEmotionSelect = (emotionPayload, intensity) => {
+    console.log(`[Node] Selected emotion for ${id}:`, emotionPayload, intensity);
     if (data.onEmotionChange) {
-      data.onEmotionChange(id, emotion, intensity);
+      // Extract label from payload if it's an object, otherwise use as-is
+      const emotionLabel = emotionPayload?.label || emotionPayload;
+      data.onEmotionChange(id, emotionLabel, intensity);
     }
   };
 
