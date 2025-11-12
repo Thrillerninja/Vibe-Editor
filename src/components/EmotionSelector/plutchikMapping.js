@@ -1,4 +1,4 @@
-import mixHexOKLab50 from "./mixColor" 
+import mixHexOKLab50 from "./mixColor"
 
 // Prettier: width 80
 export const PLUTCHIK_ORDER = [
@@ -68,9 +68,10 @@ export function angleToPlutchikColor(angleRad) {
 }
 
 // Get angle in degrees for a given label (center of sector)
+// Returns null for invalid emotions
 export function labelToAngleDeg(label) {
   const idx = PLUTCHIK_ORDER.indexOf(label);
-  if (idx < 0) return 0;
+  if (idx < 0) return null;
   return idx * 22.5;
 }
 

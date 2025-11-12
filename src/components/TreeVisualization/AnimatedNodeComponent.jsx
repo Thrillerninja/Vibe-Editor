@@ -53,19 +53,19 @@ export function AnimatedNodeComponent({ id, data }) {
 
   // Use state from parent
   const isEmotionModalOpen = data.isEmotionModalOpen || false;
-  const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => {});
+  const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => { });
 
   // Get screen position for modal
   const getNodeScreenPosition = () => {
     if (!data.nodePosition) return null;
-    
+
     const screenPos = flowToScreenPosition({
       x: data.nodePosition.x,
       y: data.nodePosition.y,
     });
-    
+
     const zoom = getZoom();
-    
+
     return {
       x: screenPos.x,
       y: screenPos.y,
@@ -82,17 +82,19 @@ export function AnimatedNodeComponent({ id, data }) {
     const timer = setTimeout(() => updateNodeInternals(id), 0);
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
-  
+
   const handleEmotionClick = (e) => {
     e.stopPropagation();
     console.log(`[Node] Opening emotion selector for ${id}`);
     setIsEmotionModalOpen(true);
   };
 
-  const handleEmotionSelect = (emotion, intensity) => {
-    console.log(`[Node] Selected emotion for ${id}:`, emotion, intensity);
+  const handleEmotionSelect = (emotionPayload, intensity) => {
+    console.log(`[Node] Selected emotion for ${id}:`, emotionPayload, intensity);
     if (data.onEmotionChange) {
-      data.onEmotionChange(id, emotion, intensity);
+      // Extract label from payload if it's an object, otherwise use as-is
+      const emotionLabel = emotionPayload?.label || emotionPayload;
+      data.onEmotionChange(id, emotionLabel, intensity);
     }
   };
 
