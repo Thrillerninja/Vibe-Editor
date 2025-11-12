@@ -1,58 +1,55 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { TreeVisualization } from './components';
 import React from 'react';
+import { buildTextFromSentences } from './utils/treeParser';
+import { applySentenceEdit } from './utils/sentenceEditor';
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
-  'Rising temperatures and changing precipitation patterns affect crop yields. ' +
+  'Rising temperatures and changing precipitation patterns affect crop yields.\n' +
   'Developing drought-resistant crops is one solution. ' +
-  'International cooperation on climate policy is essential.';
+  'International cooperation on climate policy is essential.\n\n' +
+  'Agricultural innovation is crucial for adaptation. ' +
+  'Scientists are developing new crop varieties. ' +
+  'These innovations may help farmers cope with climate extremes.';
 
 export default function App() {
-  const [text, setText] = useState('');
-  const [textTree, setTextTree] = useState('');
+  // SSOT: Store sentences as the primary data structure
+  const [sentences, setSentences] = useState([]);
 
+  // Derived state: text is built from sentences
+  const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
 
   // Split state: percentage of total width for the left pane (0–100)
   const [leftPct, setLeftPct] = useState(50);
   const containerRef = useRef(null);
   const draggingRef = useRef(false);
+  const textareaRef = useRef(null);
 
+  const insertExample = () => {
+    // Parse example text into sentences
+    const newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
+    setSentences(newSentences);
+  };
 
-  console.log("TEST0typeof setText in EmotionSelector:", typeof setTextTree);
-  const insertExample = () => setText(EXAMPLE_TEXT);
-  const clearText = () => setText('');
+  const clearText = () => setSentences([]);
 
-  function handleRendering(t) {
-    console.log('[App] Rendering tree with text length:', t.length);
-    setTextTree(t);
-  }
+  // Handle text input changes from textarea - DIRECT EDITING
+  const handleTextChange = (e) => {
+    const newText = e.target.value;
+    const cursorPosition = e.target.selectionStart;
 
-  function applyTreeModification(newText, oldText, startIdx) {
-    // Use the functional form of setText to get the most recent 'currentFullText'.
-    console.log(newText)
-    console.log(oldText)
-    console.log("---")
-    console.log(startIdx)
-    console.log("---")
-    setText(currentFullText => {
-      
-      // 1. Get the text *before* the part we're replacing.
-      const textBefore = currentFullText.substring(0, startIdx);
-      
-      // 2. Get the text *after* the part we're replacing.
-      const textAfter = currentFullText.substring(startIdx + oldText.length);
-      
-      // 3. Construct the new full text string.
-      const newFullText = textBefore + newText + textAfter;
+    console.log('[App] Text changed, cursor at:', cursorPosition);
 
-      console.log(`[App] Tree modification applied. New text length: ${newFullText.length}`);
-      
-      // 4. Update both states with the new full text.
-      setTextTree(newFullText);
-      console.log(newFullText)
-      return newFullText; // This updates the 'text' state.
-    });
+    // Apply edit directly to sentence array
+    const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
+    setSentences(updatedSentences);
+  };
+
+  // Handle tree modifications (e.g., node edits, reordering, emotion changes)
+  function handleTreeUpdate(updatedSentences) {
+    console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
+    setSentences(updatedSentences);
   }
 
   // Handle drag start
@@ -92,7 +89,7 @@ export default function App() {
       window.removeEventListener('touchend', endDrag);
     };
   }, []);
-  console.log("typeof setText in EmotionSelector:", typeof applyTreeModification);
+
   return (
     <div
       ref={containerRef}
@@ -102,8 +99,8 @@ export default function App() {
       {/* Left Pane (Text Editor) */}
       <div
         className="flex flex-col border-r border-gray-200"
-        style={{ 
-          flexBasis: `${leftPct}%`, 
+        style={{
+          flexBasis: `${leftPct}%`,
           minWidth: 0,
           zIndex: 100000
         }}
@@ -111,14 +108,6 @@ export default function App() {
         <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-900">Text</h2>
           <div className="flex items-center gap-2">
-            <button
-              className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
-              onClick={() => {
-                handleRendering(text);
-              }}
-            >
-              Render
-            </button>
             <button
               onClick={insertExample}
               className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
@@ -134,8 +123,9 @@ export default function App() {
           </div>
         </div>
         <textarea
+          ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={handleTextChange}
           className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
           placeholder="Enter your text here..."
           style={{
@@ -158,11 +148,11 @@ export default function App() {
         className="flex flex-col"
         style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
       >
-        <div 
-        className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
-        style={{
-          zIndex: 100000
-        }}>
+        <div
+          className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
+          style={{
+            zIndex: 100000
+          }}>
           <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
         </div>
 
@@ -178,7 +168,10 @@ export default function App() {
             backgroundColor: '#ffffff',
           }}
         >
-          <TreeVisualization text={textTree} applyTreeModification={applyTreeModification}/>
+          <TreeVisualization
+            sentences={sentences}
+            onTreeUpdate={handleTreeUpdate}
+          />
         </div>
       </div>
     </div>

@@ -55,6 +55,11 @@ export const NODE_STYLES = {
     border: '#c7d2fe',
     color: '#1f2937',
   },
+  sentence: {
+    background: '#ecfeff',
+    border: '#a5f3fc',
+    color: '#1f2937',
+  },
   argument: {
     background: '#ecfeff',
     border: '#a5f3fc',
