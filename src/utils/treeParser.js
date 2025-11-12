@@ -4,9 +4,11 @@
  * - Sentences array is edited directly (see sentenceEditor.js)
  * - Build text from sentence nodes
  * - Build tree from sentence nodes up to root
+ * - Support AI-generated hierarchies (see hierarchyIntegration.js)
  */
 
 import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
+import { buildTreeWithHierarchy } from './hierarchyIntegration';
 
 /**
  * Builds text from sentence nodes (SSOT → Text)
@@ -64,8 +66,8 @@ export function buildTextFromSentences(sentences) {
 
 /**
  * Builds hierarchical tree structure from sentence nodes (SSOT → Tree)
- * For now: Creates a simple 2-level tree (Root → Sentences)
- * Future: Will support dynamic levels
+ * Supports AI-generated hierarchies if present in sentences._hierarchyMeta
+ * Otherwise creates a simple 2-level tree (Root → Sentences)
  * 
  * @param {Array} sentences - Array of sentence nodes
  * @returns {Object} Tree structure with root and children
@@ -73,53 +75,8 @@ export function buildTextFromSentences(sentences) {
 export function buildTreeFromSentences(sentences) {
   console.log(`${LOG_PREFIX.PARSER} Building tree from ${sentences.length} sentences...`);
 
-  if (!sentences || sentences.length === 0) {
-    console.log(`${LOG_PREFIX.PARSER} No sentences, returning empty root`);
-    return {
-      id: 'root',
-      type: 'root',
-      label: 'Document',
-      content: '',
-      children: [],
-      startIdx: 0,
-    };
-  }
-
-  // Build tree: Root → Sentences
-  const hierarchy = {
-    id: 'root',
-    type: 'root',
-    label: 'Document',
-    content: buildTextFromSentences(sentences),
-    children: sentences.map(sentence => {
-      // Build label: include content + punctuation if set separately
-      let label = sentence.content;
-      const lastChar = sentence.content[sentence.content.length - 1];
-      const hasPunctuation = '.!?'.includes(lastChar);
-
-      // Add punctuation to label if it's set separately (e.g., from reordering)
-      if (!hasPunctuation && sentence.punctuation) {
-        label += sentence.punctuation;
-      }
-
-      return {
-        id: sentence.id,
-        type: 'sentence',
-        label: label,
-        content: sentence.content,
-        startIdx: sentence.startIdx,
-        endIdx: sentence.endIdx,
-        children: [],
-        // Preserve metadata
-        emotion: sentence.emotion,
-        intensity: sentence.intensity,
-      };
-    }),
-    startIdx: 0,
-  };
-
-  console.log(`${LOG_PREFIX.PARSER} Tree built: 1 root + ${sentences.length} sentence nodes`);
-  return hierarchy;
+  // Use the new hierarchy-aware builder
+  return buildTreeWithHierarchy(sentences, buildTextFromSentences);
 }
 
 /**

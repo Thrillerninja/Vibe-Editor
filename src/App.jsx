@@ -3,6 +3,8 @@ import { TreeVisualization } from './components';
 import React from 'react';
 import { buildTextFromSentences } from './utils/treeParser';
 import { applySentenceEdit } from './utils/sentenceEditor';
+import { generateHierarchy } from './services/claudeService';
+import { integrateHierarchy } from './utils/hierarchyIntegration';
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
@@ -20,6 +22,10 @@ export default function App() {
   // Derived state: text is built from sentences
   const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
 
+  // AI hierarchy depth control (3-6 levels)
+  const [maxDepth, setMaxDepth] = useState(3);
+  const [isGenerating, setIsGenerating] = useState(false);
+
   // Split state: percentage of total width for the left pane (0–100)
   const [leftPct, setLeftPct] = useState(50);
   const containerRef = useRef(null);
@@ -33,6 +39,40 @@ export default function App() {
   };
 
   const clearText = () => setSentences([]);
+
+  // Handle AI hierarchy generation
+  const handleGenerateHierarchy = async () => {
+    if (sentences.length === 0) {
+      alert('Please add some text first');
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      console.log('[App] Generating hierarchy with depth:', maxDepth);
+      console.log('[App] Sentences:', sentences.length);
+
+      // Call Claude API to generate hierarchy
+      const hierarchy = await generateHierarchy(sentences, maxDepth);
+
+      console.log('[App] Received hierarchy:', hierarchy);
+
+      // Integrate hierarchy into sentences
+      const updatedSentences = integrateHierarchy(sentences, hierarchy);
+
+      console.log('[App] Integrated hierarchy into sentences');
+
+      // Update state to trigger tree rebuild
+      setSentences(updatedSentences);
+
+      console.log('[App] Hierarchy generation complete!');
+    } catch (error) {
+      console.error('[App] Error generating hierarchy:', error);
+      alert('Failed to generate hierarchy: ' + error.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Handle text input changes from textarea - DIRECT EDITING
   const handleTextChange = (e) => {
@@ -95,7 +135,47 @@ export default function App() {
       {/* Main Header - Full Width */}
       <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between" style={{ zIndex: 100001 }}>
         <h1 className="text-xl font-bold text-gray-900">Vibe Editor</h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-4">
+          {/* Depth Slider */}
+          <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
+            <label htmlFor="depth-slider" className="text-sm font-medium text-gray-700 whitespace-nowrap">
+              Depth: {maxDepth}
+            </label>
+            <input
+              id="depth-slider"
+              type="range"
+              min="3"
+              max="6"
+              value={maxDepth}
+              onChange={(e) => setMaxDepth(parseInt(e.target.value))}
+              className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+            />
+          </div>
+
+          {/* Generate Hierarchy Button */}
+          <button
+            onClick={handleGenerateHierarchy}
+            disabled={isGenerating || sentences.length === 0}
+            className="px-4 py-2 text-sm font-medium rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {isGenerating ? (
+              <>
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Generating...
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                Generate Hierarchy
+              </>
+            )}
+          </button>
+
           <button
             onClick={insertExample}
             className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"

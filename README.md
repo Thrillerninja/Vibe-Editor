@@ -42,8 +42,33 @@ Sentences Array (SSOT)
 
 ## 🚀 Getting Started
 
+### Installation
+
 ```bash
 npm install
+```
+
+### AI Configuration (Optional)
+
+To enable AI-powered hierarchical document organization:
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Get your Claude API key from [Anthropic Console](https://console.anthropic.com/)
+
+3. Add your API key to `.env`:
+   ```
+   VITE_CLAUDE_API_KEY=your_actual_api_key_here
+   ```
+
+4. **Important**: Never commit your `.env` file (it's already in `.gitignore`)
+
+### Running the App
+
+```bash
 npm run dev
 ```
 
@@ -70,13 +95,46 @@ Visit `http://localhost:5173/`
 3. Preserves emotion metadata for similar sentences (>80% match)
 4. Updates tree visualization automatically
 
-### Tree Structure (Current)
+### Tree Structure
+
+The tree now supports **AI-generated hierarchical organization**:
+
 ```
-Root (Document)
-  └── Sentence nodes (all sentences connected to root)
+Root (Document Title)
+  ├── Level N (High-level topics)
+  │   ├── Level N-1 (Subtopics)
+  │   │   └── ...
+  │   └── Level 2 (Paragraphs/Groups)
+  │       ├── Sentence 1
+  │       ├── Sentence 2
+  │       └── Sentence 3
+  └── ...
 ```
 
-Future: Support for dynamic levels (chapters, sections, etc.)
+**Depth Levels:**
+- **3 levels**: Root → Groups → Sentences
+- **4 levels**: Root → Topics → Groups → Sentences
+- **5 levels**: Root → Main Topics → Subtopics → Groups → Sentences
+- **6 levels**: Root → Theme → Main Topics → Subtopics → Groups → Sentences
+
+Use the **"Generate Hierarchy"** button to have Claude automatically organize your document into meaningful levels based on content!
+
+## 🤖 AI Features
+
+### Hierarchical Document Organization
+
+1. **Write your content** in the text editor
+2. **Adjust the depth slider** (3-6 levels) to set how many levels of organization you want
+3. **Click "Generate Hierarchy"** to have Claude analyze and organize your content
+4. **View the structured tree** showing topics, subtopics, and groupings
+
+The AI will:
+- Group sentences into logical paragraphs/sections
+- Create meaningful topic labels for each group
+- Build higher-level abstractions based on the depth you choose
+- Generate an overall document title
+
+**Note**: Editing text or reordering sentences after hierarchy generation will clear the hierarchy (you'll need to regenerate).
 
 ## 🎨 Emotion System
 

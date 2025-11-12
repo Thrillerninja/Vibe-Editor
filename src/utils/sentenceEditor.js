@@ -67,6 +67,7 @@ export function findSentenceAtPosition(sentences, position) {
  * Applies a text edit to the sentence array
  * Handles insertion, deletion, and replacement
  * Automatically splits sentences on punctuation
+ * PRESERVES hierarchy metadata from AI generation
  * 
  * @param {Array} sentences - Current sentence array
  * @param {string} newText - The new full text after edit
@@ -81,6 +82,9 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
         console.log(`${LOG_PREFIX.PARSER} Text is empty, clearing sentences`);
         return [];
     }
+
+    // Preserve hierarchy metadata if present
+    const hierarchyMeta = sentences._hierarchyMeta;
 
     // Find the highest existing ID number to avoid conflicts
     const maxId = sentences.reduce((max, s) => {
@@ -117,6 +121,17 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
 
         return newSent;
     });
+
+    // Restore hierarchy metadata if it existed
+    // Note: When text is edited, the hierarchy becomes invalid
+    // So we clear it. User will need to regenerate hierarchy.
+    if (hierarchyMeta && usedSentences.size === sentences.length && updatedSentences.length === sentences.length) {
+        // Only preserve if no sentences were added/removed
+        updatedSentences._hierarchyMeta = hierarchyMeta;
+        console.log(`${LOG_PREFIX.PARSER} Preserved hierarchy metadata (no structural changes)`);
+    } else if (hierarchyMeta) {
+        console.log(`${LOG_PREFIX.PARSER} Cleared hierarchy metadata (structure changed)`);
+    }
 
     console.log(`${LOG_PREFIX.PARSER} Updated from ${sentences.length} to ${updatedSentences.length} sentences`);
     return updatedSentences;
@@ -366,6 +381,9 @@ export function recalculateIndices(sentences) {
 export function applyReordering(sentences, draggedId, targetId, insertBefore) {
     console.log(`${LOG_PREFIX.PARSER} Applying reordering: ${draggedId} → ${targetId} (${insertBefore ? 'before' : 'after'})`);
 
+    // Preserve hierarchy metadata
+    const hierarchyMeta = sentences._hierarchyMeta;
+
     const draggedSentence = sentences.find(s => s.id === draggedId);
     const targetSentence = sentences.find(s => s.id === targetId);
 
@@ -442,5 +460,12 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
     });
 
     // Recalculate indices after reordering
-    return recalculateIndices(normalized);
+    const result = recalculateIndices(normalized);
+
+    // Clear hierarchy metadata after reordering (structure changed)
+    if (hierarchyMeta) {
+        console.log(`${LOG_PREFIX.PARSER} Cleared hierarchy metadata (reordering invalidates structure)`);
+    }
+
+    return result;
 }
