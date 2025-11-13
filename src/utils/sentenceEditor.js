@@ -479,10 +479,47 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
     // Recalculate indices after reordering
     const result = recalculateIndices(normalized);
 
-    // Mark affected sentences as dirty if hierarchy exists
+    // Update hierarchy metadata if it exists
     if (hierarchyMeta) {
-        console.log(`${LOG_PREFIX.PARSER} Reordering detected, marking affected sentences as dirty`);
-        result._hierarchyMeta = hierarchyMeta;
+        console.log(`${LOG_PREFIX.PARSER} Reordering detected, updating hierarchy metadata`);
+
+        // Clone hierarchy metadata to avoid mutation
+        const updatedHierarchyMeta = {
+            ...hierarchyMeta,
+            nodes: hierarchyMeta.nodes.map(node => ({ ...node, childIds: [...node.childIds] }))
+        };
+
+        // Find the parent node that contains both dragged and target sentences
+        const parentNode = updatedHierarchyMeta.nodes.find(node =>
+            node.childIds.includes(draggedId) && node.childIds.includes(targetId)
+        );
+
+        if (parentNode) {
+            console.log(`${LOG_PREFIX.PARSER} Found parent node: ${parentNode.id}`);
+            console.log(`${LOG_PREFIX.PARSER} Old childIds order:`, parentNode.childIds);
+
+            // Reorder the childIds array to match the new sentence order
+            const oldChildIds = [...parentNode.childIds];
+
+            // Remove dragged from old position
+            const draggedOldIndex = oldChildIds.indexOf(draggedId);
+            oldChildIds.splice(draggedOldIndex, 1);
+
+            // Find new insert position
+            const targetOldIndex = oldChildIds.indexOf(targetId);
+            const insertIdx = insertBefore ? targetOldIndex : targetOldIndex + 1;
+
+            // Insert at new position
+            oldChildIds.splice(insertIdx, 0, draggedId);
+
+            parentNode.childIds = oldChildIds;
+            console.log(`${LOG_PREFIX.PARSER} New childIds order:`, parentNode.childIds);
+        } else {
+            console.warn(`${LOG_PREFIX.PARSER} Could not find parent node for reordering`);
+        }
+
+        result._hierarchyMeta = updatedHierarchyMeta;
+
         // Mark the dragged sentence and its neighbors as dirty
         const affectedIds = [draggedId];
         // Also mark neighbors that might have had delimiter changes
