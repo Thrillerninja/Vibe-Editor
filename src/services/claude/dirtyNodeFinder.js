@@ -61,6 +61,14 @@ export function findSentencesInNode(node, hierarchyMeta, sentences) {
  * @param {Array} sentences - All sentences
  * @param {Array} dirtySentenceIds - IDs of modified sentences
  * @returns {Array} Array of subtree information objects
+ * 
+ * CRITICAL SEMANTICS:
+ * - topLevel is the level of nodes at the TOP of the new hierarchy
+ * - This is the same as the level of the dirty root node being replaced
+ * - Claude must create ALL levels from 2 up to and including topLevel
+ * 
+ * Example: If replacing a level-5 node, topLevel=5
+ * Claude creates levels 2, 3, 4, 5 (complete hierarchy)
  */
 export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds) {
     // Find the highest existing node ID to suggest starting IDs for new nodes
@@ -77,7 +85,7 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
 
         dirtySubtrees.push({
             rootNodeId: rootNode.id,
-            rootLevel: rootNode.level,
+            topLevel: rootNode.level, // The level of the top nodes in the new hierarchy
             suggestedStartNodeId: suggestedStartId,
             sentences: sentencesInSubtree.map(s => ({
                 id: s.id,

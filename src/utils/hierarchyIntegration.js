@@ -8,6 +8,19 @@ import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 /**
  * Apply restructured subtrees to existing hierarchy
  * Replaces dirty portions with new structure while preserving clean parts
+ * 
+ * INTEGRATION ALGORITHM:
+ * 1. Remove the dirty root node and all its descendants
+ * 2. Add all new nodes from Claude's response
+ * 3. The new top-level nodes (at the dirty root's level) automatically become
+ *    children of the dirty root's parent when the tree is built
+ * 
+ * Example: Replacing placeholder-level-5
+ * - Before: root → placeholder-level-5 → ... → sentences
+ * - Remove: placeholder-level-5 and everything under it
+ * - Add: New level-5, level-4, level-3, level-2 nodes
+ * - Result: root → new level-5 nodes → new level-4 nodes → ... → sentences
+ * 
  * @param {Array} sentences - Sentences array with existing hierarchy
  * @param {Array} dirtyRootNodeIds - IDs of nodes that were restructured
  * @param {Array} restructuredSubtrees - New structure for each dirty subtree
