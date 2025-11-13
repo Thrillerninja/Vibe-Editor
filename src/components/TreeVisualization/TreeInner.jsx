@@ -295,26 +295,32 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
           );
           onTreeUpdate(reorderedSentences);
         }
+
+        // Stop physics
+        physics.stop();
+
+        // DON'T re-layout here - the useEffect will handle it when sentences update
+        // This ensures the updated dirty flags are included in the new layout
       } else {
         // Try reparenting (different parent)
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
         onDropToReparent(node.id, node.position.x, node.position.y);
+
+        // Stop physics
+        physics.stop();
+
+        // Re-layout after reparent
+        setTimeout(async () => {
+          if (!isDraggingRef.current) {
+            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
+            const laidOut = await runElk(
+              rfRef.current.getNodes(),
+              rfRef.current.getEdges()
+            );
+            setNodes(laidOut);
+          }
+        }, 50);
       }
-
-      // Stop physics
-      physics.stop();
-
-      // Re-layout after a delay
-      setTimeout(async () => {
-        if (!isDraggingRef.current) {
-          console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after drag`);
-          const laidOut = await runElk(
-            rfRef.current.getNodes(),
-            rfRef.current.getEdges()
-          );
-          setNodes(laidOut);
-        }
-      }, 50);
     },
     [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, sentences, onTreeUpdate]
   );
