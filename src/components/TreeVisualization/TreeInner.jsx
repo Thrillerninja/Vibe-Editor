@@ -18,7 +18,6 @@ import { buildTreeFromSentences, flattenTree } from '../../utils/treeParser';
 import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
-import { applyReordering } from '../../utils/sentenceEditor';
 
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
@@ -278,29 +277,22 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
 
       if (reorderInfo) {
         // This is a reorder operation
-        console.log(`${LOG_PREFIX.DRAG} Executing reorder`);
-        reorderNodes(
-          node.id,
-          reorderInfo.targetSiblingId,
-          reorderInfo.insertBefore
-        );
-
-        // CRITICAL: Update the SSOT (sentences array) with new order
-        if (onTreeUpdate && sentences.length > 0) {
-          const reorderedSentences = applyReordering(
-            sentences,
-            node.id,
-            reorderInfo.targetSiblingId,
-            reorderInfo.insertBefore
-          );
-          onTreeUpdate(reorderedSentences);
-        }
+        console.log(`${LOG_PREFIX.DRAG} Reorder detected but logic disabled`);
 
         // Stop physics
         physics.stop();
 
-        // DON'T re-layout here - the useEffect will handle it when sentences update
-        // This ensures the updated dirty flags are included in the new layout
+        // Re-layout to snap back to original position
+        setTimeout(async () => {
+          if (!isDraggingRef.current) {
+            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after drag`);
+            const laidOut = await runElk(
+              rfRef.current.getNodes(),
+              rfRef.current.getEdges()
+            );
+            setNodes(laidOut);
+          }
+        }, 50);
       } else {
         // Try reparenting (different parent)
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);

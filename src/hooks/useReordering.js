@@ -195,105 +195,12 @@ export function useReordering() {
    */
   const reorderNodes = useCallback(
     (draggedId, targetSiblingId, insertBefore) => {
-      const draggedParent = getParent(draggedId);
-      const targetParent = getParent(targetSiblingId);
-
-      if (!draggedParent || !targetParent) return;
-
-      setEdges((edges) => {
-        const isSameParent = draggedParent === targetParent;
-
-        if (isSameParent) {
-          // Same parent - simple reordering within siblings
-          const parentEdges = edges.filter(
-            (e) => e.source === draggedParent
-          );
-          const otherEdges = edges.filter((e) => e.source !== draggedParent);
-
-          // Get current sibling IDs
-          const siblings = parentEdges.map((e) => e.target);
-
-          // Remove dragged node
-          const filtered = siblings.filter((id) => id !== draggedId);
-
-          // Insert at new position
-          const targetIndex = filtered.indexOf(targetSiblingId);
-          const insertIndex = insertBefore ? targetIndex : targetIndex + 1;
-          filtered.splice(insertIndex, 0, draggedId);
-
-          console.log(
-            `${LOG_PREFIX.DRAG} Same-parent reorder: new order for parent ${draggedParent}:`,
-            filtered
-          );
-
-          // Rebuild edges in new order
-          const newParentEdges = filtered.map((childId, index) => ({
-            id: `${draggedParent}-${childId}`,
-            source: draggedParent,
-            target: childId,
-            animated: false,
-          }));
-
-          return [...otherEdges, ...newParentEdges];
-        } else {
-          // Cross-parent reordering - move to different parent
-          console.log(
-            `${LOG_PREFIX.DRAG} Cross-parent reorder: moving ${draggedId} from parent ${draggedParent} to parent ${targetParent}`
-          );
-
-          // Remove edge from old parent
-          const draggedParentEdges = edges.filter(
-            (e) => e.source === draggedParent
-          );
-          const targetParentEdges = edges.filter(
-            (e) => e.source === targetParent
-          );
-          const otherEdges = edges.filter(
-            (e) => e.source !== draggedParent && e.source !== targetParent
-          );
-
-          // Get siblings for old parent (excluding dragged node)
-          const oldSiblings = draggedParentEdges
-            .map((e) => e.target)
-            .filter((id) => id !== draggedId);
-
-          // Get siblings for target parent
-          const newSiblings = targetParentEdges.map((e) => e.target);
-
-          // Insert dragged node at correct position in new parent
-          const targetIndex = newSiblings.indexOf(targetSiblingId);
-          const insertIndex = insertBefore ? targetIndex : targetIndex + 1;
-          newSiblings.splice(insertIndex, 0, draggedId);
-
-          console.log(
-            `${LOG_PREFIX.DRAG} Old parent ${draggedParent} children:`,
-            oldSiblings
-          );
-          console.log(
-            `${LOG_PREFIX.DRAG} New parent ${targetParent} children:`,
-            newSiblings
-          );
-
-          // Rebuild edges for both parents
-          const newDraggedParentEdges = oldSiblings.map((childId) => ({
-            id: `${draggedParent}-${childId}`,
-            source: draggedParent,
-            target: childId,
-            animated: false,
-          }));
-
-          const newTargetParentEdges = newSiblings.map((childId) => ({
-            id: `${targetParent}-${childId}`,
-            source: targetParent,
-            target: childId,
-            animated: false,
-          }));
-
-          return [...otherEdges, ...newDraggedParentEdges, ...newTargetParentEdges];
-        }
-      });
+      console.log(
+        `${LOG_PREFIX.DRAG} Reorder logic disabled: ${draggedId} → ${targetSiblingId} (${insertBefore ? 'before' : 'after'})`
+      );
+      // Logic removed - no reordering will occur
     },
-    [getParent, setEdges]
+    []
   );
 
   return { checkReorderDrop, reorderNodes, findClosestSibling };
