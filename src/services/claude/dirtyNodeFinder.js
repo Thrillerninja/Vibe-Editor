@@ -71,13 +71,6 @@ export function findSentencesInNode(node, hierarchyMeta, sentences) {
  * Claude creates levels 2, 3, 4, 5 (complete hierarchy)
  */
 export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds) {
-    // Find the highest existing node ID to suggest starting IDs for new nodes
-    const maxNodeId = hierarchyMeta.nodes.reduce((max, n) => {
-        const match = n.id.match(/node-(\d+)/);
-        return match ? Math.max(max, parseInt(match[1])) : max;
-    }, -1);
-    let suggestedStartId = maxNodeId + 1;
-
     const dirtySubtrees = [];
 
     for (const rootNode of dirtyRootNodes) {
@@ -86,16 +79,13 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
         dirtySubtrees.push({
             rootNodeId: rootNode.id,
             topLevel: rootNode.level, // The level of the top nodes in the new hierarchy
-            suggestedStartNodeId: suggestedStartId,
-            sentences: sentencesInSubtree.map(s => ({
+            sentences: sentencesInSubtree.map((s, index) => ({
                 id: s.id,
+                order: sentences.indexOf(s), // Compute order from position in main sentences array
                 content: s.content,
                 isDirty: dirtySentenceIds.includes(s.id)
             }))
         });
-
-        // Increment for next subtree
-        suggestedStartId += 20; // Leave room for multiple nodes per subtree
     }
 
     return dirtySubtrees;

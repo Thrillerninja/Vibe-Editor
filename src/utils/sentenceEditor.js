@@ -3,6 +3,7 @@
  * Handles direct editing of sentence array based on text changes
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 import { markSentenceAsDirty, markSentencesAsDirty } from './dirtyTracking';
 
@@ -87,14 +88,8 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
     // Preserve hierarchy metadata if present
     const hierarchyMeta = sentences._hierarchyMeta;
 
-    // Find the highest existing ID number to avoid conflicts
-    const maxId = sentences.reduce((max, s) => {
-        const match = s.id.match(/sentence-(\d+)/);
-        return match ? Math.max(max, parseInt(match[1])) : max;
-    }, -1);
-
     // Split the new text into sentences
-    const newSentences = parseIntoSentences(newText, maxId + 1);
+    const newSentences = parseIntoSentences(newText);
 
     // Track which old sentences have been matched to avoid reusing the same ID
     const usedSentences = new Set();
@@ -161,14 +156,13 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
  * 2. Single or multiple newlines (paragraph/line breaks)
  * 
  * Each sentence stores its TRAILING delimiter (what comes after it)
+ * Each sentence gets a UUID (order is implicit from array position)
  * 
  * @param {string} text - Full text to parse
- * @param {number} startId - Starting ID number for new sentences (default 0)
  * @returns {Array} Array of sentence objects
  */
-function parseIntoSentences(text, startId = 0) {
+function parseIntoSentences(text) {
     const sentences = [];
-    let sentenceId = startId;
     let currentIndex = 0;
 
     // Split by:
@@ -262,7 +256,7 @@ function parseIntoSentences(text, startId = 0) {
         }
 
         sentences.push({
-            id: `sentence-${sentenceId}`,
+            id: uuidv4(),
             type: 'sentence',
             content: sentenceText,
             startIdx: startIdx,
@@ -273,7 +267,6 @@ function parseIntoSentences(text, startId = 0) {
         });
 
         currentIndex = endIdx;
-        sentenceId++;
     }
 
     console.log(`${LOG_PREFIX.PARSER} Parsed ${sentences.length} sentences from text`);

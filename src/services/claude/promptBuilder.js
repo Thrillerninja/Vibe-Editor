@@ -3,12 +3,16 @@
  * Functions for constructing prompts to send to Claude
  * 
  * SYSTEM ARCHITECTURE:
+ * - Sentences use UUIDs and have an 'order' property for position tracking
+ * - Grouping nodes also use UUIDs
  * - Sentences are ALWAYS at level 1 (the leaves of the tree)
  * - Grouping nodes are at levels 2 to (maxDepth-1)
  * - Root is conceptually at level maxDepth but is just a title, not a node
  * - When a node at level N is dirty, we REPLACE it and everything under it
  * - Claude creates a COMPLETE hierarchy from level 2 up to level N
  */
+
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Build a prompt for restructuring dirty subtrees
@@ -20,214 +24,213 @@
 export function buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty = false) {
   const maxGroupLevel = maxDepth - 1;
 
-  return `You are a document organization assistant. Your task is to create a hierarchical structure for sets of sentences.
+  // Extract all sentence IDs from subtrees to show in prompt
+  const allSentenceIds = dirtySubtrees.flatMap(subtree =>
+    subtree.sentences.map(s => s.id)
+  );
+
+  console.log(`[Claude Service] Input JSON: ${JSON.stringify(dirtySubtrees, null, 2)}`);
+
+  return `You are a document organization assistant. Create a hierarchical structure for document sentences.
 
 ═══════════════════════════════════════════════════════════════════
-HIERARCHY SYSTEM OVERVIEW
+HIERARCHY STRUCTURE
 ═══════════════════════════════════════════════════════════════════
 
 The document has ${maxDepth} levels:
-• Level 1: Sentences (always at the bottom - these are provided to you)
+• Level 1: Sentences (always at the bottom)
 • Levels 2-${maxGroupLevel}: Grouping nodes (you create these)
-• Level ${maxDepth}: Document root (just a title, not a node)
+• Level ${maxDepth}: Root title (not a node, just a title)
 
-Your job: Create grouping nodes (levels 2-${maxGroupLevel}) to organize the sentences.
+Your job: Create grouping nodes at levels 2-${maxGroupLevel} to organize sentences by topic.
 
-═══════════════════════════════════════════════════════════════════
-GOLDEN RULES - NEVER VIOLATE THESE
-═══════════════════════════════════════════════════════════════════
-
-1. **PRESERVE SENTENCE ORDER**: Sentences come in document order. You CANNOT reorder them.
-   - If given [sentence-0, sentence-1, sentence-2, sentence-3], they must stay in this exact order.
-   - When you traverse the tree from top to bottom, left to right, you must encounter sentences in order: 0, 1, 2, 3.
-
-2. **CONTIGUOUS GROUPING ONLY**: A group can ONLY contain consecutive sentences.
-   - ✅ VALID: Group with [sentence-0, sentence-1, sentence-2] (consecutive)
-   - ❌ INVALID: Group with [sentence-0, sentence-2, sentence-4] (skips 1 and 3)
-   - If sentences 0-2 discuss topic A, sentence 3 discusses topic B, and sentence 4 discusses topic A again,
-     you MUST create separate groups even if they're the same topic.
-
-3. **GROUPS IN DOCUMENT ORDER**: Groups themselves must be ordered by their sentences.
-   - **CRITICAL**: The order of nodes in the newNodes array matters!
-   - If group-A contains sentence-0 and group-B contains sentence-5, group-A must appear BEFORE group-B in the array.
-   - When you list nodes in the newNodes array, list them in the order their sentences appear in the document.
-   - Example: If you have groups for sentences [0-1], [2], [3-4], [5-6]
-     - ✅ CORRECT order: node-A[0-1], node-B[2], node-C[3-4], node-D[5-6]
-     - ❌ WRONG order: node-A[0-1], node-D[5-6], node-B[2], node-C[3-4]
-
-4. **INCLUDE ALL SENTENCES**: Every sentence must appear exactly once.
-   - No duplicates, no omissions.
-
-5. **COMPLETE HIERARCHY**: Create ALL levels from 2 up to topLevel.
-   - If topLevel=5, create levels 2, 3, 4, AND 5.
-   - Missing levels = invalid structure.
-
-6. **PROPER NESTING**: A node at level N contains ONLY level N-1 children.
-   - Level 2 nodes contain sentences (level 1)
-   - Level 3 nodes contain level 2 nodes
-   - Level 4 nodes contain level 3 nodes
-   - And so on...
-
-7. **MEANINGFUL GROUPING**: Group by topic, theme, or logical sections.
-   - Create multiple groups at each level for better organization
-   - Titles should describe what the group contains
+⚠️ CRITICAL: You MUST create ALL levels from 2 up to the topLevel specified in each subtree!
+   - Missing levels = INVALID response
+   - For example, if topLevel=4, you MUST create levels 2, 3, AND 4
+   - See examples below for how to create multiple levels
 
 ═══════════════════════════════════════════════════════════════════
-SUBTREES TO RESTRUCTURE
+RULES
+═══════════════════════════════════════════════════════════════════
+
+1. **NEVER REORDER SENTENCES**
+   - Sentences have an "order" property (0, 1, 2, 3...)
+   - Keep them in this exact order
+   - When reading the tree top-to-bottom, left-to-right, sentences must appear in order: 0, 1, 2, 3...
+
+2. **GROUP CONSECUTIVE SENTENCES BY TOPIC**
+   - If sentences 0-2 share a topic, create a group containing them
+   - Groups can ONLY contain consecutive sentences
+   - Example: Can group [0,1,2] or [3,4] but NOT [0,2,4]
+   - If the same topic appears again later, create a separate group
+
+3. **MAINTAIN GROUP ORDER**
+   - List groups in document order
+   - If group-A contains sentences 0-1 and group-B contains sentences 2-3
+   - Then group-A must appear BEFORE group-B in the array
+
+4. **CREATE ALL LEVELS**
+   - For each subtree, create ALL levels from 2 up to topLevel
+   - Level 2 groups sentences
+   - Level 3 groups level 2 nodes
+   - Continue until topLevel
+
+5. **USE CORRECT IDs**
+   - Generate NEW UUIDs for grouping nodes you create
+   - Use EXACT sentence IDs from input (don't generate new ones)
+   - Copy sentence IDs exactly when referencing them in childIds
+
+**THESE ARE THE ONLY VALID SENTENCE IDs (copy these exactly):**
+${allSentenceIds.map(id => `  - ${id}`).join('\n')}
+
+Any other UUIDs in childIds at level 2 are WRONG.
+
+═══════════════════════════════════════════════════════════════════
+INPUT DATA
 ═══════════════════════════════════════════════════════════════════
 
 ${JSON.stringify(dirtySubtrees, null, 2)}
 
-Each subtree has:
-- **rootNodeId**: The ID of the old node you're replacing
-- **topLevel**: The level of the top nodes you should create
-- **sentences**: The sentences to organize (in document order)
-- **suggestedStartNodeId**: Starting point for new node IDs
+Each subtree contains:
+- **rootNodeId**: ID of the node you're replacing
+- **topLevel**: Highest level to create
+- **sentences**: Array of sentences with id, order, content, isDirty
 
 ═══════════════════════════════════════════════════════════════════
-YOUR TASK
+EXAMPLES
 ═══════════════════════════════════════════════════════════════════
 
-For EACH subtree:
+**Example 1: topLevel=2 (simplest case - only one grouping level)**
 
-1. **Read sentences in order**: Understand the flow and topics
-
-2. **Identify contiguous groups**: Find consecutive sentences that share a topic
-   - Example: If sentences are [A:cats, B:cats, C:dogs, D:dogs, E:cats]
-   - You CANNOT group A, B, E together (even though all about cats)
-   - You MUST create: Group1[A,B], Group2[C,D], Group3[E]
-   - Sentence order must be preserved, so grouping is limited to consecutive sentences
-
-3. **Create level 2 nodes**: One node for each contiguous topic group
-   - Each node's childIds must be consecutive sentence IDs in document order
-   - List nodes in document order (first node has earliest sentences)
-
-4. **Create higher-level nodes**: If topLevel > 2, create levels 3, 4, etc.
-   - Level 3 nodes group consecutive level 2 nodes
-   - Level 4 nodes group consecutive level 3 nodes
-   - Continue up to topLevel
-   - Always maintain document order
-
-5. **Verify completeness**: All levels from 2 to topLevel must exist
-
-═══════════════════════════════════════════════════════════════════
-EXAMPLE: maxDepth=${maxDepth}, topLevel=${maxGroupLevel}
-═══════════════════════════════════════════════════════════════════
-
-Input sentences (in document order):
-- sentence-0: "Cats are popular pets."
-- sentence-1: "They require regular feeding."
-- sentence-2: "Dogs are loyal companions."
-- sentence-3: "Dogs need daily exercise."
-- sentence-4: "Both cats and dogs need veterinary care."
-
-Analysis:
-- Sentences 0-1: About cats (contiguous)
-- Sentences 2-3: About dogs (contiguous)
-- Sentence 4: About both (standalone)
-
-Note: Even though sentence-0 and sentence-4 both mention cats, you CANNOT group them together
-because sentence-4 comes after the dog sentences. Groups must be contiguous!
-
-${maxGroupLevel === 2 ? `
-Create level 2 groups only:
+Given these input sentences:
 [
-  {"id": "node-0", "level": 2, "title": "Cat Care", "childIds": ["sentence-0", "sentence-1"]},
-  {"id": "node-1", "level": 2, "title": "Dog Care", "childIds": ["sentence-2", "sentence-3"]},
-  {"id": "node-2", "level": 2, "title": "General Pet Health", "childIds": ["sentence-4"]}
+  {"id": "a1b2c3d4-e5f6-7890-abcd-111111111111", "order": 0, "content": "Cats are popular pets."},
+  {"id": "b2c3d4e5-f6a7-8901-bcde-222222222222", "order": 1, "content": "They require feeding."},
+  {"id": "c3d4e5f6-a7b8-9012-cdef-333333333333", "order": 2, "content": "Dogs are loyal."},
+  {"id": "d4e5f6a7-b8c9-0123-def1-444444444444", "order": 3, "content": "Dogs need exercise."}
 ]
 
-Groups are in document order: 0-1, then 2-3, then 4.
-Reading top-to-bottom gives sentences in order: 0, 1, 2, 3, 4 ✓
-` : maxGroupLevel === 3 ? `
-Create levels 2 AND 3:
+Your response for topLevel=2:
 [
-  {"id": "node-0", "level": 2, "title": "Cat Care Basics", "childIds": ["sentence-0", "sentence-1"]},
-  {"id": "node-1", "level": 2, "title": "Dog Care Basics", "childIds": ["sentence-2", "sentence-3"]},
-  {"id": "node-2", "level": 2, "title": "General Pet Health", "childIds": ["sentence-4"]},
-  {"id": "node-3", "level": 3, "title": "Pet Care Guide", "childIds": ["node-0", "node-1", "node-2"]}
+  {
+    "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
+    "level": 2,
+    "title": "Cat Care",
+    "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
+  },
+  {
+    "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
+    "level": 2,
+    "title": "Dog Care",
+    "childIds": ["c3d4e5f6-a7b8-9012-cdef-333333333333", "d4e5f6a7-b8c9-0123-def1-444444444444"]
+  }
 ]
 
-Level 3 groups all level 2 nodes in document order.
-Reading the hierarchy gives sentences in order: 0, 1, 2, 3, 4 ✓
-` : `
-Create ALL levels from 2 to ${maxGroupLevel}:
-- Level 2: Group contiguous sentences by immediate topics
-- Level 3: Group level-2 nodes by broader themes  
-- Level 4+: Continue grouping by increasingly broad categories
-- Level ${maxGroupLevel}: Top-level organization (this replaces the dirty node)
+**Example 2: topLevel=4 (MUST create levels 2, 3, AND 4)**
 
-Remember: At every level, nodes must be ordered by their content's position in the document.
-`}
-
-═══════════════════════════════════════════════════════════════════
-⚠️  CRITICAL: ARRAY ORDERING REQUIREMENT
-═══════════════════════════════════════════════════════════════════
-
-The ORDER of nodes in the newNodes array is CRITICAL!
-
-Nodes must be listed in DOCUMENT ORDER based on their content:
-- If node-A contains earlier sentences than node-B
-- Then node-A must appear BEFORE node-B in the newNodes array
-
-Example - CORRECT ordering:
+Given these input sentences:
 [
-  ${'{"id": "node-0", "childIds": ["sentence-0", "sentence-1"]},  ← First in array'}
-  ${'{"id": "node-1", "childIds": ["sentence-2"]},                ← Second in array'}
-  ${'{"id": "node-2", "childIds": ["sentence-3", "sentence-4"]},  ← Third in array'}
-  ${'{"id": "node-3", "childIds": ["sentence-5"]}                 ← Last in array'}
+  {"id": "s1", "order": 0, "content": "Cats are popular pets."},
+  {"id": "s2", "order": 1, "content": "They require feeding."},
+  {"id": "s3", "order": 2, "content": "Dogs are loyal."},
+  {"id": "s4", "order": 3, "content": "Dogs need exercise."},
+  {"id": "s5", "order": 4, "content": "Fish are low-maintenance pets."},
+  {"id": "s6", "order": 5, "content": "Birds can be trained."}
 ]
 
-Example - WRONG ordering:
+Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
-  ${'{"id": "node-0", "childIds": ["sentence-0", "sentence-1"]},  ← First'}
-  ${'{"id": "node-2", "childIds": ["sentence-3", "sentence-4"]},  ← Jumps to 3-4'}
-  ${'{"id": "node-1", "childIds": ["sentence-2"]},                ← Goes back to 2 ❌ ERROR!'}
-  ${'{"id": "node-3", "childIds": ["sentence-5"]}'}
+  // Level 2: Direct sentence groups
+  {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},
+  {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},
+  {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]},
+  
+  // Level 3: Group level 2 nodes by related topics
+  {"id": "n4", "level": 3, "title": "Mammal Pets", "childIds": ["n1", "n2"]},
+  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "childIds": ["n3"]},
+  
+  // Level 4: Top level grouping all level 3 nodes
+  {"id": "n6", "level": 4, "title": "Pet Care Guide", "childIds": ["n4", "n5"]}
 ]
 
-Reading nodes top-to-bottom must give sentences in their original order!
+Notice in Example 2:
+- ALL levels from 2 to 4 are created (no missing levels!)
+- Level 2 nodes reference sentence IDs (s1, s2, etc.)
+- Level 3 nodes reference level 2 node IDs (n1, n2, n3)
+- Level 4 nodes reference level 3 node IDs (n4, n5)
+- Every node at level N references ONLY nodes at level N-1
+
+**Key takeaway**: 
+- When topLevel=2, create ONLY level 2
+- When topLevel=3, create levels 2 AND 3
+- When topLevel=4, create levels 2, 3, AND 4
+- When topLevel=5, create levels 2, 3, 4, AND 5
+- And so on...
 
 ═══════════════════════════════════════════════════════════════════
-YOUR TASK
+⚠️ FINAL CHECKLIST BEFORE RESPONDING
 ═══════════════════════════════════════════════════════════════════
 
-═══════════════════════════════════════════════════════════════════
-IMPORTANT NOTES
-═══════════════════════════════════════════════════════════════════
-
-• Sentences with isDirty=true were recently edited - pay special attention
-• Use suggestedStartNodeId for numbering (node-10, node-11, etc.)
-• You can split one old group into multiple new groups
-• You can merge multiple old groups into fewer new groups
-• Just maintain sentence order and create all required levels
+For EACH subtree in your response, verify:
+✓ Created ALL levels from 2 to topLevel (check the topLevel field in input!)
+✓ Level 2 nodes reference sentence IDs only
+✓ Level N nodes (N>2) reference only level N-1 node IDs
+✓ Used exact sentence IDs from input (no new UUIDs for sentences)
+✓ Generated new UUIDs for all grouping nodes
+✓ Sentences appear in order when reading tree left-to-right
 
 ${isRootDirty ? `
 ═══════════════════════════════════════════════════════════════════
-DOCUMENT TITLE
+ROOT TITLE
 ═══════════════════════════════════════════════════════════════════
 
-The root node needs a new title. Based on ALL document content across all
-subtrees, generate a concise, meaningful title (3-8 words) that captures the
-main theme or topic of the entire document.
+Generate a concise document title (3-8 words) based on all content.
 ` : ''}
+═══════════════════════════════════════════════════════════════════
+⚠️ CRITICAL: DO NOT GENERATE NEW SENTENCE IDs
+═══════════════════════════════════════════════════════════════════
+
+When you reference sentences in childIds at level 2:
+- COPY the exact "id" field from the input sentences array above
+- DO NOT create new UUIDs for sentences
+- DO NOT modify sentence IDs in any way
+- The sentence IDs are listed in the INPUT DATA section above
+
+VALID sentence IDs (copy exactly from above):
+${allSentenceIds.map(id => `  ${id}`).join('\n')}
+
+INVALID examples (DO NOT USE THESE):
+  550e8400-e29b-41d4-a716-446655440000 ❌
+  30c1d5f5-824e-41c8-b1fd-19c1e9805f2c ❌ (unless it's in the input above)
+  Any UUID you generate yourself ❌
+
+Only generate NEW UUIDs for the grouping nodes (id field), NOT for childIds at level 2.
+
 ═══════════════════════════════════════════════════════════════════
 RESPONSE FORMAT
 ═══════════════════════════════════════════════════════════════════
 
-Return ONLY valid JSON (no markdown, no explanations):
+Return valid JSON only (no markdown):
 
 {${isRootDirty ? `
-  "newRootTitle": "Concise Document Title",` : ''}
+  "newRootTitle": "Document Title",` : ''}
   "restructuredSubtrees": [
     {
-      "rootNodeId": "the-id-from-input",
+      "rootNodeId": "id-from-input",
       "newNodes": [
-        {"id": "node-X", "level": 2, "title": "Group Title", "childIds": ["sentence-0", ...]},
-        {"id": "node-Y", "level": 3, "title": "Broader Theme", "childIds": ["node-X", ...]},
+        // For topLevel=2, just level 2:
+        {"id": "NEW-UUID", "level": 2, "title": "Topic", "childIds": ["exact-sentence-ids"]},
+        
+        // For topLevel=4, ALL levels 2, 3, and 4:
+        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-2", "level": 2, "title": "Subtopic B", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
+        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "childIds": ["NEW-UUID-3"]},
         ...
       ]
     }
   ]
-}`;
+}
+
+Remember: Check each subtree's topLevel and create ALL levels from 2 to topLevel!`;
 }

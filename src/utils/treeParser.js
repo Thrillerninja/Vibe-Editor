@@ -15,7 +15,7 @@ import { buildTreeWithHierarchy } from './hierarchyIntegration';
  * Reconstructs text using each sentence's trailing delimiter
  * Adds punctuation if missing (e.g., after reordering)
  * 
- * @param {Array} sentences - Array of sentence nodes
+ * @param {Array} sentences - Array of sentence nodes (order is implicit from array position)
  * @returns {string} Reconstructed text
  */
 export function buildTextFromSentences(sentences) {
@@ -23,14 +23,11 @@ export function buildTextFromSentences(sentences) {
     return '';
   }
 
-  // Sort by startIdx to ensure correct order (though should already be ordered)
-  const sorted = [...sentences].sort((a, b) => a.startIdx - b.startIdx);
-
   let result = '';
 
-  for (let i = 0; i < sorted.length; i++) {
-    const sentence = sorted[i];
-    const isLast = i === sorted.length - 1;
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
+    const isLast = i === sentences.length - 1;
 
     // Add sentence content
     result += sentence.content;

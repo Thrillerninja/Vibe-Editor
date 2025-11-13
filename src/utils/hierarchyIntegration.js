@@ -3,6 +3,7 @@
  * Handles integration of AI-generated hierarchy into the tree structure
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 
 /**
@@ -65,28 +66,14 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
         console.log(`${LOG_PREFIX.PARSER} Removed dirty subtree rooted at ${dirtyRootId}`);
     }
 
-    // Find the highest existing node ID to generate new IDs if needed
-    const maxNodeId = nodes.reduce((max, n) => {
-        const match = n.id.match(/node-(\d+)/);
-        return match ? Math.max(max, parseInt(match[1])) : max;
-    }, -1);
-    let nextNodeId = maxNodeId + 1;
-
     // Add new restructured subtrees
     for (const subtree of restructuredSubtrees) {
         console.log(`${LOG_PREFIX.PARSER} Adding ${subtree.newNodes.length} new nodes for subtree ${subtree.rootNodeId}`);
 
-        // Add all new nodes, ensuring unique IDs
+        // Add all new nodes (Claude provides UUIDs)
         for (const newNode of subtree.newNodes) {
-            // Check if node ID already exists, if so generate a new one
-            let nodeId = newNode.id;
-            if (nodes.some(n => n.id === nodeId)) {
-                nodeId = `node-${nextNodeId++}`;
-                console.log(`${LOG_PREFIX.PARSER} Generated new ID ${nodeId} for duplicate ${newNode.id}`);
-            }
-
             nodes.push({
-                id: nodeId,
+                id: newNode.id, // Use UUID from Claude
                 type: 'group',
                 level: newNode.level,
                 label: newNode.title,
@@ -377,7 +364,7 @@ export function createPlaceholderHierarchy(sentences, maxDepth) {
 
     // Start from level 2 (first grouping level) up to maxDepth-1 (highest grouping level)
     for (let level = 2; level < maxDepth; level++) {
-        const placeholderId = `placeholder-level-${level}`;
+        const placeholderId = uuidv4(); // Generate UUID for placeholder
 
         // Determine what this placeholder contains
         let childIds;
@@ -386,7 +373,7 @@ export function createPlaceholderHierarchy(sentences, maxDepth) {
             childIds = sentences.map(s => s.id);
         } else {
             // Higher levels contain the placeholder from the level below
-            childIds = [`placeholder-level-${level - 1}`];
+            childIds = [placeholderNodes[placeholderNodes.length - 1].id];
         }
 
         placeholderNodes.push({

@@ -118,10 +118,10 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
     validateLevelCompleteness(subtree, topLevel);
 
     // Validate proper parent-child relationships
-    validateParentChildRelationships(subtree, topLevel);
+    validateParentChildRelationships(subtree, topLevel, originalSentences);
 
     // Validate no orphaned nodes
-    validateNoOrphanedNodes(subtree, topLevel);
+    validateNoOrphanedNodes(subtree, topLevel, originalSentences);
 
     // Validate all sentences are included exactly once
     validateSentenceCompleteness(subtree, originalSentences);
@@ -190,13 +190,14 @@ function validateLevelCompleteness(subtree, topLevel) {
 /**
  * Validate parent-child relationships follow level rules
  */
-function validateParentChildRelationships(subtree, topLevel) {
+function validateParentChildRelationships(subtree, topLevel, originalSentences) {
     const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
 
     for (const node of subtree.newNodes) {
         for (const childId of node.childIds) {
-            // If child is a sentence, parent must be level 2
-            if (childId.startsWith('sentence-')) {
+            // If child is a sentence (check if ID is in original sentences)
+            if (sentenceIds.has(childId)) {
                 if (node.level !== 2) {
                     throw new Error(
                         `Subtree ${subtree.rootNodeId}: Node ${node.id} (level ${node.level}) ` +
@@ -232,13 +233,14 @@ function validateParentChildRelationships(subtree, topLevel) {
 /**
  * Validate no orphaned nodes (all nodes except top-level must be referenced)
  */
-function validateNoOrphanedNodes(subtree, topLevel) {
+function validateNoOrphanedNodes(subtree, topLevel, originalSentences) {
     const allReferencedIds = new Set();
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
 
-    // Collect all referenced child IDs
+    // Collect all referenced child IDs (excluding sentences)
     for (const node of subtree.newNodes) {
         for (const childId of node.childIds) {
-            if (!childId.startsWith('sentence-')) {
+            if (!sentenceIds.has(childId)) {
                 allReferencedIds.add(childId);
             }
         }
@@ -265,12 +267,13 @@ function validateNoOrphanedNodes(subtree, topLevel) {
  */
 function validateSentenceCompleteness(subtree, originalSentences) {
     const originalIds = new Set(originalSentences.map(s => s.id));
+    const sentenceIds = originalIds; // For clarity
     const foundIds = new Set();
 
     // Recursively collect all sentence IDs from the hierarchy
     const collectSentenceIds = (nodeIds, nodeMap) => {
         for (const childId of nodeIds) {
-            if (childId.startsWith('sentence-')) {
+            if (sentenceIds.has(childId)) {
                 foundIds.add(childId);
             } else {
                 const childNode = nodeMap.get(childId);
@@ -313,12 +316,13 @@ function validateSentenceCompleteness(subtree, originalSentences) {
 function validateSentenceOrder(subtree, originalSentences) {
     // Build a map of original sentence order
     const originalOrder = new Map(originalSentences.map((s, idx) => [s.id, idx]));
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
 
     // Extract sentence sequence from the new hierarchy
     const sentenceSequence = [];
     const extractSequence = (nodeIds, nodeMap) => {
         for (const childId of nodeIds) {
-            if (childId.startsWith('sentence-')) {
+            if (sentenceIds.has(childId)) {
                 sentenceSequence.push(childId);
             } else {
                 const childNode = nodeMap.get(childId);
@@ -363,13 +367,13 @@ function validateSentenceOrder(subtree, originalSentences) {
                 `Subtree ${subtree.rootNodeId}: Sentence order violated.\n` +
                 `\n` +
                 `The newNodes array has groups in the wrong order:\n` +
-                `  - Node "${nodeWithPrev?.id}" contains ${sentenceSequence[i - 1]} (position ${prevIdx})\n` +
-                `  - Node "${nodeWithCurr?.id}" contains ${sentenceSequence[i]} (position ${currIdx})\n` +
+                `  - Node "${nodeWithPrev?.id}" contains sentence at position ${prevIdx}\n` +
+                `  - Node "${nodeWithCurr?.id}" contains sentence at position ${currIdx}\n` +
                 `\n` +
-                `But ${sentenceSequence[i]} (position ${currIdx}) comes BEFORE ${sentenceSequence[i - 1]} (position ${prevIdx}) in the document!\n` +
+                `But position ${currIdx} comes BEFORE position ${prevIdx} in the document!\n` +
                 `\n` +
                 `Fix: Reorder your newNodes array so groups appear in document order.\n` +
-                `The node containing sentence-${currIdx} must come before the node containing sentence-${prevIdx}.`
+                `The node containing position ${currIdx} must come before the node containing position ${prevIdx}.`
             );
         }
     }
@@ -383,6 +387,7 @@ function validateSentenceOrder(subtree, originalSentences) {
  */
 function validateContiguousGrouping(subtree, originalSentences) {
     const originalOrder = new Map(originalSentences.map((s, idx) => [s.id, idx]));
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
     const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
 
     // Check all level-2 nodes (which directly contain sentences)
@@ -391,7 +396,7 @@ function validateContiguousGrouping(subtree, originalSentences) {
     for (const node of level2Nodes) {
         // Get indices of all sentences in this group
         const sentenceIndices = node.childIds
-            .filter(id => id.startsWith('sentence-'))
+            .filter(id => sentenceIds.has(id))
             .map(id => originalOrder.get(id))
             .sort((a, b) => a - b);
 
