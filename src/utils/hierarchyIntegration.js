@@ -6,6 +6,125 @@
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 
 /**
+ * Apply restructured subtrees to existing hierarchy
+ * Replaces dirty portions with new structure while preserving clean parts
+ * @param {Array} sentences - Sentences array with existing hierarchy
+ * @param {Array} dirtyRootNodeIds - IDs of nodes that were restructured
+ * @param {Array} restructuredSubtrees - New structure for each dirty subtree
+ * @returns {Array} Updated sentences with restructured hierarchy
+ */
+export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees) {
+    console.log(`${LOG_PREFIX.PARSER} Applying ${restructuredSubtrees.length} subtree restructures`);
+
+    if (!sentences._hierarchyMeta) {
+        console.warn(`${LOG_PREFIX.PARSER} No hierarchy metadata found`);
+        return sentences;
+    }
+
+    const updatedSentences = sentences.map(s => ({ ...s }));
+    const hierarchyMeta = { ...sentences._hierarchyMeta };
+    let nodes = hierarchyMeta.nodes.map(n => ({ ...n }));
+
+    // Build a Set of dirty root node IDs for quick lookup
+    const dirtyRootSet = new Set(dirtyRootNodeIds);
+
+    // Remove all descendants of dirty root nodes
+    const removeDescendants = (nodeId) => {
+        const nodesToRemove = [];
+        for (const node of nodes) {
+            if (node.childIds.includes(nodeId)) {
+                // This is a child, mark for removal and recurse
+                nodesToRemove.push(node.id);
+                removeDescendants(node.id);
+            }
+        }
+        // Remove the descendants
+        for (const idToRemove of nodesToRemove) {
+            nodes = nodes.filter(n => n.id !== idToRemove);
+        }
+    };
+
+    // Remove dirty root nodes and all their descendants
+    for (const dirtyRootId of dirtyRootNodeIds) {
+        removeDescendants(dirtyRootId);
+        nodes = nodes.filter(n => n.id !== dirtyRootId);
+        console.log(`${LOG_PREFIX.PARSER} Removed dirty subtree rooted at ${dirtyRootId}`);
+    }
+
+    // Find the highest existing node ID to generate new IDs if needed
+    const maxNodeId = nodes.reduce((max, n) => {
+        const match = n.id.match(/node-(\d+)/);
+        return match ? Math.max(max, parseInt(match[1])) : max;
+    }, -1);
+    let nextNodeId = maxNodeId + 1;
+
+    // Add new restructured subtrees
+    for (const subtree of restructuredSubtrees) {
+        console.log(`${LOG_PREFIX.PARSER} Adding ${subtree.newNodes.length} new nodes for subtree ${subtree.rootNodeId}`);
+
+        // Add all new nodes, ensuring unique IDs
+        for (const newNode of subtree.newNodes) {
+            // Check if node ID already exists, if so generate a new one
+            let nodeId = newNode.id;
+            if (nodes.some(n => n.id === nodeId)) {
+                nodeId = `node-${nextNodeId++}`;
+                console.log(`${LOG_PREFIX.PARSER} Generated new ID ${nodeId} for duplicate ${newNode.id}`);
+            }
+
+            nodes.push({
+                id: nodeId,
+                type: 'group',
+                level: newNode.level,
+                label: newNode.title,
+                childIds: newNode.childIds,
+            });
+        }
+    }
+
+    hierarchyMeta.nodes = nodes;
+    updatedSentences._hierarchyMeta = hierarchyMeta;
+
+    console.log(`${LOG_PREFIX.PARSER} Hierarchy restructured: now ${nodes.length} nodes`);
+
+    return updatedSentences;
+}
+
+/**
+ * Apply title updates to dirty nodes in existing hierarchy
+ * @param {Array} sentences - Sentences array with existing hierarchy
+ * @param {Array} updates - Array of {nodeId, newTitle} objects from Claude
+ * @returns {Array} Updated sentences with new titles for dirty nodes
+ */
+export function applyDirtyNodeUpdates(sentences, updates) {
+    console.log(`${LOG_PREFIX.PARSER} Applying ${updates.length} node title updates`);
+
+    if (!sentences._hierarchyMeta) {
+        console.warn(`${LOG_PREFIX.PARSER} No hierarchy metadata found`);
+        return sentences;
+    }
+
+    const updatedSentences = sentences.map(s => ({ ...s }));
+    const hierarchyMeta = { ...sentences._hierarchyMeta };
+    const nodes = hierarchyMeta.nodes.map(n => ({ ...n }));
+
+    // Apply each update
+    for (const update of updates) {
+        const node = nodes.find(n => n.id === update.nodeId);
+        if (node) {
+            console.log(`${LOG_PREFIX.PARSER} Updating ${update.nodeId}: "${node.label}" → "${update.newTitle}"`);
+            node.label = update.newTitle;
+        } else {
+            console.warn(`${LOG_PREFIX.PARSER} Node ${update.nodeId} not found in hierarchy`);
+        }
+    }
+
+    hierarchyMeta.nodes = nodes;
+    updatedSentences._hierarchyMeta = hierarchyMeta;
+
+    return updatedSentences;
+}
+
+/**
  * Integrates AI-generated hierarchy with existing sentences
  * @param {Array} sentences - Array of sentence objects (SSOT)
  * @param {Object} hierarchy - AI-generated hierarchy from Claude
@@ -96,6 +215,10 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     console.log(`${LOG_PREFIX.PARSER} Sentences (Level 1): ${sentences.length}`);
     console.log(`${LOG_PREFIX.PARSER} Grouping nodes (Level 2-${maxLevel}): ${hierarchyNodes.length}`);
 
+    // Get dirty node info
+    const dirtyNodeIds = new Set(sentences._hierarchyMeta.dirtyNodeIds || []);
+    const dirtySentenceIds = new Set(sentences._hierarchyMeta.dirtySentenceIds || []);
+
     // Build a map of all nodes by ID
     const nodeMap = new Map();
 
@@ -104,6 +227,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         // Use content as-is - don't add punctuation since it's already in the content
         // The sentence.punctuation field is only used during text reconstruction
         const label = sentence.content;
+        const isDirty = dirtySentenceIds.has(sentence.id);
 
         nodeMap.set(sentence.id, {
             id: sentence.id,
@@ -116,11 +240,14 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             children: [],
             emotion: sentence.emotion,
             intensity: sentence.intensity,
+            isDirty: isDirty,
         });
     });
 
     // Add hierarchy nodes to map
     hierarchyNodes.forEach(node => {
+        const isDirty = dirtyNodeIds.has(node.id);
+
         nodeMap.set(node.id, {
             id: node.id,
             type: 'group',
@@ -128,6 +255,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             label: node.label,
             content: '', // Groups don't have direct content
             children: [],
+            isDirty: isDirty,
         });
     });
 
@@ -165,17 +293,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
 
 /**
  * Builds a simple 2-level tree (root -> sentences) without hierarchy
- * OR creates placeholder hierarchy based on maxDepth from App state
  */
 function buildSimpleTree(sentences, buildTextFromSentences) {
-    // Check if we have a maxDepth hint (passed via sentences metadata)
-    const maxDepth = sentences._maxDepth;
-
-    if (maxDepth && maxDepth > 2) {
-        // Build placeholder hierarchy with the expected depth
-        return buildPlaceholderHierarchy(sentences, buildTextFromSentences, maxDepth);
-    }
-
     // Default simple tree (no AI, depth = 2)
     return {
         id: 'root',
@@ -202,52 +321,6 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
 }
 
 /**
- * Builds a placeholder hierarchy showing the structure awaiting AI generation
- */
-function buildPlaceholderHierarchy(sentences, buildTextFromSentences, maxDepth) {
-    console.log(`${LOG_PREFIX.PARSER} Building placeholder hierarchy with depth ${maxDepth}`);
-
-    // Create sentence nodes at level 1
-    const sentenceNodes = sentences.map(sentence => ({
-        id: sentence.id,
-        type: 'sentence',
-        level: 1,
-        label: sentence.content,
-        content: sentence.content,
-        startIdx: sentence.startIdx,
-        endIdx: sentence.endIdx,
-        children: [],
-        emotion: sentence.emotion,
-        intensity: sentence.intensity,
-    }));
-
-    // Build placeholder nodes from level 2 up to maxDepth-1
-    let currentChildren = sentenceNodes;
-
-    for (let level = 2; level < maxDepth; level++) {
-        const placeholderNode = {
-            id: `placeholder-level-${level}`,
-            type: 'group',
-            level: level,
-            label: `Level ${level} - Awaiting AI generation...`,
-            content: '',
-            children: currentChildren,
-        };
-        currentChildren = [placeholderNode];
-    }
-
-    // Create root node
-    return {
-        id: 'root',
-        type: 'root',
-        label: 'Document - Awaiting AI generation...',
-        content: buildTextFromSentences(sentences),
-        children: currentChildren,
-        startIdx: 0,
-    };
-}
-
-/**
  * Removes hierarchy metadata from sentences
  * Used when user wants to clear the hierarchy
  */
@@ -255,4 +328,66 @@ export function clearHierarchy(sentences) {
     const cleaned = sentences.map(s => ({ ...s }));
     delete cleaned._hierarchyMeta;
     return cleaned;
+}
+
+/**
+ * Creates a minimal placeholder hierarchy structure with all nodes marked as dirty
+ * This allows the dirty-update logic to generate the full hierarchy
+ * @param {Array} sentences - Sentences array
+ * @param {number} maxDepth - Target hierarchy depth
+ * @returns {Array} Sentences with placeholder hierarchy metadata (all marked dirty)
+ */
+export function createPlaceholderHierarchy(sentences, maxDepth) {
+    console.log(`${LOG_PREFIX.PARSER} Creating placeholder hierarchy (depth ${maxDepth}) - all nodes marked dirty`);
+
+    const updatedSentences = sentences.map(s => ({ ...s }));
+
+    // Create a chain of placeholder nodes from level 2 up to maxDepth-1
+    // Each level contains one placeholder that groups all children from the level below
+    // 
+    // Example for maxDepth=4:
+    // - Level 3 placeholder contains level 2 placeholder
+    // - Level 2 placeholder contains all sentences
+    // 
+    // This creates the minimal structure needed for the dirty-update logic to work
+    const placeholderNodes = [];
+    const dirtyNodeIds = [];
+
+    // Start from level 2 (first grouping level) up to maxDepth-1 (highest grouping level)
+    for (let level = 2; level < maxDepth; level++) {
+        const placeholderId = `placeholder-level-${level}`;
+
+        // Determine what this placeholder contains
+        let childIds;
+        if (level === 2) {
+            // Level 2 always contains sentences
+            childIds = sentences.map(s => s.id);
+        } else {
+            // Higher levels contain the placeholder from the level below
+            childIds = [`placeholder-level-${level - 1}`];
+        }
+
+        placeholderNodes.push({
+            id: placeholderId,
+            type: 'group',
+            level: level,
+            label: `Level ${level} - Awaiting AI generation...`,
+            childIds: childIds,
+        });
+
+        dirtyNodeIds.push(placeholderId);
+    }
+
+    // Create hierarchy metadata with all placeholders marked as dirty
+    updatedSentences._hierarchyMeta = {
+        rootTitle: 'Document - Awaiting AI generation...',
+        nodes: placeholderNodes,
+        maxLevel: maxDepth - 1,
+        dirtyNodeIds: dirtyNodeIds,
+        dirtySentenceIds: sentences.map(s => s.id), // All sentences are "new" to the hierarchy
+    };
+
+    console.log(`${LOG_PREFIX.PARSER} Placeholder hierarchy created with ${placeholderNodes.length} placeholder nodes (all dirty)`);
+
+    return updatedSentences;
 }

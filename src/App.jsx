@@ -3,8 +3,9 @@ import { TreeVisualization } from './components';
 import React from 'react';
 import { buildTextFromSentences } from './utils/treeParser';
 import { applySentenceEdit } from './utils/sentenceEditor';
-import { generateHierarchy } from './services/claudeService';
-import { integrateHierarchy } from './utils/hierarchyIntegration';
+import { updateDirtyNodes } from './services/claude';
+import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from './utils/hierarchyIntegration';
+import { hasDirtyNodes, clearDirtyFlags } from './utils/dirtyTracking';
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
@@ -25,8 +26,9 @@ export default function App() {
   // AI hierarchy depth control (3-6 levels)
   const [maxDepth, setMaxDepth] = useState(3);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [hierarchyState, setHierarchyState] = useState('none'); // 'none', 'generated', 'needs-full-regen', 'has-dirty-nodes'
 
-  // When maxDepth changes and we have an existing hierarchy, clear it
+  // When maxDepth changes and we have an existing hierarchy, mark for full regeneration
   useEffect(() => {
     if (sentences.length > 0 && sentences._hierarchyMeta) {
       const hierarchyMaxLevel = sentences._hierarchyMeta.maxLevel;
@@ -34,28 +36,35 @@ export default function App() {
       // hierarchyMaxLevel is the highest grouping level (e.g., 2 for depth 3)
       // So maxDepth should equal hierarchyMaxLevel + 1
       if (hierarchyMaxLevel !== maxDepth - 1) {
-        console.log('[App] Depth changed - clearing hierarchy');
+        console.log('[App] Depth changed - creating placeholder hierarchy with dirty nodes');
         console.log('[App]   Old depth:', hierarchyMaxLevel + 1, 'New depth:', maxDepth);
-        const updated = sentences.map(s => ({ ...s }));
-        delete updated._hierarchyMeta;
+
+        // Create placeholder hierarchy with all nodes marked as dirty
+        // This triggers the same dirty-update logic as editing text
+        const updated = createPlaceholderHierarchy(sentences, maxDepth);
         setSentences(updated);
+        setHierarchyState('has-dirty-nodes');
       }
     }
   }, [maxDepth]); // Only depend on maxDepth to avoid loops
 
-  // Derived: sentences with maxDepth hint for placeholder hierarchy
-  const sentencesWithDepth = useMemo(() => {
-    if (sentences.length === 0) return sentences;
-
-    // Attach maxDepth hint for placeholders (if no hierarchy exists)
-    if (!sentences._hierarchyMeta) {
-      const withDepth = [...sentences];
-      withDepth._maxDepth = maxDepth;
-      return withDepth;
+  // Update hierarchy state based on current sentences
+  useEffect(() => {
+    if (sentences.length === 0) {
+      setHierarchyState('none');
+    } else if (!sentences._hierarchyMeta) {
+      if (hierarchyState === 'generated' || hierarchyState === 'has-dirty-nodes') {
+        // Had hierarchy but now it's gone - needs full regen
+        setHierarchyState('needs-full-regen');
+      } else {
+        setHierarchyState('none');
+      }
+    } else if (hasDirtyNodes(sentences)) {
+      setHierarchyState('has-dirty-nodes');
+    } else {
+      setHierarchyState('generated');
     }
-
-    return sentences;
-  }, [sentences, maxDepth]);
+  }, [sentences]);
 
   // Split state: percentage of total width for the left pane (0–100)
   const [leftPct, setLeftPct] = useState(50);
@@ -80,23 +89,46 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      console.log('[App] Generating hierarchy with depth:', maxDepth);
-      console.log('[App] Sentences:', sentences.length);
+      // Prepare sentences with hierarchy metadata if needed
+      let sentencesToProcess = sentences;
 
-      // Call Claude API to generate hierarchy
-      const hierarchy = await generateHierarchy(sentences, maxDepth);
+      // Check if we need to create a placeholder hierarchy first
+      if (!sentences._hierarchyMeta || hierarchyState === 'none' || hierarchyState === 'needs-full-regen') {
+        console.log('[App] No hierarchy exists, creating placeholder with all nodes dirty');
 
-      console.log('[App] Received hierarchy:', hierarchy);
+        // Create placeholder hierarchy with all nodes marked as dirty
+        sentencesToProcess = createPlaceholderHierarchy(sentences, maxDepth);
+        setSentences(sentencesToProcess); // Update state so UI shows placeholder
+      }
 
-      // Integrate hierarchy into sentences
-      const updatedSentences = integrateHierarchy(sentences, hierarchy);
+      // Dirty update - restructure dirty portions only
+      console.log('[App] Restructuring dirty portions of hierarchy');
 
-      console.log('[App] Integrated hierarchy into sentences');
+      const hierarchyMeta = sentencesToProcess._hierarchyMeta;
+      const dirtyNodeIds = hierarchyMeta.dirtyNodeIds || [];
+      const dirtySentenceIds = hierarchyMeta.dirtySentenceIds || [];
 
-      // Update state to trigger tree rebuild
+      console.log('[App] Dirty nodes to restructure:', dirtyNodeIds.length);
+      console.log('[App] Dirty sentences:', dirtySentenceIds.length);
+
+      // Ask Claude to restructure dirty subtrees
+      const { dirtyRootNodes, restructuredSubtrees } = await updateDirtyNodes(
+        sentencesToProcess,
+        hierarchyMeta,
+        dirtyNodeIds,
+        dirtySentenceIds,
+        maxDepth
+      );
+
+      // Apply the restructured subtrees to the existing hierarchy
+      let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees);
+
+      // Clear dirty flags after successful update
+      updatedSentences = clearDirtyFlags(updatedSentences);
       setSentences(updatedSentences);
 
-      console.log('[App] Hierarchy generation complete!');
+      console.log('[App] Dirty subtrees restructured, clean portions preserved');
+      setHierarchyState('generated');
     } catch (error) {
       console.error('[App] Error generating hierarchy:', error);
       alert('Failed to generate hierarchy: ' + error.message);
@@ -186,7 +218,7 @@ export default function App() {
           {/* Generate Hierarchy Button */}
           <button
             onClick={handleGenerateHierarchy}
-            disabled={isGenerating || sentences.length === 0}
+            disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
             className="px-4 py-2 text-sm font-medium rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
           >
             {isGenerating ? (
@@ -195,14 +227,14 @@ export default function App() {
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                Generating...
+                {hierarchyState === 'has-dirty-nodes' ? 'Updating...' : 'Generating...'}
               </>
             ) : (
               <>
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
-                Generate Hierarchy
+                {hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
               </>
             )}
           </button>
@@ -268,7 +300,7 @@ export default function App() {
             className="flex-1 relative overflow-hidden"
           >
             <TreeVisualization
-              sentences={sentencesWithDepth}
+              sentences={sentences}
               onTreeUpdate={handleTreeUpdate}
             />
           </div>

@@ -126,6 +126,8 @@ export function flattenTree(tree) {
         // Preserve emotion metadata
         emotion: curr.emotion,
         intensity: curr.intensity,
+        // Preserve dirty flag for visual indicator
+        isDirty: curr.isDirty,
       },
       position: { x: 0, y: 0 },
       style: { width: NODE_WIDTH },

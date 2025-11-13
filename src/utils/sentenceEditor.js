@@ -4,6 +4,7 @@
  */
 
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
+import { markSentenceAsDirty, markSentencesAsDirty } from './dirtyTracking';
 
 /**
  * Finds which sentence contains a given text position
@@ -122,15 +123,31 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
         return newSent;
     });
 
-    // Restore hierarchy metadata if it existed
-    // Note: When text is edited, the hierarchy becomes invalid
-    // So we clear it. User will need to regenerate hierarchy.
-    if (hierarchyMeta && usedSentences.size === sentences.length && updatedSentences.length === sentences.length) {
-        // Only preserve if no sentences were added/removed
-        updatedSentences._hierarchyMeta = hierarchyMeta;
-        console.log(`${LOG_PREFIX.PARSER} Preserved hierarchy metadata (no structural changes)`);
-    } else if (hierarchyMeta) {
-        console.log(`${LOG_PREFIX.PARSER} Cleared hierarchy metadata (structure changed)`);
+    // Handle hierarchy metadata based on what changed
+    if (hierarchyMeta) {
+        if (usedSentences.size === sentences.length && updatedSentences.length === sentences.length) {
+            // No sentences added/removed - preserve hierarchy and mark changed sentences as dirty
+            updatedSentences._hierarchyMeta = hierarchyMeta;
+
+            // Find which sentences changed content
+            const changedSentenceIds = [];
+            for (const newSent of updatedSentences) {
+                const oldSent = sentences.find(s => s.id === newSent.id);
+                if (oldSent && oldSent.content !== newSent.content) {
+                    changedSentenceIds.push(newSent.id);
+                }
+            }
+
+            if (changedSentenceIds.length > 0) {
+                console.log(`${LOG_PREFIX.PARSER} ${changedSentenceIds.length} sentences modified, marking as dirty`);
+                return markSentencesAsDirty(updatedSentences, changedSentenceIds);
+            }
+
+            console.log(`${LOG_PREFIX.PARSER} Preserved hierarchy metadata (no content changes)`);
+        } else {
+            // Sentences added/removed - clear hierarchy completely
+            console.log(`${LOG_PREFIX.PARSER} Structure changed (${sentences.length} → ${updatedSentences.length}), clearing hierarchy`);
+        }
     }
 
     console.log(`${LOG_PREFIX.PARSER} Updated from ${sentences.length} to ${updatedSentences.length} sentences`);
@@ -462,9 +479,20 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
     // Recalculate indices after reordering
     const result = recalculateIndices(normalized);
 
-    // Clear hierarchy metadata after reordering (structure changed)
+    // Mark affected sentences as dirty if hierarchy exists
     if (hierarchyMeta) {
-        console.log(`${LOG_PREFIX.PARSER} Cleared hierarchy metadata (reordering invalidates structure)`);
+        console.log(`${LOG_PREFIX.PARSER} Reordering detected, marking affected sentences as dirty`);
+        result._hierarchyMeta = hierarchyMeta;
+        // Mark the dragged sentence and its neighbors as dirty
+        const affectedIds = [draggedId];
+        // Also mark neighbors that might have had delimiter changes
+        if (targetIndex > 0) affectedIds.push(result[targetIndex - 1].id);
+        if (targetIndex < result.length - 1) affectedIds.push(result[targetIndex + 1].id);
+        if (draggedIndex > 0 && draggedIndex !== targetIndex && result[draggedIndex - 1]) {
+            affectedIds.push(result[draggedIndex - 1].id);
+        }
+
+        return markSentencesAsDirty(result, affectedIds.filter(Boolean));
     }
 
     return result;

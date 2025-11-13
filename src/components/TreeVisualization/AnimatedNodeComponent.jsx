@@ -102,6 +102,11 @@ export function AnimatedNodeComponent({ id, data }) {
   const border = getBorderColor(data.emotion, data.intensity || 0, data.type);
   const color = data.type === 'root' ? 'white' : '#1f2937';
 
+  // Visual indicator for dirty nodes
+  const isDirty = data.isDirty || false;
+  const dirtyBorder = isDirty ? '2px dashed #f59e0b' : `1px solid ${border}`;
+  const dirtyBg = isDirty ? `repeating-linear-gradient(45deg, ${bg}, ${bg} 10px, rgba(245, 158, 11, 0.1) 10px, rgba(245, 158, 11, 0.1) 20px)` : bg;
+
   return (
     <>
       <div style={{ position: 'relative' }}>
@@ -118,8 +123,8 @@ export function AnimatedNodeComponent({ id, data }) {
           style={{
             width: NODE_WIDTH,
             height: size.height,
-            background: bg,
-            border: `1px solid ${border}`,
+            background: dirtyBg,
+            border: dirtyBorder,
             borderRadius: 8,
             boxShadow: isHovered
               ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
