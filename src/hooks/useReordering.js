@@ -192,13 +192,20 @@ export function useReordering() {
   /**
    * Reorder nodes by changing edge order
    * Supports both same-parent and cross-parent reordering
+   * Returns reorder info so the caller can apply it to the sentences array
    */
   const reorderNodes = useCallback(
     (draggedId, targetSiblingId, insertBefore) => {
       console.log(
-        `${LOG_PREFIX.DRAG} Reorder logic disabled: ${draggedId} → ${targetSiblingId} (${insertBefore ? 'before' : 'after'})`
+        `${LOG_PREFIX.DRAG} Preparing reorder: ${draggedId} → ${targetSiblingId} (${insertBefore ? 'before' : 'after'})`
       );
-      // Logic removed - no reordering will occur
+
+      // Return reorder info so TreeInner can apply it to sentences
+      return {
+        draggedId,
+        targetSiblingId,
+        insertBefore,
+      };
     },
     []
   );
