@@ -112,7 +112,7 @@ export default function App() {
       console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
       // Ask Claude to restructure dirty subtrees
-      const { dirtyRootNodes, restructuredSubtrees } = await updateDirtyNodes(
+      const { dirtyRootNodes, restructuredSubtrees, newRootTitle } = await updateDirtyNodes(
         sentencesToProcess,
         hierarchyMeta,
         dirtyNodeIds,
@@ -121,7 +121,7 @@ export default function App() {
       );
 
       // Apply the restructured subtrees to the existing hierarchy
-      let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees);
+      let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle);
 
       // Clear dirty flags after successful update
       updatedSentences = clearDirtyFlags(updatedSentences);

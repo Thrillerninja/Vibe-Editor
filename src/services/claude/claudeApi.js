@@ -42,6 +42,12 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     console.log('[Claude Service] Dirty nodes:', dirtyNodeIds.length);
     console.log('[Claude Service] Dirty sentences:', dirtySentenceIds.length);
 
+    // Check if root node is dirty
+    const isRootDirty = dirtyNodeIds.includes('root');
+    if (isRootDirty) {
+        console.log('[Claude Service] Root node is dirty - will regenerate document title');
+    }
+
     // Find the highest-level dirty nodes (roots of dirty subtrees)
     const dirtyRootNodes = findDirtyRootNodes(dirtyNodeIds, hierarchyMeta);
 
@@ -51,7 +57,7 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);
 
     // Build the prompt
-    const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth);
+    const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
 
     try {
         const message = await client.messages.create({
@@ -67,14 +73,18 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         console.log('[Claude Service] Received dirty subtree restructure:', responseText);
 
         // Parse and validate the response
-        const restructuredSubtrees = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees);
+        const { restructuredSubtrees, newRootTitle } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
+
+        console.log('[Claude Service] Parsed response - subtrees:', restructuredSubtrees?.length, 'newRootTitle:', newRootTitle);
 
         return {
             dirtyRootNodes: dirtyRootNodes.map(n => n.id),
-            restructuredSubtrees
+            restructuredSubtrees,
+            newRootTitle
         };
     } catch (error) {
         console.error('[Claude Service] Error restructuring dirty nodes:', error);
+        console.error('[Claude Service] Error stack:', error.stack);
         throw new Error(`Failed to restructure dirty nodes: ${error.message}`);
     }
 }

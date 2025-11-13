@@ -6,12 +6,16 @@
 /**
  * Find the highest-level dirty nodes (roots of dirty subtrees)
  * These are dirty nodes whose parents are NOT dirty
+ * Note: 'root' is not included as it's not a restructurable node
  */
 export function findDirtyRootNodes(dirtyNodeIds, hierarchyMeta) {
     const dirtySet = new Set(dirtyNodeIds);
     const dirtyRoots = [];
 
     for (const nodeId of dirtyNodeIds) {
+        // Skip the root node - it's not a hierarchy node to restructure
+        if (nodeId === 'root') continue;
+
         const node = hierarchyMeta.nodes.find(n => n.id === nodeId);
         if (!node) continue;
 

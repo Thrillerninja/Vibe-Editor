@@ -8,9 +8,10 @@
  * @param {string} responseText - Raw response from Claude
  * @param {number} maxDepth - Maximum hierarchy depth
  * @param {Array} originalSubtrees - Original subtree data for validation
- * @returns {Array} Parsed and validated restructured subtrees
+ * @param {boolean} isRootDirty - Whether a new root title was requested
+ * @returns {Object} Parsed and validated response with restructuredSubtrees and optional newRootTitle
  */
-export function parseDirtyRestructureResponse(responseText, maxDepth, originalSubtrees) {
+export function parseDirtyRestructureResponse(responseText, maxDepth, originalSubtrees, isRootDirty = false) {
     try {
         // Try to extract JSON if wrapped in markdown code blocks
         let jsonText = responseText.trim();
@@ -23,8 +24,18 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
 
         const parsed = JSON.parse(jsonText);
 
-        if (!parsed.restructuredSubtrees || !Array.isArray(parsed.restructuredSubtrees)) {
-            throw new Error('Invalid response format: missing restructuredSubtrees array');
+        // If only root is dirty, restructuredSubtrees can be empty
+        if (!parsed.restructuredSubtrees) {
+            // If root is dirty but no subtrees, that's okay
+            if (isRootDirty) {
+                parsed.restructuredSubtrees = [];
+            } else {
+                throw new Error('Invalid response format: missing restructuredSubtrees array');
+            }
+        }
+
+        if (!Array.isArray(parsed.restructuredSubtrees)) {
+            throw new Error('Invalid response format: restructuredSubtrees must be an array');
         }
 
         // Validate each subtree
@@ -34,7 +45,21 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
 
         console.log('[Claude Service] Parsed', parsed.restructuredSubtrees.length, 'restructured subtrees');
 
-        return parsed.restructuredSubtrees;
+        // Extract and validate new root title if requested
+        let newRootTitle = undefined;
+        if (isRootDirty) {
+            if (parsed.newRootTitle && typeof parsed.newRootTitle === 'string') {
+                newRootTitle = parsed.newRootTitle;
+                console.log('[Claude Service] Parsed new root title:', newRootTitle);
+            } else {
+                console.warn('[Claude Service] Root was dirty but no newRootTitle provided in response');
+            }
+        }
+
+        return {
+            restructuredSubtrees: parsed.restructuredSubtrees,
+            newRootTitle
+        };
     } catch (error) {
         console.error('[Claude Service] Failed to parse dirty restructure response:', error);
         console.error('[Claude Service] Response text:', responseText);
@@ -124,6 +149,12 @@ function validateNodeHierarchy(nodes) {
  * Validate that all sentences are included and in correct order
  */
 function validateSentences(subtree, originalSubtree) {
+    // Skip validation if originalSubtree is not found
+    if (!originalSubtree || !originalSubtree.sentences) {
+        console.warn(`[Claude Service] Skipping sentence validation - originalSubtree not available`);
+        return;
+    }
+
     const originalSentenceIds = originalSubtree.sentences.map(s => s.id);
 
     // Collect all sentence IDs mentioned in the new nodes
@@ -164,13 +195,13 @@ function validateSentences(subtree, originalSubtree) {
     }
 
     // Validate sentence order is preserved
-    validateSentenceOrder(subtree, originalSentenceIds);
+    validateSentenceOrder(subtree, originalSentenceIds, originalSubtree);
 }
 
 /**
  * Validate that sentence order is preserved
  */
-function validateSentenceOrder(subtree, originalSentenceIds) {
+function validateSentenceOrder(subtree, originalSentenceIds, originalSubtree) {
     const originalOrder = new Map(originalSentenceIds.map((id, idx) => [id, idx]));
 
     // Build a flat list of sentences as they appear in the new structure
@@ -198,7 +229,7 @@ function validateSentenceOrder(subtree, originalSentenceIds) {
     }
 
     // Verify ALL sentences are included (no missing or duplicates)
-    const expectedSentences = new Set(subtree.sentences.map(s => s.id));
+    const expectedSentences = new Set(originalSubtree.sentences.map(s => s.id));
     const foundSentences = new Set(newSequence);
 
     const missingSentences = [...expectedSentences].filter(id => !foundSentences.has(id));

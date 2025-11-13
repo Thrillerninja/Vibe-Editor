@@ -11,9 +11,10 @@ import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
  * @param {Array} sentences - Sentences array with existing hierarchy
  * @param {Array} dirtyRootNodeIds - IDs of nodes that were restructured
  * @param {Array} restructuredSubtrees - New structure for each dirty subtree
+ * @param {string} newRootTitle - Optional new root title (if root was dirty)
  * @returns {Array} Updated sentences with restructured hierarchy
  */
-export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees) {
+export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees, newRootTitle = null) {
     console.log(`${LOG_PREFIX.PARSER} Applying ${restructuredSubtrees.length} subtree restructures`);
 
     if (!sentences._hierarchyMeta) {
@@ -82,6 +83,13 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     }
 
     hierarchyMeta.nodes = nodes;
+
+    // Update root title if provided
+    if (newRootTitle) {
+        console.log(`${LOG_PREFIX.PARSER} Updating root title: "${hierarchyMeta.rootTitle}" → "${newRootTitle}"`);
+        hierarchyMeta.rootTitle = newRootTitle;
+    }
+
     updatedSentences._hierarchyMeta = hierarchyMeta;
 
     console.log(`${LOG_PREFIX.PARSER} Hierarchy restructured: now ${nodes.length} nodes`);
@@ -284,6 +292,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         content: buildTextFromSentences(sentences),
         children: topLevelNodes,
         startIdx: 0,
+        isDirty: dirtyNodeIds.has('root'),
     };
 
     console.log(`${LOG_PREFIX.PARSER} Tree built with hierarchy: root + ${nodeMap.size} nodes`);
@@ -377,6 +386,9 @@ export function createPlaceholderHierarchy(sentences, maxDepth) {
 
         dirtyNodeIds.push(placeholderId);
     }
+
+    // Mark the root node as dirty so its title will be regenerated
+    dirtyNodeIds.push('root');
 
     // Create hierarchy metadata with all placeholders marked as dirty
     updatedSentences._hierarchyMeta = {

@@ -32,12 +32,19 @@ export function markSentenceAsDirty(sentences, sentenceId) {
 
     // Find all ancestor nodes and mark them dirty
     const findAncestors = (childId) => {
+        let foundParent = false;
         for (const node of nodes) {
             if (node.childIds.includes(childId)) {
                 dirtyNodeIds.add(node.id);
+                foundParent = true;
                 // Recursively mark parent nodes
                 findAncestors(node.id);
             }
+        }
+        // If no parent was found in the hierarchy nodes, this must be a top-level node
+        // Mark the root node as dirty
+        if (!foundParent && childId !== sentenceId) {
+            dirtyNodeIds.add('root');
         }
     };
 
