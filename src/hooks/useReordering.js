@@ -39,6 +39,62 @@ export function useReordering() {
   }, [getEdges]);
 
   /**
+   * Calculate the depth/level of each node in the tree
+   */
+  const getNodeDepths = useCallback(() => {
+    const depths = new Map();
+    const edges = getEdges();
+
+    // Find root nodes (nodes with no incoming edges)
+    const allTargets = new Set(edges.map(e => e.target));
+    const allSources = new Set(edges.map(e => e.source));
+    const roots = [...allSources].filter(id => !allTargets.has(id));
+
+    // BFS to calculate depths
+    const queue = roots.map(id => ({ id, depth: 0 }));
+    const visited = new Set();
+
+    while (queue.length > 0) {
+      const { id, depth } = queue.shift();
+
+      if (visited.has(id)) continue;
+      visited.add(id);
+      depths.set(id, depth);
+
+      // Add children to queue
+      const children = edges.filter(e => e.source === id).map(e => e.target);
+      for (const childId of children) {
+        queue.push({ id: childId, depth: depth + 1 });
+      }
+    }
+
+    return depths;
+  }, [getEdges]);
+
+  /**
+   * Get all nodes at the same level (depth) as the given node
+   */
+  const getNodesAtSameLevel = useCallback(
+    (nodeId) => {
+      const depths = getNodeDepths();
+      const nodeDepth = depths.get(nodeId);
+
+      if (nodeDepth === undefined) return [];
+
+      // Find all nodes at the same depth, excluding the dragged node
+      const nodesAtLevel = [];
+      for (const [id, depth] of depths.entries()) {
+        if (depth === nodeDepth && id !== nodeId) {
+          nodesAtLevel.push(id);
+        }
+      }
+
+      return nodesAtLevel;
+    },
+    [getNodeDepths]
+  );
+
+  /**
    * Get siblings of a node (same parent)
    */
   const getSiblings = useCallback(
@@ -55,55 +111,56 @@ export function useReordering() {
   );
 
   /**
-   * Find closest sibling during drag for indicator
+   * Find closest node at same level during drag for indicator
+   * Now supports cross-parent reordering on same level
    */
   const findClosestSibling = useCallback(
     (draggedId, currentY) => {
       const nodes = getNodes();
-      const siblings = getSiblings(draggedId);
+      const nodesAtLevel = getNodesAtSameLevel(draggedId);
 
       console.log(
-        `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(1)}, ${siblings.length} siblings`
+        `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(1)}, ${nodesAtLevel.length} nodes at same level`
       );
 
-      if (siblings.length === 0) {
-        console.log(`${LOG_PREFIX.DRAG}   ❌ No siblings found`);
+      if (nodesAtLevel.length === 0) {
+        console.log(`${LOG_PREFIX.DRAG}   ❌ No nodes at same level found`);
         return null;
       }
 
-      let closestSibling = null;
+      let closestNode = null;
       let minDistance = Infinity;
       let insertBefore = false;
 
-      for (const siblingId of siblings) {
-        const siblingNode = nodes.find((n) => n.id === siblingId);
-        if (!siblingNode) continue;
+      for (const nodeId of nodesAtLevel) {
+        const node = nodes.find((n) => n.id === nodeId);
+        if (!node) continue;
 
-        const distance = Math.abs(siblingNode.position.y - currentY);
+        const distance = Math.abs(node.position.y - currentY);
         console.log(
-          `${LOG_PREFIX.DRAG}   Sibling ${siblingId}: Y=${siblingNode.position.y.toFixed(1)}, distance=${distance.toFixed(1)}px`
+          `${LOG_PREFIX.DRAG}   Node ${nodeId}: Y=${node.position.y.toFixed(1)}, distance=${distance.toFixed(1)}px`
         );
 
         if (distance < minDistance) {
           minDistance = distance;
-          closestSibling = siblingNode;
-          insertBefore = currentY < siblingNode.position.y;
+          closestNode = node;
+          insertBefore = currentY < node.position.y;
         }
       }
 
-      if (closestSibling && minDistance < REORDER_THRESHOLD) {
+      if (closestNode && minDistance < REORDER_THRESHOLD) {
         console.log(
-          `${LOG_PREFIX.DRAG}   ✅ Found closest sibling: ${closestSibling.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
+          `${LOG_PREFIX.DRAG}   ✅ Found closest node at same level: ${closestNode.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
         );
-        return { node: closestSibling, insertBefore };
+        return { node: closestNode, insertBefore };
       }
 
       console.log(
-        `${LOG_PREFIX.DRAG}   ❌ Closest sibling too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
+        `${LOG_PREFIX.DRAG}   ❌ Closest node too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
       );
       return null;
     },
-    [getNodes, getSiblings]
+    [getNodes, getNodesAtSameLevel]
   );
 
   /**
@@ -134,44 +191,106 @@ export function useReordering() {
 
   /**
    * Reorder nodes by changing edge order
+   * Supports both same-parent and cross-parent reordering
    */
   const reorderNodes = useCallback(
     (draggedId, targetSiblingId, insertBefore) => {
-      const parent = getParent(draggedId);
-      if (!parent) return;
+      const draggedParent = getParent(draggedId);
+      const targetParent = getParent(targetSiblingId);
+
+      if (!draggedParent || !targetParent) return;
 
       setEdges((edges) => {
-        // Separate edges by parent
-        const parentEdges = edges.filter(
-          (e) => e.source === parent
-        );
-        const otherEdges = edges.filter((e) => e.source !== parent);
+        const isSameParent = draggedParent === targetParent;
 
-        // Get current sibling IDs
-        const siblings = parentEdges.map((e) => e.target);
+        if (isSameParent) {
+          // Same parent - simple reordering within siblings
+          const parentEdges = edges.filter(
+            (e) => e.source === draggedParent
+          );
+          const otherEdges = edges.filter((e) => e.source !== draggedParent);
 
-        // Remove dragged node
-        const filtered = siblings.filter((id) => id !== draggedId);
+          // Get current sibling IDs
+          const siblings = parentEdges.map((e) => e.target);
 
-        // Insert at new position
-        const targetIndex = filtered.indexOf(targetSiblingId);
-        const insertIndex = insertBefore ? targetIndex : targetIndex + 1;
-        filtered.splice(insertIndex, 0, draggedId);
+          // Remove dragged node
+          const filtered = siblings.filter((id) => id !== draggedId);
 
-        console.log(
-          `${LOG_PREFIX.DRAG} New sibling order for parent ${parent}:`,
-          filtered
-        );
+          // Insert at new position
+          const targetIndex = filtered.indexOf(targetSiblingId);
+          const insertIndex = insertBefore ? targetIndex : targetIndex + 1;
+          filtered.splice(insertIndex, 0, draggedId);
 
-        // Rebuild edges in new order
-        const newParentEdges = filtered.map((childId, index) => ({
-          id: `${parent}-${childId}`,
-          source: parent,
-          target: childId,
-          animated: false,
-        }));
+          console.log(
+            `${LOG_PREFIX.DRAG} Same-parent reorder: new order for parent ${draggedParent}:`,
+            filtered
+          );
 
-        return [...otherEdges, ...newParentEdges];
+          // Rebuild edges in new order
+          const newParentEdges = filtered.map((childId, index) => ({
+            id: `${draggedParent}-${childId}`,
+            source: draggedParent,
+            target: childId,
+            animated: false,
+          }));
+
+          return [...otherEdges, ...newParentEdges];
+        } else {
+          // Cross-parent reordering - move to different parent
+          console.log(
+            `${LOG_PREFIX.DRAG} Cross-parent reorder: moving ${draggedId} from parent ${draggedParent} to parent ${targetParent}`
+          );
+
+          // Remove edge from old parent
+          const draggedParentEdges = edges.filter(
+            (e) => e.source === draggedParent
+          );
+          const targetParentEdges = edges.filter(
+            (e) => e.source === targetParent
+          );
+          const otherEdges = edges.filter(
+            (e) => e.source !== draggedParent && e.source !== targetParent
+          );
+
+          // Get siblings for old parent (excluding dragged node)
+          const oldSiblings = draggedParentEdges
+            .map((e) => e.target)
+            .filter((id) => id !== draggedId);
+
+          // Get siblings for target parent
+          const newSiblings = targetParentEdges.map((e) => e.target);
+
+          // Insert dragged node at correct position in new parent
+          const targetIndex = newSiblings.indexOf(targetSiblingId);
+          const insertIndex = insertBefore ? targetIndex : targetIndex + 1;
+          newSiblings.splice(insertIndex, 0, draggedId);
+
+          console.log(
+            `${LOG_PREFIX.DRAG} Old parent ${draggedParent} children:`,
+            oldSiblings
+          );
+          console.log(
+            `${LOG_PREFIX.DRAG} New parent ${targetParent} children:`,
+            newSiblings
+          );
+
+          // Rebuild edges for both parents
+          const newDraggedParentEdges = oldSiblings.map((childId) => ({
+            id: `${draggedParent}-${childId}`,
+            source: draggedParent,
+            target: childId,
+            animated: false,
+          }));
+
+          const newTargetParentEdges = newSiblings.map((childId) => ({
+            id: `${targetParent}-${childId}`,
+            source: targetParent,
+            target: childId,
+            animated: false,
+          }));
+
+          return [...otherEdges, ...newDraggedParentEdges, ...newTargetParentEdges];
+        }
       });
     },
     [getParent, setEdges]
