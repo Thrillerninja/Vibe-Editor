@@ -412,6 +412,7 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
 
 /**
  * Reorders a sentence in the sentences array
+ * Preserves hierarchy metadata and updates parent node's childIds
  * @param {Array} sentences - Current sentence array
  * @param {string} draggedId - ID of the dragged sentence
  * @param {string} targetId - ID of the target sibling sentence
@@ -421,35 +422,109 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
 function reorderSentence(sentences, draggedId, targetId, insertBefore) {
     console.log(`${LOG_PREFIX.PARSER} Reordering sentence ${draggedId} ${insertBefore ? 'before' : 'after'} ${targetId}`);
 
-    // Create a copy of sentences
-    const updated = [...sentences];
+    // Preserve hierarchy metadata if it exists
+    let oldParentId = null;
+    let newParentId = null;
 
-    // Find indices
-    const draggedIndex = updated.findIndex(s => s.id === draggedId);
-    const targetIndex = updated.findIndex(s => s.id === targetId);
+    if (sentences._hierarchyMeta) {
+        console.log(`${LOG_PREFIX.PARSER} Hierarchy exists - updating childIds and rebuilding sentence order`);
 
-    if (draggedIndex === -1 || targetIndex === -1) {
-        console.warn(`${LOG_PREFIX.PARSER} Cannot reorder: sentence not found`);
-        return sentences;
+        const hierarchyMeta = { ...sentences._hierarchyMeta };
+        const nodes = hierarchyMeta.nodes.map(n => ({ ...n, childIds: [...n.childIds] }));
+
+        // Find which parent node(s) contain these sentences
+        const draggedParent = nodes.find(n => n.childIds.includes(draggedId));
+        const targetParent = nodes.find(n => n.childIds.includes(targetId));
+
+        if (draggedParent && targetParent) {
+            oldParentId = draggedParent.id;
+            newParentId = targetParent.id;
+
+            if (draggedParent.id === targetParent.id) {
+                // Same parent - reorder within parent's childIds
+                console.log(`${LOG_PREFIX.PARSER} Reordering within same parent: ${draggedParent.id}`);
+
+                const parent = draggedParent;
+                const draggedIdx = parent.childIds.indexOf(draggedId);
+                const targetIdx = parent.childIds.indexOf(targetId);
+
+                // Remove from old position
+                parent.childIds.splice(draggedIdx, 1);
+
+                // Calculate new position
+                const newTargetIdx = parent.childIds.indexOf(targetId);
+                const insertIdx = insertBefore ? newTargetIdx : newTargetIdx + 1;
+
+                // Insert at new position
+                parent.childIds.splice(insertIdx, 0, draggedId);
+
+                console.log(`${LOG_PREFIX.PARSER} Updated parent childIds: ${parent.childIds.join(', ')}`);
+            } else {
+                // Different parents - move sentence to new parent
+                console.log(`${LOG_PREFIX.PARSER} Moving sentence from parent ${draggedParent.id} to ${targetParent.id}`);
+
+                // Remove from old parent
+                const draggedIdx = draggedParent.childIds.indexOf(draggedId);
+                draggedParent.childIds.splice(draggedIdx, 1);
+
+                // Add to new parent
+                const targetIdx = targetParent.childIds.indexOf(targetId);
+                const insertIdx = insertBefore ? targetIdx : targetIdx + 1;
+                targetParent.childIds.splice(insertIdx, 0, draggedId);
+
+                console.log(`${LOG_PREFIX.PARSER} Old parent childIds: ${draggedParent.childIds.join(', ')}`);
+                console.log(`${LOG_PREFIX.PARSER} New parent childIds: ${targetParent.childIds.join(', ')}`);
+            }
+        } else {
+            console.log(`${LOG_PREFIX.PARSER} Sentences not in hierarchy nodes (may be top-level)`);
+        }
+
+        // Update hierarchy metadata
+        hierarchyMeta.nodes = nodes;
+
+        // Rebuild sentences array from hierarchy to ensure order consistency
+        const reorderedSentences = rebuildSentenceOrderFromHierarchy(sentences, nodes, hierarchyMeta.maxLevel);
+        reorderedSentences._hierarchyMeta = hierarchyMeta;
+
+        console.log(`${LOG_PREFIX.PARSER} Rebuilt sentence order from hierarchy`);
+
+        // Mark the reordered sentence and its parents as dirty
+        const result = markReorderAsDirty(reorderedSentences, draggedId, oldParentId, newParentId);
+
+        return result;
+    } else {
+        // No hierarchy - simple array reordering
+        console.log(`${LOG_PREFIX.PARSER} No hierarchy - performing simple sentence reordering`);
+
+        const updated = [...sentences];
+
+        // Find indices
+        const draggedIndex = updated.findIndex(s => s.id === draggedId);
+        const targetIndex = updated.findIndex(s => s.id === targetId);
+
+        if (draggedIndex === -1 || targetIndex === -1) {
+            console.warn(`${LOG_PREFIX.PARSER} Cannot reorder: sentence not found`);
+            return sentences;
+        }
+
+        // Remove dragged sentence
+        const [draggedSentence] = updated.splice(draggedIndex, 1);
+
+        // Calculate new insertion index
+        // Need to recalculate target index after removal
+        const newTargetIndex = updated.findIndex(s => s.id === targetId);
+        const insertIndex = insertBefore ? newTargetIndex : newTargetIndex + 1;
+
+        // Insert at new position
+        updated.splice(insertIndex, 0, draggedSentence);
+
+        console.log(`${LOG_PREFIX.PARSER} Sentence moved from index ${draggedIndex} to ${insertIndex}`);
+
+        // Mark the reordered sentence as dirty (no hierarchy to update)
+        const result = markReorderAsDirty(updated, draggedId);
+
+        return result;
     }
-
-    // Remove dragged sentence
-    const [draggedSentence] = updated.splice(draggedIndex, 1);
-
-    // Calculate new insertion index
-    // Need to recalculate target index after removal
-    const newTargetIndex = updated.findIndex(s => s.id === targetId);
-    const insertIndex = insertBefore ? newTargetIndex : newTargetIndex + 1;
-
-    // Insert at new position
-    updated.splice(insertIndex, 0, draggedSentence);
-
-    console.log(`${LOG_PREFIX.PARSER} Sentence moved from index ${draggedIndex} to ${insertIndex}`);
-
-    // Mark the reordered sentence and its parents as dirty
-    const result = markReorderAsDirty(updated, draggedId);
-
-    return result;
 }
 
 /**
