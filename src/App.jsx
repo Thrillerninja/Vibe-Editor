@@ -32,44 +32,39 @@ export default function App() {
   const [history, setHistory] = useState([]);
   // Index in history array representing the current HEAD (null when no commits)
   const [headIndex, setHeadIndex] = useState(null);
+  // Pending revert index for the custom confirmation modal (null = none)
+  const [pendingRevert, setPendingRevert] = useState(null);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
   const addCommit = (text) => {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const id = history.length;
     const ts = Date.now();
-    const value = text.length;
 
-    // Compute parentId based on the latest history inside the functional updater to avoid
-    // stale-state-derived inaccuracies that could create accidental branches.
     setHistory((h) => {
       let parentId = null;
+      let branchId = 0;
+
       if (h.length === 0) {
         // no history yet -> first commit
-        parentId = null;
-        const newHfirst = [{ id, ts, text, value, parentId }];
+        const newCommit = [{ id, ts, text, parentId, branchId }];
         setHeadIndex(0);
-        return newHfirst;
+        return newCommit;
       }
 
-      // Determine an effective HEAD relative to the current history array.
-      const effectiveHead = headIndex == null || headIndex > h.length - 1 ? h.length - 1 : headIndex;
-      parentId = h[effectiveHead].id;
+      branchId = h[headIndex].branchId ?? 0;
+      parentId = h[headIndex].id;
 
       // Check if parent has other children (successors) in current history
-      const parentHasOtherChildren = h.some((item, idx) => idx !== effectiveHead && item.parentId === parentId);
-
-      if (!parentHasOtherChildren) {
-        // Insert the new commit immediately after the parent so it becomes the parent's direct child
-        const insertAt = effectiveHead + 1;
-        const newHinsert = [...h.slice(0, insertAt), { id, ts, text, value, parentId }, ...h.slice(insertAt)];
-        setHeadIndex(insertAt);
-        return newHinsert;
+      const parentHasOtherChildren = h.some((item, idx) => idx !== headIndex && item.parentId === parentId);
+      if (parentHasOtherChildren) {
+        // Create a new branch
+          branchId = Math.max(...h.map(c => c.branchId), 0) + 1;
       }
 
-      // Default: append to the end (either normal append or parent has other children)
-      const newHappend = [...h, { id, ts, text, value, parentId }];
-      setHeadIndex(newHappend.length - 1);
-      return newHappend;
+      const newHistory = h.slice(0, h.length);
+      newHistory.push({ id, ts, text, parentId, branchId });
+      setHeadIndex(newHistory.length - 1);
+      return newHistory;
     });
   };
 
@@ -87,18 +82,18 @@ export default function App() {
     console.log(startIdx)
     console.log("---")
     setText(currentFullText => {
-      
+
       // 1. Get the text *before* the part we're replacing.
       const textBefore = currentFullText.substring(0, startIdx);
-      
+
       // 2. Get the text *after* the part we're replacing.
       const textAfter = currentFullText.substring(startIdx + oldText.length);
-      
+
       // 3. Construct the new full text string.
       const newFullText = textBefore + newText + textAfter;
 
       console.log(`[App] Tree modification applied. New text length: ${newFullText.length}`);
-      
+
       // 4. Update both states with the new full text.
       setTextTree(newFullText);
       addCommit(newFullText);
@@ -108,17 +103,38 @@ export default function App() {
   }
 
   // Revert to a historical state by index. Confirm with the user before reverting.
+  // const handleRevert = (index) => {
+  //   if (typeof index !== 'number') return;
+  //   const entry = history[index];
+  //   if (!entry) return;
+  //   const ok = window.confirm(`Revert to commit "${entry.title}" at ${new Date(entry.ts).toLocaleString()}?`);
+  //   if (!ok) return;
+  //   // Restore text and tree state and move HEAD to the selected commit (detached).
+  //   setText(entry.text);
+  //   setTextTree(entry.text);
+  //   setHeadIndex(index);
+  // };
+  // When called from HistoryGraph we open the modal and store the requested index.
   const handleRevert = (index) => {
     if (typeof index !== 'number') return;
     const entry = history[index];
     if (!entry) return;
-    const ok = window.confirm(`Revert to commit at ${new Date(entry.ts).toLocaleString()}?`);
-    if (!ok) return;
-    // Restore text and tree state and move HEAD to the selected commit (detached).
+    setPendingRevert(index);
+  };
+
+  // Confirm and perform the revert (called by the modal)
+  const confirmRevert = () => {
+    const index = pendingRevert;
+    if (typeof index !== 'number') return setPendingRevert(null);
+    const entry = history[index];
+    if (!entry) return setPendingRevert(null);
     setText(entry.text);
     setTextTree(entry.text);
     setHeadIndex(index);
+    setPendingRevert(null);
   };
+
+  const cancelRevert = () => setPendingRevert(null);
 
   // Handle horizontal drag start
   const onHorizontalHandleMouseDown = (e) => {
@@ -190,7 +206,6 @@ export default function App() {
           style={{
             flexBasis: `${leftPct}%`,
             minWidth: 0,
-            zIndex: 100000
           }}
         >
           <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between">
@@ -243,9 +258,7 @@ export default function App() {
         >
           <div
           className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
-          style={{
-            zIndex: 100000
-          }}>
+          >
             <h2 className="text-lg font-semibold text-gray-900">Tree Structure</h2>
           </div>
 
@@ -274,71 +287,95 @@ export default function App() {
         style={{ flexBasis: `${bottomPct}%`}}
       >
         <div className="p-3 h-full">
-          <HistoryGraph data={history} onRevert={handleRevert} headIndex={headIndex} />
+          <HistoryGraph history={history} onRevert={handleRevert} headIndex={headIndex} />
         </div>
       </div>
+
+      {/* Custom confirmation modal for revert */}
+      {pendingRevert != null && (() => {
+        const entry = history[pendingRevert];
+        if (!entry) return null;
+        return (
+          <div className="fixed inset-0 z-60 flex items-center justify-center">
+            {/* backdrop */}
+            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert} />
+            <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full p-4 mx-4">
+              <div className="flex items-start gap-3">
+                <div className="flex-1">
+                  <div className="text-sm font-semibold text-gray-900">Revert to this edit?</div>
+                  <div className="text-xs text-gray-600 mt-1">Edit #{entry.id + 1} • {new Date(entry.ts).toLocaleString()}</div>
+                  {entry.title && <div className="text-xs text-gray-800 mt-2 font-medium">{entry.title}</div>}
+                  {entry.text && <div className="text-xs text-gray-600 mt-2 truncate" style={{ maxHeight: 80 }}>{entry.text}</div>}
+                </div>
+              </div>
+              <div className="mt-4 flex justify-end gap-2">
+                <button onClick={cancelRevert} className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
+                <button onClick={confirmRevert} className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Revert</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
-}
+ }
 
 // A11y-friendly divider with mouse, touch, and keyboard support
-function VerticalDividerHandle({
-  onMouseDown,
-  onTouchStart,
-}) {
-  return (
-    <button
-      aria-label="Resize panels"
-      title="Drag to resize"
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
-      className="relative group"
-      style={{
-        // Wider hit area for usability; visible 2px line in center
-        width: '6px',
-        cursor: 'col-resize',
-        background: 'white',
-        border: 'none',
-        padding: 0,
-        zIndex: 100000
-      }}
-    >
-      {/* Visible center line */}
-      <span
-        aria-hidden
-        className="block h-full bg-gray-300 group-hover:bg-gray-400"
-        style={{ width: '2px', margin: '0 auto' }}
-      />
-    </button>
-  );
-}
+ function VerticalDividerHandle({
+   onMouseDown,
+   onTouchStart,
+ }) {
+   return (
+     <button
+       aria-label="Resize panels"
+       title="Drag to resize"
+       onMouseDown={onMouseDown}
+       onTouchStart={onTouchStart}
+       className="relative group"
+       style={{
+         // Wider hit area for usability; visible 2px line in center
+         width: '6px',
+         cursor: 'col-resize',
+         background: 'white',
+         border: 'none',
+         padding: 0,
+       }}
+     >
+       {/* Visible center line */}
+       <span
+         aria-hidden
+         className="block h-full bg-gray-300 group-hover:bg-gray-400"
+         style={{ width: '2px', margin: '0 auto' }}
+       />
+     </button>
+   );
+ }
 
-function HorizontalDividerHandle({
-  onMouseDown,
-  onTouchStart,
-}) {
-  return (
-    <button
-      aria-label="Resize panels"
-      title="Drag to resize"
-      onMouseDown={onMouseDown}
-      onTouchStart={onTouchStart}
-      className="relative group"
-      style={{
-        height: '6px',
-        cursor: 'row-resize',
-        background: 'white',
-        border: 'none',
-        padding: 0,
-        zIndex: 100000
-      }}
-    >
-      {/* Visible center line */}
-      <span
-        aria-hidden
-        className="block w-full bg-gray-300 group-hover:bg-gray-400"
-        style={{ height: '2px', margin: 'auto 0' }}
-      />
-    </button>
-  );
-}
+ function HorizontalDividerHandle({
+   onMouseDown,
+   onTouchStart,
+ }) {
+   return (
+     <button
+       aria-label="Resize panels"
+       title="Drag to resize"
+       onMouseDown={onMouseDown}
+       onTouchStart={onTouchStart}
+       className="relative group"
+       style={{
+         height: '6px',
+         cursor: 'row-resize',
+         background: 'white',
+         border: 'none',
+         padding: 0,
+       }}
+     >
+       {/* Visible center line */}
+       <span
+         aria-hidden
+         className="block w-full bg-gray-300 group-hover:bg-gray-400"
+         style={{ height: '2px', margin: 'auto 0' }}
+       />
+     </button>
+   );
+ }
