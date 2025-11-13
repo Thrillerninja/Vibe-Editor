@@ -28,25 +28,47 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [hierarchyState, setHierarchyState] = useState('none'); // 'none', 'generated', 'needs-full-regen', 'has-dirty-nodes'
 
-  // When maxDepth changes and we have an existing hierarchy, mark for full regeneration
+  // When maxDepth changes, create placeholder hierarchy (even before initial generation)
   useEffect(() => {
-    if (sentences.length > 0 && sentences._hierarchyMeta) {
-      const hierarchyMaxLevel = sentences._hierarchyMeta.maxLevel;
-      // Check if depth changed
-      // hierarchyMaxLevel is the highest grouping level (e.g., 2 for depth 3)
-      // So maxDepth should equal hierarchyMaxLevel + 1
-      if (hierarchyMaxLevel !== maxDepth - 1) {
-        console.log('[App] Depth changed - creating placeholder hierarchy with dirty nodes');
-        console.log('[App]   Old depth:', hierarchyMaxLevel + 1, 'New depth:', maxDepth);
+    if (sentences.length > 0) {
+      // If no hierarchy exists yet, create placeholders when depth changes
+      if (!sentences._hierarchyMeta) {
+        console.log('[App] Depth changed before initial generation - creating placeholder hierarchy');
+        console.log('[App]   Depth:', maxDepth);
 
-        // Create placeholder hierarchy with all nodes marked as dirty
-        // This triggers the same dirty-update logic as editing text
         const updated = createPlaceholderHierarchy(sentences, maxDepth);
         setSentences(updated);
         setHierarchyState('has-dirty-nodes');
       }
+      // If hierarchy exists and depth changed, recreate placeholders
+      else {
+        const hierarchyMaxLevel = sentences._hierarchyMeta.maxLevel;
+        // Check if depth changed
+        // hierarchyMaxLevel is the highest grouping level (e.g., 2 for depth 3)
+        // So maxDepth should equal hierarchyMaxLevel + 1
+        if (hierarchyMaxLevel !== maxDepth - 1) {
+          console.log('[App] Depth changed - creating placeholder hierarchy with dirty nodes');
+          console.log('[App]   Old depth:', hierarchyMaxLevel + 1, 'New depth:', maxDepth);
+
+          // Create placeholder hierarchy with all nodes marked as dirty
+          // This triggers the same dirty-update logic as editing text
+          const updated = createPlaceholderHierarchy(sentences, maxDepth);
+          setSentences(updated);
+          setHierarchyState('has-dirty-nodes');
+        }
+      }
     }
   }, [maxDepth]); // Only depend on maxDepth to avoid loops
+
+  // Create placeholder hierarchy when text is added but no hierarchy exists
+  useEffect(() => {
+    if (sentences.length > 0 && !sentences._hierarchyMeta) {
+      console.log('[App] Text added without hierarchy - creating placeholder hierarchy at depth', maxDepth);
+      const updated = createPlaceholderHierarchy(sentences, maxDepth);
+      setSentences(updated);
+      setHierarchyState('has-dirty-nodes');
+    }
+  }, [sentences.length]); // Only trigger when sentence count changes
 
   // Update hierarchy state based on current sentences
   useEffect(() => {
@@ -89,17 +111,9 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      // Prepare sentences with hierarchy metadata if needed
-      let sentencesToProcess = sentences;
-
-      // Check if we need to create a placeholder hierarchy first
-      if (!sentences._hierarchyMeta || hierarchyState === 'none' || hierarchyState === 'needs-full-regen') {
-        console.log('[App] No hierarchy exists, creating placeholder with all nodes dirty');
-
-        // Create placeholder hierarchy with all nodes marked as dirty
-        sentencesToProcess = createPlaceholderHierarchy(sentences, maxDepth);
-        setSentences(sentencesToProcess); // Update state so UI shows placeholder
-      }
+      // At this point, placeholder hierarchy should already exist from slider change
+      // (or from previous text edits). We just need to restructure dirty nodes.
+      const sentencesToProcess = sentences;
 
       // Dirty update - restructure dirty portions only
       console.log('[App] Restructuring dirty portions of hierarchy');
