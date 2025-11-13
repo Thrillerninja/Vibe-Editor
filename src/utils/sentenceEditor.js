@@ -5,7 +5,7 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
-import { markSentenceAsDirty, markSentencesAsDirty } from './dirtyTracking';
+import { markSentenceAsDirty, markSentencesAsDirty, markReorderAsDirty } from './dirtyTracking';
 
 /**
  * Finds which sentence contains a given text position
@@ -482,10 +482,17 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
             nodes: hierarchyMeta.nodes.map(node => ({ ...node, childIds: [...node.childIds] }))
         };
 
+        // Find the ORIGINAL parent node (before reordering)
+        const originalParentNode = updatedHierarchyMeta.nodes.find(node =>
+            node.childIds.includes(draggedId)
+        );
+
         // Find the parent node that contains both dragged and target sentences
         const parentNode = updatedHierarchyMeta.nodes.find(node =>
             node.childIds.includes(draggedId) && node.childIds.includes(targetId)
         );
+
+        let movedBetweenGroups = false;
 
         if (parentNode) {
             console.log(`${LOG_PREFIX.PARSER} Found parent node: ${parentNode.id}`);
@@ -508,21 +515,41 @@ export function applyReordering(sentences, draggedId, targetId, insertBefore) {
             parentNode.childIds = oldChildIds;
             console.log(`${LOG_PREFIX.PARSER} New childIds order:`, parentNode.childIds);
         } else {
-            console.warn(`${LOG_PREFIX.PARSER} Could not find parent node for reordering`);
+            // No common parent found - this means we're moving between different groups
+            console.log(`${LOG_PREFIX.PARSER} Moving between different groups`);
+            movedBetweenGroups = true;
+
+            // Find the target's parent node
+            const targetParentNode = updatedHierarchyMeta.nodes.find(node =>
+                node.childIds.includes(targetId)
+            );
+
+            if (originalParentNode && targetParentNode) {
+                console.log(`${LOG_PREFIX.PARSER} Original parent: ${originalParentNode.id}, Target parent: ${targetParentNode.id}`);
+
+                // Remove from original parent
+                const draggedIndex = originalParentNode.childIds.indexOf(draggedId);
+                if (draggedIndex !== -1) {
+                    originalParentNode.childIds.splice(draggedIndex, 1);
+                    console.log(`${LOG_PREFIX.PARSER} Removed from original parent ${originalParentNode.id}`);
+                }
+
+                // Add to target parent
+                const targetIndexInParent = targetParentNode.childIds.indexOf(targetId);
+                const insertIdx = insertBefore ? targetIndexInParent : targetIndexInParent + 1;
+                targetParentNode.childIds.splice(insertIdx, 0, draggedId);
+                console.log(`${LOG_PREFIX.PARSER} Added to target parent ${targetParentNode.id} at index ${insertIdx}`);
+            } else {
+                console.warn(`${LOG_PREFIX.PARSER} Could not find parent nodes for cross-group reordering`);
+            }
         }
 
         result._hierarchyMeta = updatedHierarchyMeta;
 
-        // Mark the dragged sentence and its neighbors as dirty
-        const affectedIds = [draggedId];
-        // Also mark neighbors that might have had delimiter changes
-        if (targetIndex > 0) affectedIds.push(result[targetIndex - 1].id);
-        if (targetIndex < result.length - 1) affectedIds.push(result[targetIndex + 1].id);
-        if (draggedIndex > 0 && draggedIndex !== targetIndex && result[draggedIndex - 1]) {
-            affectedIds.push(result[draggedIndex - 1].id);
-        }
-
-        return markSentencesAsDirty(result, affectedIds.filter(Boolean));
+        // Use the new reorder-specific dirty marking
+        // This marks the reordered node and all ancestors in both original and new positions
+        const originalParentId = movedBetweenGroups ? originalParentNode?.id : null;
+        return markReorderAsDirty(result, draggedId, originalParentId);
     }
 
     return result;
