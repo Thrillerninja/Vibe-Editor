@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
+import posthog from './utils/posthog';
 import { TreeVisualization } from './components';
-import React from 'react';
 import { buildTextFromSentences } from './utils/treeParser';
 import { applySentenceEdit } from './utils/sentenceEditor';
+import { useUserIdentification } from './hooks/useUserIdentification';
 
 const EXAMPLE_TEXT =
   'Climate change poses significant challenges to global food security. ' +
@@ -14,6 +15,8 @@ const EXAMPLE_TEXT =
   'These innovations may help farmers cope with climate extremes.';
 
 export default function App() {
+  useUserIdentification();
+
   // SSOT: Store sentences as the primary data structure
   const [sentences, setSentences] = useState([]);
 
@@ -29,6 +32,12 @@ export default function App() {
   const insertExample = () => {
     // Parse example text into sentences
     const newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
+
+    // Log event
+    posthog.capture('example_inserted', {
+      text_length: EXAMPLE_TEXT.length,
+      sentence_count: newSentences.length,
+    });
     setSentences(newSentences);
   };
 
@@ -40,6 +49,14 @@ export default function App() {
     const cursorPosition = e.target.selectionStart;
 
     console.log('[App] Text changed, cursor at:', cursorPosition);
+    // Track typing patterns
+    const textLengthChange = newText.length - text.length;
+    posthog.capture('text_edited', {
+      text_length_change: textLengthChange,
+      total_text_length: newText.length,
+      cursor_position: cursorPosition,
+      operation: textLengthChange > 0 ? 'insert' : 'delete',
+    });
 
     // Apply edit directly to sentence array
     const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
@@ -49,6 +66,10 @@ export default function App() {
   // Handle tree modifications (e.g., node edits, reordering, emotion changes)
   function handleTreeUpdate(updatedSentences) {
     console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
+    posthog.capture('tree_updated', {
+      sentence_count: updatedSentences.length,
+    });
+
     setSentences(updatedSentences);
   }
 
@@ -57,6 +78,18 @@ export default function App() {
     e.preventDefault();
     draggingRef.current = true;
   };
+
+  useEffect(() => {
+    // Track load time
+    if (window.performance && window.performance.timing) {
+      const perf = window.performance.timing;
+      const pageLoadTime = perf.loadEventEnd - perf.navigationStart;
+      
+      posthog.capture('page_load_time', {
+        load_time_ms: pageLoadTime,
+      });
+    }
+  }, []);
 
   // Global move/up handlers for both mouse and touch
   useEffect(() => {

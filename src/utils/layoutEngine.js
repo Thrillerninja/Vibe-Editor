@@ -5,6 +5,7 @@
 
 import ELK from 'elkjs/lib/elk.bundled.js';
 import { measureLabel } from './measurements';
+import { logError } from './errorTracking';
 import { ELK_OPTIONS, LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
 
 const elk = new ELK();
@@ -80,6 +81,7 @@ export async function runElk(nodes, edges) {
       };
     });
   } catch (error) {
+    logError(`${LOG_PREFIX.LAYOUT} ELK layout failed:` + error);
     console.error(`${LOG_PREFIX.LAYOUT} ELK layout failed:`, error);
     return nodes;
   }
