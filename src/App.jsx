@@ -1,4 +1,3 @@
-
 import Editor from './pages/Editor';
 import Stats from './pages/Stats';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';

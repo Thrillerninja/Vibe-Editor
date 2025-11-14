@@ -13,7 +13,7 @@ import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
  * @returns {{onDropToReparent: Function, findReparentTarget: Function}} Reparenting handlers
  */
 export function useReparenting() {
-  const { setEdges, getNodes, getEdges } = useReactFlow();
+  const { getNodes, getEdges } = useReactFlow();
 
   /**
    * Builds parent map from edges (child → parent)
@@ -189,43 +189,19 @@ export function useReparenting() {
    */
   const onDropToReparent = React.useCallback(
     (draggedId, flowX, flowY) => {
-      console.log(`${LOG_PREFIX.REPARENT} Drop attempt for ${draggedId} at flow position (${flowX.toFixed(1)}, ${flowY.toFixed(1)})`);
-
       const targetNode = findReparentTarget(draggedId, flowX, flowY);
 
-      if (!targetNode) {
-        console.log(`${LOG_PREFIX.REPARENT} No valid target node at drop position`);
-        return;
+      if (targetNode) {
+        console.log(`Reparenting disabled: Would attach ${draggedId} to ${targetNode.id}`);
       }
-
       console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode.id}`);
       posthog.capture('node_reparented', {
         dragged_node_id: draggedId,
         new_parent_id: targetNode.id,
         operation: 'reparent',
       });
-
-      const parentMap = buildParentMap();
-      const currentParent = parentMap.get(draggedId);
-
-      // Update edges
-      setEdges((edges) => {
-        const withoutOldParent = edges.filter((e) => e.target !== draggedId);
-        const newEdge = {
-          id: `${targetNode.id}-${draggedId}`,
-          source: targetNode.id,
-          target: draggedId,
-          animated: false,
-        };
-
-        console.log(
-          `${LOG_PREFIX.REPARENT} Reparenting ${draggedId}: ${currentParent || 'none'} → ${targetNode.id}`
-        );
-
-        return [...withoutOldParent, newEdge];
-      });
     },
-    [findReparentTarget, buildParentMap, setEdges]
+    [findReparentTarget]
   );
 
   return { onDropToReparent, findReparentTarget };

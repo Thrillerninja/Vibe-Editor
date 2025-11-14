@@ -114,7 +114,7 @@ export const EMOTION_COLORS = {
 };
 
 // Logging configuration
-export const LOGGING_ENABLED = true;
+export const LOGGING_ENABLED = false;
 export const LOG_PREFIX = {
   PHYSICS: '[Physics]',
   LAYOUT: '[Layout]',

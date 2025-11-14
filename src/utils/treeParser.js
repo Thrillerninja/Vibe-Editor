@@ -4,16 +4,18 @@
  * - Sentences array is edited directly (see sentenceEditor.js)
  * - Build text from sentence nodes
  * - Build tree from sentence nodes up to root
+ * - Support AI-generated hierarchies (see hierarchyIntegration.js)
  */
 
 import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
+import { buildTreeWithHierarchy } from './hierarchyIntegration';
 
 /**
  * Builds text from sentence nodes (SSOT → Text)
  * Reconstructs text using each sentence's trailing delimiter
  * Adds punctuation if missing (e.g., after reordering)
  * 
- * @param {Array} sentences - Array of sentence nodes
+ * @param {Array} sentences - Array of sentence nodes (order is implicit from array position)
  * @returns {string} Reconstructed text
  */
 export function buildTextFromSentences(sentences) {
@@ -21,14 +23,11 @@ export function buildTextFromSentences(sentences) {
     return '';
   }
 
-  // Sort by startIdx to ensure correct order (though should already be ordered)
-  const sorted = [...sentences].sort((a, b) => a.startIdx - b.startIdx);
-
   let result = '';
 
-  for (let i = 0; i < sorted.length; i++) {
-    const sentence = sorted[i];
-    const isLast = i === sorted.length - 1;
+  for (let i = 0; i < sentences.length; i++) {
+    const sentence = sentences[i];
+    const isLast = i === sentences.length - 1;
 
     // Add sentence content
     result += sentence.content;
@@ -64,8 +63,8 @@ export function buildTextFromSentences(sentences) {
 
 /**
  * Builds hierarchical tree structure from sentence nodes (SSOT → Tree)
- * For now: Creates a simple 2-level tree (Root → Sentences)
- * Future: Will support dynamic levels
+ * Supports AI-generated hierarchies if present in sentences._hierarchyMeta
+ * Otherwise creates a simple 2-level tree (Root → Sentences)
  * 
  * @param {Array} sentences - Array of sentence nodes
  * @returns {Object} Tree structure with root and children
@@ -73,53 +72,8 @@ export function buildTextFromSentences(sentences) {
 export function buildTreeFromSentences(sentences) {
   console.log(`${LOG_PREFIX.PARSER} Building tree from ${sentences.length} sentences...`);
 
-  if (!sentences || sentences.length === 0) {
-    console.log(`${LOG_PREFIX.PARSER} No sentences, returning empty root`);
-    return {
-      id: 'root',
-      type: 'root',
-      label: 'Document',
-      content: '',
-      children: [],
-      startIdx: 0,
-    };
-  }
-
-  // Build tree: Root → Sentences
-  const hierarchy = {
-    id: 'root',
-    type: 'root',
-    label: 'Document',
-    content: buildTextFromSentences(sentences),
-    children: sentences.map(sentence => {
-      // Build label: include content + punctuation if set separately
-      let label = sentence.content;
-      const lastChar = sentence.content[sentence.content.length - 1];
-      const hasPunctuation = '.!?'.includes(lastChar);
-
-      // Add punctuation to label if it's set separately (e.g., from reordering)
-      if (!hasPunctuation && sentence.punctuation) {
-        label += sentence.punctuation;
-      }
-
-      return {
-        id: sentence.id,
-        type: 'sentence',
-        label: label,
-        content: sentence.content,
-        startIdx: sentence.startIdx,
-        endIdx: sentence.endIdx,
-        children: [],
-        // Preserve metadata
-        emotion: sentence.emotion,
-        intensity: sentence.intensity,
-      };
-    }),
-    startIdx: 0,
-  };
-
-  console.log(`${LOG_PREFIX.PARSER} Tree built: 1 root + ${sentences.length} sentence nodes`);
-  return hierarchy;
+  // Use the new hierarchy-aware builder
+  return buildTreeWithHierarchy(sentences, buildTextFromSentences);
 }
 
 /**
@@ -169,6 +123,8 @@ export function flattenTree(tree) {
         // Preserve emotion metadata
         emotion: curr.emotion,
         intensity: curr.intensity,
+        // Preserve dirty flag for visual indicator
+        isDirty: curr.isDirty,
       },
       position: { x: 0, y: 0 },
       style: { width: NODE_WIDTH },

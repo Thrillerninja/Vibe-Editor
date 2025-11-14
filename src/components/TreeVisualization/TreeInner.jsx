@@ -279,43 +279,45 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
 
       if (reorderInfo) {
         // This is a reorder operation
-        console.log(`${LOG_PREFIX.DRAG} Executing reorder`);
-        reorderNodes(
+        console.log(`${LOG_PREFIX.DRAG} Reorder detected: applying to sentences`);
+
+        // Apply reordering to sentences array
+        const updatedSentences = applyReordering(
+          sentences,
           node.id,
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
 
-        // CRITICAL: Update the SSOT (sentences array) with new order
-        if (onTreeUpdate && sentences.length > 0) {
-          const reorderedSentences = applyReordering(
-            sentences,
-            node.id,
-            reorderInfo.targetSiblingId,
-            reorderInfo.insertBefore
-          );
-          onTreeUpdate(reorderedSentences);
+        // Update parent component's state
+        if (onTreeUpdate) {
+          onTreeUpdate(updatedSentences);
         }
+
+        // Stop physics
+        physics.stop();
+
+        // Re-layout will happen automatically via useEffect when sentences change
       } else {
         // Try reparenting (different parent)
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
         onDropToReparent(node.id, node.position.x, node.position.y);
+
+        // Stop physics
+        physics.stop();
+
+        // Re-layout after reparent
+        setTimeout(async () => {
+          if (!isDraggingRef.current) {
+            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
+            const laidOut = await runElk(
+              rfRef.current.getNodes(),
+              rfRef.current.getEdges()
+            );
+            setNodes(laidOut);
+          }
+        }, 50);
       }
-
-      // Stop physics
-      physics.stop();
-
-      // Re-layout after a delay
-      setTimeout(async () => {
-        if (!isDraggingRef.current) {
-          console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after drag`);
-          const laidOut = await runElk(
-            rfRef.current.getNodes(),
-            rfRef.current.getEdges()
-          );
-          setNodes(laidOut);
-        }
-      }, 50);
     },
     [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, sentences, onTreeUpdate]
   );
@@ -421,7 +423,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         zoomOnScroll
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#e5e7eb" />
+        <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>
