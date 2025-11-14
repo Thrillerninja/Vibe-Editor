@@ -52,6 +52,7 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     const dirtyRootNodes = findDirtyRootNodes(dirtyNodeIds, hierarchyMeta);
 
     console.log('[Claude Service] Dirty root nodes to restructure:', dirtyRootNodes.length);
+    console.log('[Claude Service] Dirty root node IDs:', dirtyRootNodes.map(n => n.id).join(', '));
 
     // Build subtree information for each dirty root
     const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);

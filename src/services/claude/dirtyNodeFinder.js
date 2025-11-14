@@ -9,25 +9,40 @@
  * Note: 'root' is not included as it's not a restructurable node
  */
 export function findDirtyRootNodes(dirtyNodeIds, hierarchyMeta) {
+    console.log(`[Claude Service] Finding dirty root nodes from ${dirtyNodeIds.length} dirty nodes`);
+    console.log(`[Claude Service] Dirty node IDs:`, dirtyNodeIds);
+
     const dirtySet = new Set(dirtyNodeIds);
     const dirtyRoots = [];
 
     for (const nodeId of dirtyNodeIds) {
         // Skip the root node - it's not a hierarchy node to restructure
-        if (nodeId === 'root') continue;
+        if (nodeId === 'root') {
+            console.log(`[Claude Service]   - Skipping 'root' (not a hierarchy node)`);
+            continue;
+        }
 
         const node = hierarchyMeta.nodes.find(n => n.id === nodeId);
-        if (!node) continue;
+        if (!node) {
+            console.warn(`[Claude Service]   - Node ${nodeId} not found in hierarchy!`);
+            continue;
+        }
 
         // Check if this node's parent is dirty
         const parent = hierarchyMeta.nodes.find(n => n.childIds.includes(nodeId));
 
-        if (!parent || !dirtySet.has(parent.id)) {
-            // No parent or parent is not dirty - this is a dirty root
+        if (!parent) {
+            console.log(`[Claude Service]   ✓ ${nodeId} (${node.label}) - no parent (top-level) → dirty root`);
             dirtyRoots.push(node);
+        } else if (!dirtySet.has(parent.id)) {
+            console.log(`[Claude Service]   ✓ ${nodeId} (${node.label}) - parent ${parent.id} is clean → dirty root`);
+            dirtyRoots.push(node);
+        } else {
+            console.log(`[Claude Service]   - ${nodeId} (${node.label}) - parent ${parent.id} is also dirty → not a root`);
         }
     }
 
+    console.log(`[Claude Service] Found ${dirtyRoots.length} dirty root nodes`);
     return dirtyRoots;
 }
 
@@ -73,8 +88,14 @@ export function findSentencesInNode(node, hierarchyMeta, sentences) {
 export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds) {
     const dirtySubtrees = [];
 
+    console.log(`[Claude Service] Building dirty subtrees for ${dirtyRootNodes.length} root nodes`);
+    console.log(`[Claude Service] Total sentences in document: ${sentences.length}`);
+
     for (const rootNode of dirtyRootNodes) {
         const sentencesInSubtree = findSentencesInNode(rootNode, hierarchyMeta, sentences);
+
+        console.log(`[Claude Service] Subtree ${rootNode.id} contains ${sentencesInSubtree.length} sentences`);
+        console.log(`[Claude Service]   Sentence orders: ${sentencesInSubtree.map(s => sentences.indexOf(s)).join(', ')}`);
 
         dirtySubtrees.push({
             rootNodeId: rootNode.id,
@@ -86,6 +107,18 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
                 isDirty: dirtySentenceIds.includes(s.id)
             }))
         });
+    }
+
+    // Check if all sentences are covered
+    const coveredSentenceIds = new Set(dirtySubtrees.flatMap(st => st.sentences.map(s => s.id)));
+    const allSentenceIds = new Set(sentences.map(s => s.id));
+    const missingSentenceIds = [...allSentenceIds].filter(id => !coveredSentenceIds.has(id));
+
+    if (missingSentenceIds.length > 0) {
+        console.warn(`[Claude Service] ⚠️ WARNING: ${missingSentenceIds.length} sentences are NOT in any dirty subtree!`);
+        console.warn(`[Claude Service] Missing sentence IDs:`, missingSentenceIds);
+        const missingSentences = sentences.filter(s => missingSentenceIds.includes(s.id));
+        console.warn(`[Claude Service] Missing sentences:`, missingSentences.map(s => `[${sentences.indexOf(s)}] "${s.content.substring(0, 50)}..."`));
     }
 
     return dirtySubtrees;

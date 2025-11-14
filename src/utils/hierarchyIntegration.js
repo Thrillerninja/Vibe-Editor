@@ -134,18 +134,40 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
 
     // Add new restructured subtrees
     const newNodesToAdd = [];
+    const existingNodeIds = new Set(nodes.map(n => n.id));
+
     for (const subtree of restructuredSubtrees) {
         console.log(`${LOG_PREFIX.PARSER} Adding ${subtree.newNodes.length} new nodes for subtree ${subtree.rootNodeId}`);
 
         // Collect all new nodes (Claude provides UUIDs)
         for (const newNode of subtree.newNodes) {
-            newNodesToAdd.push({
-                id: newNode.id, // Use UUID from Claude
-                type: 'group',
-                level: newNode.level,
-                label: newNode.title,
-                childIds: newNode.childIds,
-            });
+            // CRITICAL: Check for ID collisions with existing clean nodes
+            if (existingNodeIds.has(newNode.id)) {
+                console.error(`${LOG_PREFIX.PARSER} ⚠️ ERROR: Claude generated node ID ${newNode.id} that already exists!`);
+                console.error(`${LOG_PREFIX.PARSER} This would cause duplicate nodes and data loss.`);
+                console.error(`${LOG_PREFIX.PARSER} Existing node:`, nodes.find(n => n.id === newNode.id));
+                console.error(`${LOG_PREFIX.PARSER} New node from Claude:`, newNode);
+
+                // Generate a fresh UUID to avoid collision
+                const freshId = uuidv4();
+                console.warn(`${LOG_PREFIX.PARSER} Replacing colliding ID ${newNode.id} with fresh UUID ${freshId}`);
+
+                newNodesToAdd.push({
+                    id: freshId, // Use fresh UUID instead of colliding one
+                    type: 'group',
+                    level: newNode.level,
+                    label: newNode.title,
+                    childIds: newNode.childIds,
+                });
+            } else {
+                newNodesToAdd.push({
+                    id: newNode.id, // Use UUID from Claude
+                    type: 'group',
+                    level: newNode.level,
+                    label: newNode.title,
+                    childIds: newNode.childIds,
+                });
+            }
         }
     }
 
