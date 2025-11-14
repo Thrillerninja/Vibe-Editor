@@ -25,7 +25,6 @@ export default function HistoryGraph({
     const { nodes, edges, laneYs, width, height } = useMemo(() => {
       const nodes = [];
       const edges = [];
-      let laneYs = [];
 
       let maxLane = 0;
 
@@ -66,7 +65,7 @@ export default function HistoryGraph({
         }
       });
 
-      laneYs = Array(maxLane + 1).fill(0).map((_, i) => i * yStep + yOffset);
+      const laneYs = Array(maxLane + 1).fill(0).map((_, i) => i * yStep + yOffset);
 
       const width = n * xStep + 80;
       const height = laneYs.length * yStep + 40;
@@ -151,6 +150,7 @@ export default function HistoryGraph({
                 onMouseEnter={(e) => showTooltipAtMouse(e, node)}
                 onMouseMove={(e) => showTooltipAtMouse(e, node)}
                 onMouseLeave={hideTooltip}
+                style={{ cursor: 'pointer' }}
               >
                   {/* hit area - keep a slightly larger invisible circle for easier hover/click (doesn't receive keyboard focus) */}
                   <circle cx={0} cy={0} r={4.0} fill="transparent" />
@@ -164,7 +164,7 @@ export default function HistoryGraph({
                   fill={color}
                   // prevent mouse-down from focusing the element (removes the strange click-box), but allow keyboard focus
                   onMouseDown={(e) => { /* prevent mouse focus so only keyboard shows focus-visible */ e.preventDefault(); }}
-                  style={{ cursor: 'pointer', outline: 'none' }}
+                  style={{ outline: 'none' }}
                   onClick={() => onRevert(node.i)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onRevert(node.i); }}
                   onFocus={() => showTooltipAtNode(node)}

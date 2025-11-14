@@ -117,6 +117,7 @@ export default function App() {
   // When called from HistoryGraph we open the modal and store the requested index.
   const handleRevert = (index) => {
     if (typeof index !== 'number') return;
+    if (index === headIndex) return;
     const entry = history[index];
     if (!entry) return;
     setPendingRevert(index);
