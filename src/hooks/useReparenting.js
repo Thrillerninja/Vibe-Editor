@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { useReactFlow } from 'reactflow';
+import posthog from '../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
 
 /**
@@ -198,6 +199,11 @@ export function useReparenting() {
       }
 
       console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode.id}`);
+      posthog.capture('node_reparented', {
+        dragged_node_id: draggedId,
+        new_parent_id: targetNode.id,
+        operation: 'reparent',
+      });
 
       const parentMap = buildParentMap();
       const currentParent = parentMap.get(draggedId);
