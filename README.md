@@ -1,44 +1,59 @@
 # Vibe-Editor
 
-A bidirectional text editor with dynamic tree visualization and emotion-based editing.
+A bidirectional text editor with AI-powered hierarchical organization, dynamic tree visualization, and emotion-based editing.
 
 ## 🎯 Core Concept
 
-Vibe-Editor uses **sentences as the single source of truth**. Everything else (text display, tree visualization) is derived from the sentence array.
+Vibe-Editor uses **sentences as the single source of truth** with optional AI-generated hierarchical organization. Everything else (text display, tree visualization) is derived from the sentence array.
 
 ```
-Sentences Array (SSOT)
-       ↓
-   ┌───┴───┐
-   ↓       ↓
- Text    Tree
- Pane  Visualization
+Sentences Array (SSOT) + AI Hierarchy Metadata
+                 ↓
+            ┌────┴────┐
+            ↓         ↓
+          Text    Interactive
+          Pane    Tree Visualization
 ```
 
 ## ✨ Key Features
 
+### Editing & Synchronization
 - **Direct Sentence Editing**: Type in the text pane, sentences update automatically
-- **Tree Visualization**: See your text as an interactive node graph
-- **Emotion Tagging**: Apply Plutchik emotions to individual sentences
-- **Metadata Preservation**: Emotions persist across edits via smart matching
 - **True Bidirectional Sync**: Changes in tree OR text automatically sync
-- **Zero Duplication**: No separate text state - always derived
+- **Intelligent Reordering**: Drag nodes in the tree to reorganize your document
+- **Metadata Preservation**: Emotions and structure persist across edits
 
-## 🏗️ Architecture
+### AI-Powered Organization
+- **Dynamic Hierarchies**: 3-6 levels of automatic document organization
+- **Incremental Updates**: Edit any part - AI only regenerates what changed
+- **Smart Dirty Tracking**: Clean portions of hierarchy are preserved during updates
+- **Document Order Preservation**: Sentences always maintain their sequential order
 
-### Data Flow
-1. **User types** → Text change detected
-2. **applySentenceEdit()** → Sentences array updated directly
-3. **buildTextFromSentences()** → Text pane auto-updates (derived)
-4. **buildTreeFromSentences()** → Tree visualizes changes
+### Tree Visualization
+- **Interactive Graph**: Drag, zoom, and explore your document structure
+- **Emotion Tagging**: Apply Plutchik emotions to individual sentences
+- **Visual Hierarchy**: See topics, subtopics, and sentence groupings at a glance
+- **Physics Simulation**: Nodes arrange themselves with smooth animations
 
-### Tech Stack
-- React 19.1 with hooks
-- ReactFlow 11 for graph visualization
-- ELK.js for automatic layout
-- D3-force for physics simulation
-- Framer Motion for animations
-- Tailwind CSS 4 for styling
+## 🏗️ Architecture Highlights
+
+### Single Source of Truth
+- Sentence array is the only stored state
+- Text and tree are **derived** (no duplication)
+- Impossible to get out of sync
+
+### Dirty Tracking System
+When you edit or reorder:
+1. System marks affected nodes as "dirty"
+2. Clean (unchanged) portions are preserved
+3. AI regenerates only the dirty subtrees
+4. Efficient incremental updates instead of full regeneration
+
+### Document Order Guarantee
+- Sentences can be **regrouped** under different parent nodes
+- Sentences **cannot be reordered** by AI - they maintain document sequence
+- Reordering is manual (via drag & drop in tree)
+- Hierarchy respects your intended sentence order
 
 ## 🚀 Getting Started
 
@@ -48,7 +63,7 @@ Sentences Array (SSOT)
 npm install
 ```
 
-### AI Configuration (Optional)
+### AI Configuration
 
 To enable AI-powered hierarchical document organization:
 
@@ -74,97 +89,147 @@ npm run dev
 
 Visit `http://localhost:5173/`
 
-## 📖 How It Works
+## 📖 How to Use
 
-### Sentence Objects
-```javascript
-{
-  id: "sentence-0",
-  type: "sentence",
-  content: "This is a sentence.",
-  startIdx: 0,
-  endIdx: 19,
-  emotion: "joy",      // Optional metadata
-  intensity: 0.8       // Optional metadata
-}
-```
+### Basic Text Editing
+1. Type in the left pane
+2. Sentences are automatically parsed and visualized in the tree
+3. Edit any sentence - tree updates in real-time
 
-### Editing Flow
-1. Type in textarea
-2. System detects which sentences changed
-3. Preserves emotion metadata for similar sentences (>80% match)
-4. Updates tree visualization automatically
-
-### Tree Structure
-
-The tree now supports **AI-generated hierarchical organization**:
-
-```
-Root (Document Title)
-  ├── Level N (High-level topics)
-  │   ├── Level N-1 (Subtopics)
-  │   │   └── ...
-  │   └── Level 2 (Paragraphs/Groups)
-  │       ├── Sentence 1
-  │       ├── Sentence 2
-  │       └── Sentence 3
-  └── ...
-```
-
-**Depth Levels:**
-- **3 levels**: Root → Groups → Sentences
-- **4 levels**: Root → Topics → Groups → Sentences
-- **5 levels**: Root → Main Topics → Subtopics → Groups → Sentences
-- **6 levels**: Root → Theme → Main Topics → Subtopics → Groups → Sentences
-
-Use the **"Generate Hierarchy"** button to have Claude automatically organize your document into meaningful levels based on content!
-
-## 🤖 AI Features
-
-### Hierarchical Document Organization
-
+### AI Hierarchy Generation
 1. **Write your content** in the text editor
-2. **Adjust the depth slider** (3-6 levels) to set how many levels of organization you want
-3. **Click "Generate Hierarchy"** to have Claude analyze and organize your content
-4. **View the structured tree** showing topics, subtopics, and groupings
+2. **Adjust the depth slider** (3-6 levels) to set organization depth
+3. **Click "Generate Hierarchy"** to have AI organize your content
+4. **View the structured tree** showing your document hierarchy
 
-The AI will:
-- Group sentences into logical paragraphs/sections
-- Create meaningful topic labels for each group
-- Build higher-level abstractions based on the depth you choose
-- Generate an overall document title
+### Editing with AI Hierarchy
+Once hierarchy is generated:
+- **Edit text**: Only modified sentences and their ancestors are marked dirty
+- **Reorder nodes**: Drag nodes in the tree to reorganize
+- **Click "Update Hierarchy"**: AI regenerates only dirty portions
+- **Clean parts preserved**: Unchanged sections stay intact
 
-**Note**: Editing text or reordering sentences after hierarchy generation will clear the hierarchy (you'll need to regenerate).
+### Depth Levels Explained
+- **3 levels**: Root → Topic Groups → Sentences
+- **4 levels**: Root → Main Topics → Subtopics → Sentences
+- **5 levels**: Root → Themes → Topics → Subtopics → Sentences
+- **6 levels**: Root → Parts → Themes → Topics → Subtopics → Sentences
+
+## 🤖 AI Integration
+
+### Model
+Uses **Claude Haiku 4.5** for fast, intelligent document organization.
+
+### How AI Organizes Content
+The AI analyzes your sentences and:
+1. **Groups consecutive sentences** by topic into Level 2 nodes
+2. **Creates higher-level groupings** based on your depth setting
+3. **Generates descriptive titles** for each grouping
+4. **Produces a document title** based on overall content
+5. **Maintains sentence order** - never reorders your text
+
+### Incremental Updates (Dirty Tracking)
+When you make changes:
+- System identifies the smallest affected subtree
+- Only that subtree is sent to AI for regeneration
+- Rest of the hierarchy remains unchanged
+- Faster and more efficient than full regeneration
+
+Example: If you edit one sentence in a 100-sentence document, only that sentence's parent nodes are regenerated (maybe 5-10 sentences), not all 100.
 
 ## 🎨 Emotion System
 
 Based on Plutchik's Wheel of Emotions:
-- 16 emotions in circular layout
-- Intensity from 0-100%
+- Click the pen icon (✏️) on any sentence node
+- Choose from 16 emotions in a circular layout
+- Adjust intensity slider (0-100%)
 - Node colors change based on emotion/intensity
-- Click pen icon on any node to set emotion
+- Emotions persist across edits and reorganizations
 
-## 📚 Documentation
+## 🔧 Technical Details
+
+### Sentence Objects
+```javascript
+{
+  id: "uuid-v4",           // Unique identifier
+  type: "sentence",
+  content: "Your text.",   // The actual sentence
+  startIdx: 0,             // Position in document (computed)
+  endIdx: 14,              // End position (computed)
+  punctuation: ".",        // Ending punctuation
+  delimiter: "space",      // What follows (space/newline/paragraph)
+  emotion: "joy",          // Optional metadata
+  intensity: 0.8           // Optional (0-1)
+}
+```
+
+### Hierarchy Metadata
+```javascript
+sentences._hierarchyMeta = {
+  rootTitle: "Document Title",
+  maxLevel: 2,             // Highest grouping level (depth-1)
+  nodes: [                 // Grouping nodes at levels 2+
+    {
+      id: "uuid",
+      level: 2,
+      label: "Topic Title",
+      childIds: ["sentence-uuid-1", "sentence-uuid-2"]
+    }
+  ],
+  dirtyNodeIds: ["..."],   // Nodes needing regeneration
+  dirtySentenceIds: ["..."] // Modified sentences
+}
+```
+
+### Tech Stack
+- **React 19** with hooks
+- **ReactFlow 11** for graph visualization
+- **ELK.js** for automatic hierarchical layout
+- **D3-force** for physics simulation
+- **Framer Motion** for animations
+- **Tailwind CSS 4** for styling
+- **Claude Haiku 4.5** for AI organization
+
+## 📚 Key Files
+
+- **`src/App.jsx`** - Main app, manages sentence state
+- **`src/utils/sentenceEditor.js`** - Text editing, reordering logic
+- **`src/utils/hierarchyIntegration.js`** - AI hierarchy integration
+- **`src/utils/dirtyTracking.js`** - Dirty node tracking system
+- **`src/services/claude/`** - AI service integration
+  - `claudeApi.js` - API calls to Claude
+  - `promptBuilder.js` - Constructs AI prompts
+  - `responseValidator.js` - Validates AI responses
+  - `dirtyNodeFinder.js` - Identifies dirty subtrees
+
+## 🔮 Future Enhancements
+
+- [ ] AI-powered emotion-based rewriting
+- [ ] Direct text editing in tree nodes
+- [ ] Advanced sentence operations (merge, split)
+- [ ] Export to various formats (Markdown, JSON, etc.)
+- [ ] Undo/redo system with hierarchy support
+- [ ] Collaborative editing
+- [ ] Custom grouping rules
+
+## 🐛 Known Edge Cases
+
+The system includes defensive measures for:
+- **ID collisions**: AI-generated IDs that conflict with existing nodes
+- **Missing sentences**: Sentences not covered by any dirty subtree
+- **Node ordering**: Ensures document order is maintained after updates
+- **Orphaned nodes**: Validation prevents nodes without parents
+
+All edge cases are logged to console with detailed diagnostics.
+
+## 📖 Documentation
 
 See `ARCHITECTURE.md` for detailed technical documentation.
 
-## 🔮 Future Features
-
-- [ ] Dynamic tree levels (configurable grouping)
-- [ ] Direct text editing in tree nodes
-- [ ] AI-powered emotion-based rewriting
-- [ ] Advanced sentence operations (merge, split, reorder)
-- [ ] Export to various formats
-- [ ] Undo/redo system
-
 ## 🤝 Contributing
 
-This is an experimental project exploring bidirectional text editing paradigms.
+This is an experimental project exploring bidirectional text editing with AI-powered organization.
 
 ## 📄 License
 
 MIT
-
----
-
-Built with ❤️ using React + Vite
