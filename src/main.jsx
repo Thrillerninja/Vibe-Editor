@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { initErrorTracking } from './utils/errorTracking';
 import { initPostHog } from './utils/posthog';
 import './index.css'
 import App from './App.jsx'
@@ -12,6 +13,9 @@ if (posthogReady) {
 } else {
   console.warn('⚠️ Analytics unavailable (development mode or missing key)');
 }
+
+// Then initialize error tracking
+initErrorTracking();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
