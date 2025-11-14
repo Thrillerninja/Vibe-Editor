@@ -190,7 +190,7 @@ The AI hierarchy system integrates at these key points:
         └──────────┬───────────────────┘
                    ↓
         ┌─────────────────────────────────────┐
-        │  SEND TO CLAUDE HAIKU 4.5           │
+        │  SEND TO CLAUDE           │
         │  Prompt: "Organize these sentences" │
         │  Include: sentence order, content   │
         └──────────┬──────────────────────────┘
@@ -449,7 +449,7 @@ buildDirtySubtrees() - Package subtrees for AI
     ↓
 buildDirtyRestructurePrompt() - Create AI prompt
     ↓
-client.messages.create() - Call Claude Haiku 4.5 API
+client.messages.create() - Call Claude
     ↓
 parseDirtyRestructureResponse() - Parse and validate
     ├─ Extract JSON

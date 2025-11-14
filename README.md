@@ -118,7 +118,7 @@ Once hierarchy is generated:
 ## 🤖 AI Integration
 
 ### Model
-Uses **Claude Haiku 4.5** for fast, intelligent document organization.
+Uses **Claude** for fast, intelligent document organization.
 
 ### How AI Organizes Content
 The AI analyzes your sentences and:
@@ -188,7 +188,7 @@ sentences._hierarchyMeta = {
 - **D3-force** for physics simulation
 - **Framer Motion** for animations
 - **Tailwind CSS 4** for styling
-- **Claude Haiku 4.5** for AI organization
+- **Claude** for AI organization
 
 ## 📚 Key Files
 
