@@ -9,6 +9,7 @@ import ReactFlow, {
   useNodesState,
   addEdge,
 } from 'reactflow';
+import posthog from '../../utils/posthog';
 import { AnimatedNodeComponent } from './AnimatedNodeComponent';
 import { useReparenting } from '../../hooks/useReparenting';
 import { useLocalPhysics } from '../../hooks/useLocalPhysics';
@@ -336,6 +337,15 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
   const handleEmotionChange = useCallback(
     (nodeId, emotion, intensity) => {
       console.log(`[Emotion] Node ${nodeId}: ${emotion} (${intensity})`);
+      // Track AI-powered emotion tagging
+      posthog.capture('emotion_tagged', {
+        node_id: nodeId,
+        emotion: emotion,
+        intensity: intensity,
+        // AI usage tracking
+        model: 'plutchik',
+        feature: 'emotion_selector',
+      });
 
       // Update node data with emotion
       setNodes((nds) =>

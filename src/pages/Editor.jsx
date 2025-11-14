@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { TreeVisualization } from './components';
 import React from 'react';
+import posthog from '../utils/posthog';
+import { useNavigate } from 'react-router-dom';
 import { buildTextFromSentences } from './utils/treeParser';
 import { applySentenceEdit } from './utils/sentenceEditor';
 import { updateDirtyNodes } from './services/claude';
@@ -16,7 +18,10 @@ const EXAMPLE_TEXT =
     'Scientists are developing new crop varieties. ' +
     'These innovations may help farmers cope with climate extremes.';
 
-export default function App() {
+export default function Editor() {
+    useUserIdentification();
+    const navigate = useNavigate();
+  
     // SSOT: Store sentences as the primary data structure
     const [sentences, setSentences] = useState([]);
 
@@ -95,6 +100,12 @@ export default function App() {
     const textareaRef = useRef(null);
 
     const insertExample = () => {
+        // Log event
+        posthog.capture('example_inserted', {
+          text_length: EXAMPLE_TEXT.length,
+          sentence_count: newSentences.length,
+        });
+      
         // Parse example text into sentences
         const newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
         setSentences(newSentences);
@@ -157,6 +168,14 @@ export default function App() {
         const cursorPosition = e.target.selectionStart;
 
         console.log('[App] Text changed, cursor at:', cursorPosition);
+      
+        const textLengthChange = newText.length - text.length
+        posthog.capture('text_edited', {
+        text_length_change: textLengthChange,
+        total_text_length: newText.length,
+        cursor_position: cursorPosition,
+        operation: textLengthChange > 0 ? 'insert' : 'delete',
+      });
 
         // Apply edit directly to sentence array
         const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
@@ -166,6 +185,10 @@ export default function App() {
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)
     function handleTreeUpdate(updatedSentences) {
         console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
+        posthog.capture('tree_updated', {
+        sentence_count: updatedSentences.length,
+        });
+
         setSentences(updatedSentences);
     }
 
@@ -174,6 +197,18 @@ export default function App() {
         e.preventDefault();
         draggingRef.current = true;
     };
+  
+    useEffect(() => {
+      // Track load time
+      if (window.performance && window.performance.timing) {
+        const perf = window.performance.timing;
+        const pageLoadTime = perf.loadEventEnd - perf.navigationStart;
+
+        posthog.capture('page_load_time', {
+          load_time_ms: pageLoadTime,
+        });
+      }
+    }, []);
 
     // Global move/up handlers for both mouse and touch
     useEffect(() => {
@@ -264,6 +299,13 @@ export default function App() {
                         className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
                     >
                         Clear
+                    </button>
+                    <button
+                      onClick={() => navigate('/stats')}
+                      className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+                      title="View analytics"
+                    >
+                      📊 Stats
                     </button>
                 </div>
             </div>

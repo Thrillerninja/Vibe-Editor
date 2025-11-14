@@ -5,6 +5,7 @@
 
 import { useCallback } from 'react';
 import { useReactFlow } from 'reactflow';
+import posthog from '../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
 
 const REORDER_THRESHOLD = 60; // pixels - tighter threshold
@@ -199,6 +200,13 @@ export function useReordering() {
       console.log(
         `${LOG_PREFIX.DRAG} Preparing reorder: ${draggedId} → ${targetSiblingId} (${insertBefore ? 'before' : 'after'})`
       );
+      // Track reordering
+      posthog.capture('node_reordered', {
+        dragged_node_id: draggedId,
+        target_node_id: targetSiblingId,
+        insert_before: insertBefore,
+        operation: 'reorder',
+      });
 
       // Return reorder info so TreeInner can apply it to sentences
       return {
