@@ -64,10 +64,21 @@ RULES
    - Example: Can group [0,1,2] or [3,4] but NOT [0,2,4]
    - If the same topic appears again later, create a separate group
 
-3. **MAINTAIN GROUP ORDER**
-   - List groups in document order
+3. **MAINTAIN ORDER IN ALL ARRAYS**
+   - ⚠️ CRITICAL: Both restructuredSubtrees and newNodes arrays MUST be sorted by document order
+
+   **Within each subtree:**
+   - The newNodes array must be sorted by document order
+   - Within each level, nodes must appear in the order their first sentence appears in the document
    - If group-A contains sentences 0-1 and group-B contains sentences 2-3
-   - Then group-A must appear BEFORE group-B in the array
+   - Then group-A must appear BEFORE group-B in the newNodes array
+
+   **In the top-level response:**
+   - The restructuredSubtrees array MUST also be sorted by document order
+   - If subtree-X contains sentences 0-2 and subtree-Y contains sentences 3-5
+   - Then subtree-X must appear BEFORE subtree-Y in the restructuredSubtrees array
+
+   The system processes arrays in order to reconstruct text - wrong order = wrong text!
 
 4. **CREATE ALL LEVELS**
    - For each subtree, create ALL levels from 2 up to topLevel
@@ -140,15 +151,15 @@ Given these input sentences:
 
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
-  // Level 2: Direct sentence groups
-  {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},
-  {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},
-  {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]},
-  
-  // Level 3: Group level 2 nodes by related topics
-  {"id": "n4", "level": 3, "title": "Mammal Pets", "childIds": ["n1", "n2"]},
-  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "childIds": ["n3"]},
-  
+  // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
+  {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},        // Sentences 0-1
+  {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},        // Sentences 2-3
+  {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]},      // Sentences 4-5
+
+  // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
+  {"id": "n4", "level": 3, "title": "Mammal Pets", "childIds": ["n1", "n2"]},     // Contains sentences 0-3
+  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "childIds": ["n3"]},       // Contains sentences 4-5
+
   // Level 4: Top level grouping all level 3 nodes
   {"id": "n6", "level": 4, "title": "Pet Care Guide", "childIds": ["n4", "n5"]}
 ]
@@ -159,17 +170,59 @@ Notice in Example 2:
 - Level 3 nodes reference level 2 node IDs (n1, n2, n3)
 - Level 4 nodes reference level 3 node IDs (n4, n5)
 - Every node at level N references ONLY nodes at level N-1
+- ⚠️ **CRITICAL**: Nodes at each level are in document order (n1 before n2 before n3, n4 before n5)
 
-**Key takeaway**: 
+**WRONG Example 1: Nodes out of order within subtree (DO NOT DO THIS):**
+
+{
+  "restructuredSubtrees": [
+    {
+      "rootNodeId": "subtree-1",
+      "newNodes": [
+        // ❌ WRONG: Level 2 nodes out of order within the subtree!
+        {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},        // Sentences 2-3 (but listed FIRST!)
+        {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},        // Sentences 0-1 (but listed SECOND!)
+        {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]}
+      ]
+    }
+  ]
+}
+
+This is WRONG because n2 (starting at sentence 2) appears before n1 (starting at sentence 0).
+
+**WRONG Example 2: Subtrees out of order (DO NOT DO THIS):**
+
+{
+  "restructuredSubtrees": [
+    // ❌ WRONG: Subtrees out of order!
+    {
+      "rootNodeId": "subtree-B",
+      "newNodes": [{"id": "n2", "level": 2, "title": "Topic B", "childIds": ["s3", "s4"]}]  // Sentences 3-4 (but listed FIRST!)
+    },
+    {
+      "rootNodeId": "subtree-A",
+      "newNodes": [{"id": "n1", "level": 2, "title": "Topic A", "childIds": ["s1", "s2"]}]  // Sentences 1-2 (but listed SECOND!)
+    }
+  ]
+}
+
+This is WRONG because subtree-B (starting at sentence 3) appears before subtree-A (starting at sentence 1).
+The restructuredSubtrees array MUST be sorted by document order!
+
+**Key takeaway**:
 - When topLevel=2, create ONLY level 2
 - When topLevel=3, create levels 2 AND 3
 - When topLevel=4, create levels 2, 3, AND 4
 - When topLevel=5, create levels 2, 3, 4, AND 5
 - And so on...
+- **ALWAYS order nodes in the array by document position (earliest sentence first)!**
 
 ═══════════════════════════════════════════════════════════════════
 ⚠️ FINAL CHECKLIST BEFORE RESPONDING
 ═══════════════════════════════════════════════════════════════════
+
+For the COMPLETE response, verify:
+✓ **restructuredSubtrees array is sorted by document order (earliest sentences first)**
 
 For EACH subtree in your response, verify:
 ✓ Created ALL levels from 2 to topLevel (check the topLevel field in input!)
@@ -178,6 +231,7 @@ For EACH subtree in your response, verify:
 ✓ Used exact sentence IDs from input (no new UUIDs for sentences)
 ✓ Generated new UUIDs for all grouping nodes
 ✓ Sentences appear in order when reading tree left-to-right
+✓ **newNodes array is sorted by document order (within each level, nodes ordered by their first sentence's position)**
 
 ${isRootDirty ? `
 ═══════════════════════════════════════════════════════════════════

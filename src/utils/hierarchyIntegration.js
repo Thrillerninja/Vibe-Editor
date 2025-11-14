@@ -5,6 +5,72 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
+import { rebuildSentenceOrderFromHierarchy } from './sentenceEditor';
+
+/**
+ * Sorts hierarchy nodes by document order
+ * Ensures that nodes appear in the order of their first sentence in the document
+ * This is critical for rebuildSentenceOrderFromHierarchy to work correctly
+ * @param {Array} nodes - Hierarchy nodes to sort
+ * @param {Array} sentences - Sentences array
+ * @returns {Array} Sorted nodes array
+ */
+function sortNodesByDocumentOrder(nodes, sentences) {
+    // Create a map for quick sentence lookup
+    const sentencePositions = new Map();
+    sentences.forEach((s, idx) => {
+        sentencePositions.set(s.id, idx);
+    });
+
+    // Build node map for recursive lookups
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+
+    // Calculate minimum sentence position for each node (recursively)
+    const nodeMinPositions = new Map();
+
+    const getMinPosition = (nodeId) => {
+        // Check if it's a sentence
+        if (sentencePositions.has(nodeId)) {
+            return sentencePositions.get(nodeId);
+        }
+
+        // Check if already calculated
+        if (nodeMinPositions.has(nodeId)) {
+            return nodeMinPositions.get(nodeId);
+        }
+
+        // It's a hierarchy node - find min position from children
+        const node = nodeMap.get(nodeId);
+        if (!node) {
+            console.warn(`${LOG_PREFIX.PARSER} Cannot find node ${nodeId} when sorting`);
+            return Infinity;
+        }
+
+        let minPos = Infinity;
+        for (const childId of node.childIds) {
+            const childMinPos = getMinPosition(childId);
+            minPos = Math.min(minPos, childMinPos);
+        }
+
+        nodeMinPositions.set(nodeId, minPos);
+        return minPos;
+    };
+
+    // Calculate min positions for all nodes
+    for (const node of nodes) {
+        getMinPosition(node.id);
+    }
+
+    // Sort nodes by their minimum position (document order)
+    const sorted = [...nodes].sort((a, b) => {
+        const posA = nodeMinPositions.get(a.id) ?? Infinity;
+        const posB = nodeMinPositions.get(b.id) ?? Infinity;
+        return posA - posB;
+    });
+
+    console.log(`${LOG_PREFIX.PARSER} Sorted ${sorted.length} nodes by document order`);
+    return sorted;
+}
 
 /**
  * Apply restructured subtrees to existing hierarchy
@@ -67,12 +133,13 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     }
 
     // Add new restructured subtrees
+    const newNodesToAdd = [];
     for (const subtree of restructuredSubtrees) {
         console.log(`${LOG_PREFIX.PARSER} Adding ${subtree.newNodes.length} new nodes for subtree ${subtree.rootNodeId}`);
 
-        // Add all new nodes (Claude provides UUIDs)
+        // Collect all new nodes (Claude provides UUIDs)
         for (const newNode of subtree.newNodes) {
-            nodes.push({
+            newNodesToAdd.push({
                 id: newNode.id, // Use UUID from Claude
                 type: 'group',
                 level: newNode.level,
@@ -82,6 +149,15 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
         }
     }
 
+    // Add new nodes to the existing nodes array
+    nodes.push(...newNodesToAdd);
+
+    // CRITICAL: Sort nodes by document order to ensure sentence order is preserved
+    // We need to sort nodes so that when rebuildSentenceOrderFromHierarchy processes them,
+    // the sentences come out in the correct document order
+    console.log(`${LOG_PREFIX.PARSER} Sorting ${nodes.length} nodes by document order`);
+    nodes = sortNodesByDocumentOrder(nodes, updatedSentences);
+
     hierarchyMeta.nodes = nodes;
 
     // Update root title if provided
@@ -90,11 +166,17 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
         hierarchyMeta.rootTitle = newRootTitle;
     }
 
-    updatedSentences._hierarchyMeta = hierarchyMeta;
+    // CRITICAL: Rebuild sentence order from the new hierarchy to ensure document order
+    // The nodes array now has the new structure, so we need to reorder sentences to match
+    console.log(`${LOG_PREFIX.PARSER} Rebuilding sentence order from updated hierarchy`);
+    const reorderedSentences = rebuildSentenceOrderFromHierarchy(updatedSentences, nodes, hierarchyMeta.maxLevel);
+
+    // Reattach hierarchy metadata to the reordered sentences
+    reorderedSentences._hierarchyMeta = hierarchyMeta;
 
     console.log(`${LOG_PREFIX.PARSER} Hierarchy restructured: now ${nodes.length} nodes`);
 
-    return updatedSentences;
+    return reorderedSentences;
 }
 
 /**

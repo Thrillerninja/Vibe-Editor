@@ -39,6 +39,9 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
             validateSubtree(subtree, originalSubtree, maxDepth);
         }
 
+        // Validate that subtrees themselves are in document order
+        validateSubtreesArrayOrder(parsed.restructuredSubtrees, originalSubtrees);
+
         console.log('[Claude Service] ✓ Response validation passed');
         console.log(`[Claude Service] ✓ Validated ${parsed.restructuredSubtrees.length} subtree(s)`);
 
@@ -68,6 +71,55 @@ function extractJSON(responseText) {
     }
 
     return jsonText;
+}
+
+/**
+ * Validate that restructuredSubtrees array is sorted by document order
+ * Each subtree should appear in the order of its earliest sentence
+ */
+function validateSubtreesArrayOrder(restructuredSubtrees, originalSubtrees) {
+    if (restructuredSubtrees.length <= 1) {
+        // Single subtree or none - no ordering to validate
+        return;
+    }
+
+    // Calculate minimum sentence order for each subtree
+    const subtreeMinOrders = restructuredSubtrees.map((subtree, idx) => {
+        const original = originalSubtrees.find(s => s.rootNodeId === subtree.rootNodeId);
+        if (!original || !original.sentences || original.sentences.length === 0) {
+            throw new Error(`Cannot find original subtree or sentences for ${subtree.rootNodeId}`);
+        }
+
+        const minOrder = Math.min(...original.sentences.map(s => s.order));
+        return {
+            subtree,
+            minOrder,
+            index: idx,
+            rootNodeId: subtree.rootNodeId
+        };
+    });
+
+    // Check that subtrees are sorted by minOrder
+    for (let i = 1; i < subtreeMinOrders.length; i++) {
+        const prev = subtreeMinOrders[i - 1];
+        const curr = subtreeMinOrders[i];
+
+        if (curr.minOrder < prev.minOrder) {
+            throw new Error(
+                `restructuredSubtrees array is not in document order!\n` +
+                `\n` +
+                `Subtree at index ${prev.index} (rootNodeId: "${prev.rootNodeId}") contains sentences starting at position ${prev.minOrder}\n` +
+                `Subtree at index ${curr.index} (rootNodeId: "${curr.rootNodeId}") contains sentences starting at position ${curr.minOrder}\n` +
+                `\n` +
+                `But position ${curr.minOrder} comes BEFORE position ${prev.minOrder} in the document!\n` +
+                `\n` +
+                `Fix: Reorder the restructuredSubtrees array so subtrees appear in document order.\n` +
+                `The subtree starting at position ${curr.minOrder} must come before the subtree starting at position ${prev.minOrder}.`
+            );
+        }
+    }
+
+    console.log(`[Claude Service] ✓ restructuredSubtrees array is sorted by document order`);
 }
 
 /**
@@ -131,6 +183,9 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
 
     // Validate groups only contain contiguous sentences
     validateContiguousGrouping(subtree, originalSentences);
+
+    // Validate nodes array is sorted by document order
+    validateNodesArrayOrder(subtree, originalSentences);
 
     console.log(`[Claude Service] ✓ Subtree ${subtree.rootNodeId} validation passed`);
 }
@@ -379,6 +434,85 @@ function validateSentenceOrder(subtree, originalSentences) {
     }
 
     console.log(`[Claude Service]   ✓ Sentence order preserved`);
+}
+
+/**
+ * Validate that nodes in the newNodes array are sorted by document order
+ * This is critical because rebuildSentenceOrderFromHierarchy processes nodes in array order
+ */
+function validateNodesArrayOrder(subtree, originalSentences) {
+    const originalOrder = new Map(originalSentences.map((s, idx) => [s.id, idx]));
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
+    const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+
+    // For each node, calculate the minimum sentence position it contains (recursively)
+    const nodeMinPositions = new Map();
+
+    const getMinPosition = (nodeId) => {
+        // Check if it's a sentence
+        if (sentenceIds.has(nodeId)) {
+            return originalOrder.get(nodeId);
+        }
+
+        // Check if already calculated
+        if (nodeMinPositions.has(nodeId)) {
+            return nodeMinPositions.get(nodeId);
+        }
+
+        // It's a hierarchy node - find min position from children
+        const node = nodeMap.get(nodeId);
+        if (!node) {
+            throw new Error(`Cannot find node ${nodeId}`);
+        }
+
+        let minPos = Infinity;
+        for (const childId of node.childIds) {
+            const childMinPos = getMinPosition(childId);
+            minPos = Math.min(minPos, childMinPos);
+        }
+
+        nodeMinPositions.set(nodeId, minPos);
+        return minPos;
+    };
+
+    // Calculate min positions for all nodes
+    for (const node of subtree.newNodes) {
+        getMinPosition(node.id);
+    }
+
+    // Check that within each level, nodes are sorted by min position
+    const nodesByLevel = new Map();
+    for (const node of subtree.newNodes) {
+        if (!nodesByLevel.has(node.level)) {
+            nodesByLevel.set(node.level, []);
+        }
+        nodesByLevel.get(node.level).push(node);
+    }
+
+    for (const [level, nodes] of nodesByLevel.entries()) {
+        for (let i = 1; i < nodes.length; i++) {
+            const prevNode = nodes[i - 1];
+            const currNode = nodes[i];
+            const prevMinPos = nodeMinPositions.get(prevNode.id);
+            const currMinPos = nodeMinPositions.get(currNode.id);
+
+            if (currMinPos < prevMinPos) {
+                throw new Error(
+                    `Subtree ${subtree.rootNodeId}: Nodes out of order in newNodes array at level ${level}.\n` +
+                    `\n` +
+                    `Node "${prevNode.id}" (title: "${prevNode.title}") contains sentences starting at position ${prevMinPos}\n` +
+                    `Node "${currNode.id}" (title: "${currNode.title}") contains sentences starting at position ${currMinPos}\n` +
+                    `\n` +
+                    `But position ${currMinPos} comes BEFORE position ${prevMinPos} in the document!\n` +
+                    `\n` +
+                    `Fix: Reorder the newNodes array so that within each level, nodes appear in document order.\n` +
+                    `Move the node starting at position ${currMinPos} to come before the node starting at position ${prevMinPos}.`
+                );
+            }
+        }
+    }
+
+    console.log(`[Claude Service]   ✓ Nodes array is sorted by document order at each level`);
 }
 
 /**

@@ -581,7 +581,7 @@ function collectDescendantSentences(nodeId, hierarchyNodes, sentences, depth = 0
  * @param {number} maxLevel - Maximum level in the hierarchy
  * @returns {Array} Reordered sentence array
  */
-function rebuildSentenceOrderFromHierarchy(sentences, hierarchyNodes, maxLevel) {
+export function rebuildSentenceOrderFromHierarchy(sentences, hierarchyNodes, maxLevel) {
     console.log(`${LOG_PREFIX.PARSER} Rebuilding sentence order from hierarchy (maxLevel: ${maxLevel})`);
 
     // Find top-level nodes by level (these are direct children of root)
