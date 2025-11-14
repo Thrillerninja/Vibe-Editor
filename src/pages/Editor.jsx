@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { TreeVisualization } from './components';
+import { TreeVisualization } from '../components';
 import React from 'react';
 import posthog from '../utils/posthog';
 import { useNavigate } from 'react-router-dom';
-import { buildTextFromSentences } from './utils/treeParser';
-import { applySentenceEdit } from './utils/sentenceEditor';
-import { updateDirtyNodes } from './services/claude';
-import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from './utils/hierarchyIntegration';
-import { hasDirtyNodes, clearDirtyFlags } from './utils/dirtyTracking';
+import { buildTextFromSentences } from '../utils/treeParser';
+import { applySentenceEdit } from '../utils/sentenceEditor';
+import { updateDirtyNodes } from '../services/claude';
+import { useUserIdentification } from '../hooks/useUserIdentification';
+import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
+import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -21,7 +22,7 @@ const EXAMPLE_TEXT =
 export default function Editor() {
     useUserIdentification();
     const navigate = useNavigate();
-  
+
     // SSOT: Store sentences as the primary data structure
     const [sentences, setSentences] = useState([]);
 
@@ -100,14 +101,15 @@ export default function Editor() {
     const textareaRef = useRef(null);
 
     const insertExample = () => {
-        // Log event
-        posthog.capture('example_inserted', {
-          text_length: EXAMPLE_TEXT.length,
-          sentence_count: newSentences.length,
-        });
-      
         // Parse example text into sentences
         const newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
+
+        // Log event
+        posthog.capture('example_inserted', {
+            text_length: EXAMPLE_TEXT.length,
+            sentence_count: newSentences.length,
+        });
+
         setSentences(newSentences);
     };
 
@@ -168,14 +170,14 @@ export default function Editor() {
         const cursorPosition = e.target.selectionStart;
 
         console.log('[App] Text changed, cursor at:', cursorPosition);
-      
+
         const textLengthChange = newText.length - text.length
         posthog.capture('text_edited', {
-        text_length_change: textLengthChange,
-        total_text_length: newText.length,
-        cursor_position: cursorPosition,
-        operation: textLengthChange > 0 ? 'insert' : 'delete',
-      });
+            text_length_change: textLengthChange,
+            total_text_length: newText.length,
+            cursor_position: cursorPosition,
+            operation: textLengthChange > 0 ? 'insert' : 'delete',
+        });
 
         // Apply edit directly to sentence array
         const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
@@ -186,7 +188,7 @@ export default function Editor() {
     function handleTreeUpdate(updatedSentences) {
         console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
         posthog.capture('tree_updated', {
-        sentence_count: updatedSentences.length,
+            sentence_count: updatedSentences.length,
         });
 
         setSentences(updatedSentences);
@@ -197,17 +199,17 @@ export default function Editor() {
         e.preventDefault();
         draggingRef.current = true;
     };
-  
-    useEffect(() => {
-      // Track load time
-      if (window.performance && window.performance.timing) {
-        const perf = window.performance.timing;
-        const pageLoadTime = perf.loadEventEnd - perf.navigationStart;
 
-        posthog.capture('page_load_time', {
-          load_time_ms: pageLoadTime,
-        });
-      }
+    useEffect(() => {
+        // Track load time
+        if (window.performance && window.performance.timing) {
+            const perf = window.performance.timing;
+            const pageLoadTime = perf.loadEventEnd - perf.navigationStart;
+
+            posthog.capture('page_load_time', {
+                load_time_ms: pageLoadTime,
+            });
+        }
     }, []);
 
     // Global move/up handlers for both mouse and touch
@@ -301,11 +303,11 @@ export default function Editor() {
                         Clear
                     </button>
                     <button
-                      onClick={() => navigate('/stats')}
-                      className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
-                      title="View analytics"
+                        onClick={() => navigate('/stats')}
+                        className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+                        title="View analytics"
                     >
-                      📊 Stats
+                        📊 Stats
                     </button>
                 </div>
             </div>
