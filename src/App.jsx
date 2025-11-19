@@ -18,7 +18,7 @@ export default function App() {
   const draggingHorizontalRef = useRef(false);
 
   // Split state for vertical divider
-  const [bottomPct, setBottomPct] = useState(20);
+  const [bottomPct, setBottomPct] = useState(10);
   const verticalContainerRef = useRef(null);
   const draggingVerticalRef = useRef(false);
 
@@ -163,7 +163,7 @@ export default function App() {
         const rect = verticalContainerRef.current.getBoundingClientRect();
         const y = Math.min(Math.max(clientY, rect.top), rect.bottom);
         const pct = ((rect.bottom - y) / rect.height) * 100;
-        const clamped = Math.min(80, Math.max(20, pct));
+        const clamped = Math.min(80, Math.max(5, pct));
         setBottomPct(clamped);
       }
     };
@@ -285,7 +285,7 @@ export default function App() {
       />
       <div
         className="bg-white"
-        style={{ flexBasis: `${bottomPct}%`}}
+        style={{ flexBasis: `${bottomPct}%`, minHeight: 0}}
       >
         <div className="p-3 h-full">
           <HistoryGraph history={history} onRevert={handleRevert} headIndex={headIndex} />

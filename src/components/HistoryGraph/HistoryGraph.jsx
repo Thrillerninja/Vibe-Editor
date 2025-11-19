@@ -8,21 +8,21 @@ import React, { useRef, useState, useMemo } from 'react';
 // - headIndex: index into data for current HEAD
 export default function HistoryGraph({
   history = [],
-  className = '',
+  className = 'history-graph',
   onRevert = () => {},
   headIndex = null,
 }) {
     const n = history.length;
 
     // Layout parameters
-    const xStep = 15;
-    const xOffset = 40;
-    const yStep = 10;
-    const yOffset = 20;
+    const xStep = 25;
+    const xOffset = 20;
+    const yStep = 20;
+    const yOffset = 5;
 
     const laneColors = useMemo(() => ['#6366f1', '#22c55e', '#eab308', '#ec4899', '#7c3aed'], []);
     // Compute nodes and edges for SVG rendering
-    const { nodes, edges, laneYs, width, height } = useMemo(() => {
+    const { nodes, edges, laneYs } = useMemo(() => {
       const nodes = [];
       const edges = [];
 
@@ -37,7 +37,7 @@ export default function HistoryGraph({
 
         // Create edge to parent
         if (commit.parentId == null) {
-            nodes.push({ i: i, x: xOffset, y: y, lane, ts: commit.ts, text: commit.text });
+            nodes.push({ i: i, x: xOffset, y: y, lane, ts: commit.ts, text: commit.text, title: commit.title });
         } else {
           const parentIndex = history.findIndex((c) => c.id === commit.parentId);
           if (parentIndex !== -1) {
@@ -48,7 +48,7 @@ export default function HistoryGraph({
             const parentY = parentNode.y;
             const x = parentX + xStep;
 
-            nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text });
+            nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title });
 
               const color = laneColors[lane % laneColors.length];
               if (Math.abs(parentLane - lane) === 0) {
@@ -67,17 +67,37 @@ export default function HistoryGraph({
 
       const laneYs = Array(maxLane + 1).fill(0).map((_, i) => i * yStep + yOffset);
 
-      const width = n * xStep + 80;
-      const height = laneYs.length * yStep + 40;
-
-      return { nodes, edges, laneYs: laneYs, width, height };
-    }, [history, n, laneColors]);
-
+      return { nodes, edges, laneYs: laneYs };
+    }, [history, laneColors]);
 
   // Refs and tooltip state for custom tooltip
   const containerRef = useRef(null);
   const svgRef = useRef(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, node: null });
+
+  React.useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target === container) {
+            console.log("ResizeObserver triggered for HistoryGraph container");
+          setContainerSize({
+            width: entry.contentRect.width,
+            height: entry.contentRect.height,
+          });
+        }
+      }
+    });
+
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [history.length]);
 
   // Helper to position tooltip from a mouse event
   function showTooltipAtMouse(e, node) {
@@ -96,8 +116,9 @@ export default function HistoryGraph({
     if (!container || !svg) return;
     const crect = container.getBoundingClientRect();
     const srect = svg.getBoundingClientRect();
-    const scaleX = srect.width / width;
-    const scaleY = srect.height / height;
+    // Use measured container size for scaling
+    const scaleX = srect.width / svgWidth;
+    const scaleY = srect.height / svgHeight;
     const px = srect.left + node.x * scaleX;
     const py = srect.top + node.y * scaleY;
     const x = px - crect.left;
@@ -118,24 +139,33 @@ export default function HistoryGraph({
     );
   }
 
+  const svgWidth = containerSize.width || 400;
+  const svgHeight = containerSize.height || 120;
+
   return (
     // make container relative so tooltip can be absolutely positioned
-    <div ref={containerRef} className={`relative w-full ${className}`}>
+    <div ref={containerRef} className={`w-full h-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box'}}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
         <div className="text-xs text-gray-500">Edits: {history.length}</div>
       </div>
 
-      <div className="flex items-start gap-3">
-        <svg ref={svgRef} width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMinYMid meet">
+      <div className="flex items-start gap-3 h-full overflow-auto">
+        <svg
+          ref={svgRef}
+          width="100%"
+          height="100%"
+          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+          //preserveAspectRatio="xMinYMid meet"
+        >
           {/* background horizontal lane lines */}
           {laneYs.map((y, li) => (
-            <line key={li} x1={0} y1={y} x2={width} y2={y} stroke="#f3f4f6" strokeWidth={0.6} />
+            <line key={li} x1={0} y1={y} x2={svgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
           ))}
 
           {/* edges */}
           {edges.map((e, idx) => (
-            <path key={idx} d={e.d} fill="none" stroke={e.color} strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+            <path key={idx} d={e.d} fill="none" stroke={e.color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
           ))}
 
           {/* nodes */}
@@ -143,7 +173,6 @@ export default function HistoryGraph({
             const isHead = headIndex === node.i;
             const color = laneColors[(node.lane ?? 0) % laneColors.length];
             return (
-              // attach hover handlers to group; focus lives on the inner circle so clicks don't show the default focus ring
               <g
                 key={node.i}
                 transform={`translate(${node.x}, ${node.y})`}
@@ -152,18 +181,14 @@ export default function HistoryGraph({
                 onMouseLeave={hideTooltip}
                 style={{ cursor: 'pointer' }}
               >
-                  {/* hit area - keep a slightly larger invisible circle for easier hover/click (doesn't receive keyboard focus) */}
-                  <circle cx={0} cy={0} r={4.0} fill="transparent" />
-                  {/* outline */}
-                  <circle cx={0} cy={0} r={3.0} fill="#fff" opacity={0.95} />
-                  {/* node circle (keyboard-focusable) */}
+                  <circle cx={0} cy={0} r={7.0} fill="transparent" />
+                  <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
                 <circle
                   cx={0}
                   cy={0}
-                  r={2.4}
+                  r={4.4}
                   fill={color}
-                  // prevent mouse-down from focusing the element (removes the strange click-box), but allow keyboard focus
-                  onMouseDown={(e) => { /* prevent mouse focus so only keyboard shows focus-visible */ e.preventDefault(); }}
+                  onMouseDown={(e) => { e.preventDefault(); }}
                   style={{ outline: 'none' }}
                   onClick={() => onRevert(node.i)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onRevert(node.i); }}
@@ -173,30 +198,14 @@ export default function HistoryGraph({
                   role="button"
                   aria-label={`Revert to commit ${node.i + 1}`}
                 />
-                  {/* head indicator */}
-                {isHead && <circle cx={0} cy={0} r={4.0} fill="none" stroke="#111827" strokeWidth={1} opacity={0.9} />}
-                  {/* removed <title> in favor of a custom tooltip */}
+                {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827" strokeWidth={2} opacity={0.9} />}
               </g>
             );
           })}
         </svg>
 
-        {/* Legend / info area */}
-        <div style={{ minWidth: 140 }} className="text-xs text-gray-600">
-          <div className="font-medium text-sm text-gray-800 mb-1">Branches</div>
-          {laneYs.map((l, i) => {
-              const color = laneColors[i % laneColors.length];
-              return (
-              <div key={i} className="flex items-center gap-2 py-0.5">
-                <span style={{ width: 12, height: 12, borderRadius: 6, background: color }} aria-hidden />
-                <div>
-                  <div className="text-xs text-gray-800">Branch {i + 1}</div>
-                  <div className="text-xs text-gray-500">{nodes.filter((nd) => nd.lane === i).length} commits</div>
-                </div>
-              </div>
-            )}
-          )}
-
+        {/* Minimal info area: only edit count and current head details */}
+        <div style={{ minWidth: 120, maxWidth: 180, overflow: 'hidden' }} className="text-xs text-gray-600 flex flex-col justify-center h-full">
           <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-600">
             <div className="text-xs text-gray-800 font-medium">HEAD</div>
             {headIndex == null ? (
