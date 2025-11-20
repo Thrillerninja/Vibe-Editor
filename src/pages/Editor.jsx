@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { TreeVisualization } from '../components';
+import {useEffect, useRef, useState, useMemo} from 'react';
+import {TreeVisualization, HistoryGraph} from '../components';
 import React from 'react';
 import posthog from '../utils/posthog';
-import { useNavigate } from 'react-router-dom';
-import { buildTextFromSentences } from '../utils/treeParser';
-import { applySentenceEdit } from '../utils/sentenceEditor';
-import { updateDirtyNodes } from '../services/claude';
-import { useUserIdentification } from '../hooks/useUserIdentification';
-import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
-import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
+import {useNavigate} from 'react-router-dom';
+import {buildTextFromSentences} from '../utils/treeParser';
+import {applySentenceEdit} from '../utils/sentenceEditor';
+import {updateDirtyNodes} from '../services/claude';
+import {useUserIdentification} from '../hooks/useUserIdentification';
+import {applyDirtySubtreeRestructure, createPlaceholderHierarchy} from '../utils/hierarchyIntegration';
+import {hasDirtyNodes, clearDirtyFlags} from '../utils/dirtyTracking';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -94,11 +94,24 @@ export default function Editor() {
         }
     }, [sentences]);
 
-    // Split state: percentage of total width for the left pane (0–100)
+    // Split state for horizontal divider
     const [leftPct, setLeftPct] = useState(50);
-    const containerRef = useRef(null);
-    const draggingRef = useRef(false);
+    const horizontalContainerRef = useRef(null);
+    const draggingHorizontalRef = useRef(false);
     const textareaRef = useRef(null);
+
+    // Split state for vertical divider
+    const [bottomPct, setBottomPct] = useState(15);
+    const verticalContainerRef = useRef(null);
+    const draggingVerticalRef = useRef(false);
+
+    // History entries now store full snapshots with parent/branch info.
+    // Each entry: { id, ts, text, value, parentId, branch }
+    const [history, setHistory] = useState([]);
+    // Index in history array representing the current HEAD (null when no commits)
+    const [headIndex, setHeadIndex] = useState(null);
+    // Pending revert index for the custom confirmation modal (null = none)
+    const [pendingRevert, setPendingRevert] = useState(null);
 
     const insertExample = () => {
         // Parse example text into sentences
@@ -139,7 +152,7 @@ export default function Editor() {
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
             // Ask Claude to restructure dirty subtrees
-            const { dirtyRootNodes, restructuredSubtrees, newRootTitle } = await updateDirtyNodes(
+            const {dirtyRootNodes, restructuredSubtrees, newRootTitle} = await updateDirtyNodes(
                 sentencesToProcess,
                 hierarchyMeta,
                 dirtyNodeIds,
@@ -192,12 +205,87 @@ export default function Editor() {
         });
 
         setSentences(updatedSentences);
+        addCommit(updatedSentences, 'Tree updated');
     }
 
-    // Handle drag start
-    const onHandleMouseDown = (e) => {
+    // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
+    const addCommit = (data, title) => {
+        const id = history.length;
+        const ts = Date.now();
+
+        setHistory((h) => {
+            let parentId = null;
+            let branchId = 0;
+
+            if (h.length === 0) {
+                // no history yet -> first commit
+                const newCommit = [{id, ts, data, title, parentId, branchId}];
+                setHeadIndex(0);
+                return newCommit;
+            }
+
+            branchId = h[headIndex].branchId ?? 0;
+            parentId = h[headIndex].id;
+
+            // Check if parent has other children (successors) in current history
+            const parentHasOtherChildren = h.some((item, idx) => idx !== headIndex && item.parentId === parentId);
+            if (parentHasOtherChildren) {
+                // Create a new branch
+                branchId = Math.max(...h.map(c => c.branchId), 0) + 1;
+            }
+
+            const newHistory = h.slice(0, h.length);
+            newHistory.push({id, ts, data, title, parentId, branchId});
+            setHeadIndex(newHistory.length - 1);
+            return newHistory;
+        });
+    };
+
+    // Revert to a historical state by index. Confirm with the user before reverting.
+    // const handleRevert = (index) => {
+    //   if (typeof index !== 'number') return;
+    //   const entry = history[index];
+    //   if (!entry) return;
+    //   const ok = window.confirm(`Revert to commit "${entry.title}" at ${new Date(entry.ts).toLocaleString()}?`);
+    //   if (!ok) return;
+    //   // Restore text and tree state and move HEAD to the selected commit (detached).
+    //   setText(entry.text);
+    //   setTextTree(entry.text);
+    //   setHeadIndex(index);
+    // };
+    // When called from HistoryGraph we open the modal and store the requested index.
+    const handleRevert = (index) => {
+        if (typeof index !== 'number') return;
+        if (index === headIndex) return;
+        const entry = history[index];
+        if (!entry) return;
+        setPendingRevert(index);
+    };
+
+    // Confirm and perform the revert (called by the modal)
+    const confirmRevert = () => {
+        const index = pendingRevert;
+        if (typeof index !== 'number') return setPendingRevert(null);
+        const entry = history[index];
+        if (!entry) return setPendingRevert(null);
+        setSentences(entry.data);
+        //setHierarchyState('needs-full-regen');
+        setHeadIndex(index);
+        setPendingRevert(null);
+    };
+
+    const cancelRevert = () => setPendingRevert(null);
+
+    // Handle horizontal drag start
+    const onHorizontalHandleMouseDown = (e) => {
         e.preventDefault();
-        draggingRef.current = true;
+        draggingHorizontalRef.current = true;
+    };
+
+    // Handle vertical drag start
+    const onVerticalHandleMouseDown = (e) => {
+        e.preventDefault();
+        draggingVerticalRef.current = true;
     };
 
     useEffect(() => {
@@ -212,28 +300,37 @@ export default function Editor() {
         }
     }, []);
 
-    // Global move/up handlers for both mouse and touch
+    // Global move/up handlers
     useEffect(() => {
-        const onMove = (clientX) => {
-            if (!draggingRef.current || !containerRef.current) return;
-            const rect = containerRef.current.getBoundingClientRect();
-            const x = Math.min(Math.max(clientX, rect.left), rect.right);
-            const pct = ((x - rect.left) / rect.width) * 100;
-            const clamped = Math.min(80, Math.max(20, pct));
-            setLeftPct(clamped);
+        const onMove = (clientX, clientY) => {
+            if (draggingHorizontalRef.current && horizontalContainerRef.current) {
+                const rect = horizontalContainerRef.current.getBoundingClientRect();
+                const x = Math.min(Math.max(clientX, rect.left), rect.right);
+                const pct = ((x - rect.left) / rect.width) * 100;
+                const clamped = Math.min(80, Math.max(20, pct));
+                setLeftPct(clamped);
+            }
+            if (draggingVerticalRef.current && verticalContainerRef.current) {
+                const rect = verticalContainerRef.current.getBoundingClientRect();
+                const y = Math.min(Math.max(clientY, rect.top), rect.bottom);
+                const pct = ((rect.bottom - y) / rect.height) * 100;
+                const clamped = Math.min(80, Math.max(5, pct));
+                setBottomPct(clamped);
+            }
         };
 
-        const handleMouseMove = (e) => onMove(e.clientX);
+        const handleMouseMove = (e) => onMove(e.clientX, e.clientY);
         const handleTouchMove = (e) => {
-            if (e.touches && e.touches[0]) onMove(e.touches[0].clientX);
+            if (e.touches && e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
         };
         const endDrag = () => {
-            draggingRef.current = false;
+            draggingHorizontalRef.current = false;
+            draggingVerticalRef.current = false;
         };
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', endDrag);
-        window.addEventListener('touchmove', handleTouchMove, { passive: false });
+        window.addEventListener('touchmove', handleTouchMove, {passive: false});
         window.addEventListener('touchend', endDrag);
 
         return () => {
@@ -247,7 +344,8 @@ export default function Editor() {
     return (
         <div className="flex flex-col h-screen bg-gray-50">
             {/* Main Header - Full Width */}
-            <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between" style={{ zIndex: 100001 }}>
+            <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
+                 style={{zIndex: 100001}}>
                 <h1 className="text-xl font-bold text-gray-900">Vibe Editor</h1>
                 <div className="flex items-center gap-4">
                     {/* Depth Slider */}
@@ -274,16 +372,20 @@ export default function Editor() {
                     >
                         {isGenerating ? (
                             <>
-                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                     viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                            strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor"
+                                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                                 {hierarchyState === 'has-dirty-nodes' ? 'Updating...' : 'Generating...'}
                             </>
                         ) : (
                             <>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                                          d="M13 10V3L4 14h7v7l9-11h-7z"/>
                                 </svg>
                                 {hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
                             </>
@@ -314,23 +416,27 @@ export default function Editor() {
 
             {/* Main Content Area */}
             <div
-                ref={containerRef}
-                className="flex flex-1 select-none"
-                style={{ userSelect: draggingRef.current ? 'none' : undefined }}
+                ref={horizontalContainerRef}
+                className="flex flex-col h-screen select-none"
+                style={{userSelect: draggingHorizontalRef.current || draggingVerticalRef.current ? 'none' : undefined}}
             >
-                {/* Left Pane (Text Editor) */}
                 <div
-                    className="flex flex-col border-r border-gray-200"
-                    style={{
-                        flexBasis: `${leftPct}%`,
-                        minWidth: 0,
-                        zIndex: 100000
-                    }}
+                    className="flex-1 flex"
+                    style={{flexBasis: `${100 - bottomPct}%`, minHeight: 0}}
                 >
+                    {/* Left Pane (Text Editor) */}
+                    <div
+                        className="flex flex-col"
+                        style={{
+                            flexBasis: `${leftPct}%`,
+                            minWidth: 0,
+                        }}
+                    >
                     <textarea
                         ref={textareaRef}
                         value={text}
                         onChange={handleTextChange}
+                        onBlur={() => addCommit(sentences, "Text updated")}
                         className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
                         placeholder="Enter your text here..."
                         style={{
@@ -338,41 +444,84 @@ export default function Editor() {
                                 '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
                         }}
                     />
-                </div>
+                    </div>
 
-                {/* Draggable Divider */}
-                <DividerHandle
-                    onMouseDown={onHandleMouseDown}
-                    onTouchStart={onHandleMouseDown}
-                    leftPct={leftPct}
-                    setLeftPct={setLeftPct}
-                />
+                    {/* Draggable Divider */}
+                    <VerticalDividerHandle
+                        onMouseDown={onHorizontalHandleMouseDown}
+                        onTouchStart={onHorizontalHandleMouseDown}
+                    />
 
-                {/* Right Pane (Canvas) */}
-                <div
-                    className="flex flex-col"
-                    style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
-                >
+                    {/* Right Pane (Canvas) */}
                     <div
-                        id="graph-pane"
-                        className="flex-1 relative overflow-hidden"
+                        className="flex flex-col"
+                        style={{flexBasis: `${100 - leftPct}%`, minWidth: 0}}
                     >
-                        <TreeVisualization
-                            sentences={sentences}
-                            onTreeUpdate={handleTreeUpdate}
-                        />
+                        <div
+                            id="graph-pane"
+                            className="flex-1 relative overflow-hidden"
+                        >
+                            <TreeVisualization
+                                sentences={sentences}
+                                onTreeUpdate={handleTreeUpdate}
+                            />
+                        </div>
                     </div>
                 </div>
+                <HorizontalDividerHandle
+                    onMouseDown={onVerticalHandleMouseDown}
+                    onTouchStart={onVerticalHandleMouseDown}
+                />
+                <div
+                    ref={verticalContainerRef}
+                    className="bg-white bottom-pane"
+                    style={{flexBasis: `${bottomPct}%`, minHeight: 0}}
+                >
+                    <div className="p-3 h-full">
+                        <HistoryGraph history={history} onRevert={handleRevert} headIndex={headIndex}/>
+                    </div>
+                </div>
+
+                {/* Custom confirmation modal for revert */}
+                {pendingRevert != null && (() => {
+                    const entry = history[pendingRevert];
+                    if (!entry) return null;
+                    return (
+                        <div className="fixed inset-0 z-60 flex items-center justify-center">
+                            {/* backdrop */}
+                            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert}/>
+                            <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full p-4 mx-4">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex-1">
+                                        <div className="text-sm font-semibold text-gray-900">Revert to this edit?</div>
+                                        <div className="text-xs text-gray-600 mt-1">Edit
+                                            #{entry.id + 1} • {new Date(entry.ts).toLocaleString()}</div>
+                                        {entry.title &&
+                                            <div className="text-xs text-gray-800 mt-2 font-medium">{entry.title}</div>}
+                                    </div>
+                                </div>
+                                <div className="mt-4 flex justify-end gap-2">
+                                    <button onClick={cancelRevert}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel
+                                    </button>
+                                    <button onClick={confirmRevert}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Revert
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })()}
             </div>
         </div>
     );
 }
 
 // A11y-friendly divider with mouse, touch, and keyboard support
-function DividerHandle({
-    onMouseDown,
-    onTouchStart,
-}) {
+function VerticalDividerHandle({
+                                   onMouseDown,
+                                   onTouchStart,
+                               }) {
     return (
         <button
             aria-label="Resize panels"
@@ -387,7 +536,6 @@ function DividerHandle({
                 background: 'white',
                 border: 'none',
                 padding: 0,
-                zIndex: 100000
             }}
         >
             {/* Visible center line */}
@@ -395,6 +543,35 @@ function DividerHandle({
                 aria-hidden
                 className="block h-full bg-gray-300 group-hover:bg-gray-400"
                 style={{ width: '2px', margin: '0 auto' }}
+            />
+        </button>
+    );
+}
+
+function HorizontalDividerHandle({
+                                     onMouseDown,
+                                     onTouchStart,
+                                 }) {
+    return (
+        <button
+            aria-label="Resize panels"
+            title="Drag to resize"
+            onMouseDown={onMouseDown}
+            onTouchStart={onTouchStart}
+            className="relative group"
+            style={{
+                height: '6px',
+                cursor: 'row-resize',
+                background: 'white',
+                border: 'none',
+                padding: 0,
+            }}
+        >
+            {/* Visible center line */}
+            <span
+                aria-hidden
+                className="block w-full bg-gray-300 group-hover:bg-gray-400"
+                style={{ height: '2px', margin: 'auto 0' }}
             />
         </button>
     );

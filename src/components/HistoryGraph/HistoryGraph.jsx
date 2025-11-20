@@ -2,7 +2,7 @@ import React, { useRef, useState, useMemo } from 'react';
 
 // Responsive git-style history graph.
 // Props:
-// - history: Array of { id, ts, text, parentId, branchId }
+// - history: Array of { id, ts, data, parentId, branchId }
 // - className: optional container class
 // - onRevert(index): function(index) called when clicking a node
 // - headIndex: index into data for current HEAD
@@ -18,7 +18,7 @@ export default function HistoryGraph({
     const xStep = 25;
     const xOffset = 20;
     const yStep = 20;
-    const yOffset = 5;
+    const yOffset = 10;
 
     const laneColors = useMemo(() => [
       '#6366f1', // indigo
@@ -62,7 +62,7 @@ export default function HistoryGraph({
             const parentY = parentNode.y;
             const x = parentX + xStep;
 
-            nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title });
+            nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title });
 
               const color = laneColors[lane % laneColors.length];
               if (Math.abs(parentLane - lane) === 0) {
@@ -199,27 +199,6 @@ export default function HistoryGraph({
             );
           })}
         </svg>
-
-        {/* Minimal info area with current head details */}
-        <div style={{ minWidth: 120, maxWidth: 180, overflow: 'hidden' }} className="text-xs text-gray-600 flex flex-col justify-center h-full">
-          <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-600">
-            <div className="text-xs text-gray-800 font-medium">HEAD</div>
-            {headIndex == null ? (
-              <div className="text-xs text-gray-500">No head</div>
-            ) : (
-              (() => {
-                const h = history[headIndex];
-                if (!h) return <div className="text-xs text-gray-500">-</div>;
-                return (
-                  <div>
-                    <div className="text-xs text-gray-800">Edit #{h.id + 1} "{h.title}"</div>
-                    <div className="text-xs text-gray-500">{new Date(h.ts).toLocaleString()}</div>
-                  </div>
-                );
-              })()
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Custom tooltip rendered absolutely within the container */}
@@ -233,11 +212,8 @@ export default function HistoryGraph({
           <div className="flex items-start gap-2">
             <span style={{ width: 10, height: 10, borderRadius: 6, background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length], display: 'inline-block', marginTop: 3 }} aria-hidden />
             <div>
-              <div className="text-sm font-medium text-white leading-tight">{tooltip.node.title || `Edit #${tooltip.node.i + 1}`}</div>
+              <div className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
               <div className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
-              {tooltip.node.text ? (
-                <div className="text-[12px] text-gray-100 mt-1 truncate" style={{ maxWidth: 320 }}>{tooltip.node.text}</div>
-              ) : null}
             </div>
           </div>
         </div>
