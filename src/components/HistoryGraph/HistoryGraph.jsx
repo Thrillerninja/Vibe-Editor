@@ -20,9 +20,23 @@ export default function HistoryGraph({
     const yStep = 20;
     const yOffset = 5;
 
-    const laneColors = useMemo(() => ['#6366f1', '#22c55e', '#eab308', '#ec4899', '#7c3aed'], []);
+    const laneColors = useMemo(() => [
+      '#6366f1', // indigo
+      '#22c55e', // green
+      '#eab308', // yellow
+      '#ec4899', // pink
+      '#7c3aed', // purple
+      '#f97316', // orange
+      '#06b6d4', // cyan
+      '#ef4444', // red
+      '#60a5fa', // sky
+      '#f59e0b', // amber
+      '#a78bfa', // light purple
+      '#34d399', // teal-green
+      '#fb7185', // rose
+    ], []);
     // Compute nodes and edges for SVG rendering
-    const { nodes, edges, laneYs } = useMemo(() => {
+    const { nodes, edges, laneYs} = useMemo(() => {
       const nodes = [];
       const edges = [];
 
@@ -57,7 +71,7 @@ export default function HistoryGraph({
               } else {
                   // curve between lanes
                   const cx = (parentX + x) / 2;
-                  const dStr = `M ${parentX} ${parentY} C ${cx} ${parentY} ${cx} ${y} ${x} ${y}`;
+                  const dStr = `M ${parentX} ${parentY} C ${cx + 5} ${parentY} ${cx - 5} ${y} ${x} ${y}`;
                   edges.push({ d: dStr, color: color });
               }
 
@@ -106,23 +120,6 @@ export default function HistoryGraph({
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    setTooltip({ visible: true, x, y, node });
-  }
-
-  // Helper to position tooltip from node coordinates (for keyboard focus)
-  function showTooltipAtNode(node) {
-    const container = containerRef.current;
-    const svg = svgRef.current;
-    if (!container || !svg) return;
-    const crect = container.getBoundingClientRect();
-    const srect = svg.getBoundingClientRect();
-    // Use measured container size for scaling
-    const scaleX = srect.width / svgWidth;
-    const scaleY = srect.height / svgHeight;
-    const px = srect.left + node.x * scaleX;
-    const py = srect.top + node.y * scaleY;
-    const x = px - crect.left;
-    const y = py - crect.top;
     setTooltip({ visible: true, x, y, node });
   }
 
@@ -192,7 +189,6 @@ export default function HistoryGraph({
                   style={{ outline: 'none' }}
                   onClick={() => onRevert(node.i)}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onRevert(node.i); }}
-                  onFocus={() => showTooltipAtNode(node)}
                   onBlur={hideTooltip}
                   tabIndex={0}
                   role="button"
@@ -204,7 +200,7 @@ export default function HistoryGraph({
           })}
         </svg>
 
-        {/* Minimal info area: only edit count and current head details */}
+        {/* Minimal info area with current head details */}
         <div style={{ minWidth: 120, maxWidth: 180, overflow: 'hidden' }} className="text-xs text-gray-600 flex flex-col justify-center h-full">
           <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-600">
             <div className="text-xs text-gray-800 font-medium">HEAD</div>
@@ -230,7 +226,7 @@ export default function HistoryGraph({
       {tooltip.visible && tooltip.node && (
         <div
           className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow max-w-xs"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(-50%, -120%)', whiteSpace: 'normal' }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -120%)', whiteSpace: 'normal' }}
           role="status"
           aria-hidden={false}
         >
