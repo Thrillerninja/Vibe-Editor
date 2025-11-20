@@ -9,29 +9,33 @@ import ReactFlow, {
   useNodesState,
   addEdge,
 } from 'reactflow';
+import posthog from '../../utils/posthog';
 import { AnimatedNodeComponent } from './AnimatedNodeComponent';
 import { useReparenting } from '../../hooks/useReparenting';
 import { useLocalPhysics } from '../../hooks/useLocalPhysics';
 import { useReordering } from '../../hooks/useReordering';
 import { ReparentIndicator } from './ReparentIndicator';
-import { parseTextToHierarchy, flattenTree } from '../../utils/treeParser';
+import { buildTreeFromSentences, flattenTree } from '../../utils/treeParser';
 import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
+import { applyReordering } from '../../utils/sentenceEditor';
 
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
-export function TreeInner({ text, onNodeEmotionChange }) {
-  const safeText = String(text ?? '');
-
+/**
+ * TreeInner - Main tree visualization logic
+ * Now works with sentences array as SSOT
+ */
+export function TreeInner({ sentences = [], onTreeUpdate }) {
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reorderIndicator, setReorderIndicator] = useState(null);
   const [reparentTarget, setReparentTarget] = useState(null);
   const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
-  const [showDebugHitboxes, setShowDebugHitboxes] = useState(false); // Debugging reparenting/-ordering hitboxes
+  const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
   const rfRef = useRef(null);
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -103,12 +107,12 @@ export function TreeInner({ text, onNodeEmotionChange }) {
 
   }, [openEmotionNodeId, nodes, setCenter]);
 
-  // Parse text into flat structure
+  // Build tree structure directly from sentences
   const flat = useMemo(() => {
-    console.log(`${LOG_PREFIX.LAYOUT} Memoizing flat structure`);
-    const tree = parseTextToHierarchy(safeText);
+    console.log(`${LOG_PREFIX.LAYOUT} Building tree from ${sentences.length} sentences`);
+    const tree = buildTreeFromSentences(sentences);
     return flattenTree(tree);
-  }, [safeText]);
+  }, [sentences]);
 
   // Cleanup physics on unmount
   useEffect(() => {
@@ -118,7 +122,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
     };
   }, [physics]);
 
-  // Apply ELK layout when text changes
+  // Apply ELK layout when sentences change
   useEffect(() => {
     // Don't update layout while dragging
     if (isDraggingRef.current) {
@@ -129,12 +133,24 @@ export function TreeInner({ text, onNodeEmotionChange }) {
     let cancelled = false;
 
     const applyLayout = async () => {
-      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for new text`);
+      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for ${flat.nodes.length} nodes`);
 
-      // Preserve existing data for matching nodes
+      // Preserve ONLY metadata (emotion, intensity) from existing nodes
+      // Always use NEW label/content from flat.nodes
       const withData = flat.nodes.map((n) => {
         const existing = nodes.find((x) => x.id === n.id);
-        return existing ? { ...n, data: existing.data } : n;
+        if (existing && existing.data) {
+          return {
+            ...n,
+            data: {
+              ...n.data, // New data (label, content, type, etc.)
+              // Preserve only emotion metadata from existing IF not already in new data
+              emotion: n.data.emotion || existing.data.emotion,
+              intensity: n.data.intensity !== undefined ? n.data.intensity : existing.data.intensity,
+            },
+          };
+        }
+        return n;
       });
 
       const laidOut = await runElk(withData, flat.edges);
@@ -153,7 +169,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
     return () => {
       cancelled = true;
     };
-  }, [safeText, flat.nodes, flat.edges]);
+  }, [sentences, flat.nodes.length, flat.edges]);
 
   /**
    * ReactFlow initialization callback
@@ -263,34 +279,47 @@ export function TreeInner({ text, onNodeEmotionChange }) {
 
       if (reorderInfo) {
         // This is a reorder operation
-        console.log(`${LOG_PREFIX.DRAG} Executing reorder`);
-        reorderNodes(
+        console.log(`${LOG_PREFIX.DRAG} Reorder detected: applying to sentences`);
+
+        // Apply reordering to sentences array
+        const updatedSentences = applyReordering(
+          sentences,
           node.id,
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
+
+        // Update parent component's state
+        if (onTreeUpdate) {
+          onTreeUpdate(updatedSentences);
+        }
+
+        // Stop physics
+        physics.stop();
+
+        // Re-layout will happen automatically via useEffect when sentences change
       } else {
         // Try reparenting (different parent)
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
         onDropToReparent(node.id, node.position.x, node.position.y);
+
+        // Stop physics
+        physics.stop();
+
+        // Re-layout after reparent
+        setTimeout(async () => {
+          if (!isDraggingRef.current) {
+            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
+            const laidOut = await runElk(
+              rfRef.current.getNodes(),
+              rfRef.current.getEdges()
+            );
+            setNodes(laidOut);
+          }
+        }, 50);
       }
-
-      // Stop physics
-      physics.stop();
-
-      // Re-layout after a delay
-      setTimeout(async () => {
-        if (!isDraggingRef.current) {
-          console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after drag`);
-          const laidOut = await runElk(
-            rfRef.current.getNodes(),
-            rfRef.current.getEdges()
-          );
-          setNodes(laidOut);
-        }
-      }, 50);
     },
-    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes]
+    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, sentences, onTreeUpdate]
   );
 
   /**
@@ -308,6 +337,15 @@ export function TreeInner({ text, onNodeEmotionChange }) {
   const handleEmotionChange = useCallback(
     (nodeId, emotion, intensity) => {
       console.log(`[Emotion] Node ${nodeId}: ${emotion} (${intensity})`);
+      // Track AI-powered emotion tagging
+      posthog.capture('emotion_tagged', {
+        node_id: nodeId,
+        emotion: emotion,
+        intensity: intensity,
+        // AI usage tracking
+        model: 'plutchik',
+        feature: 'emotion_selector',
+      });
 
       // Update node data with emotion
       setNodes((nds) =>
@@ -325,15 +363,18 @@ export function TreeInner({ text, onNodeEmotionChange }) {
         )
       );
 
-      // Notify parent component for AI rewriting
-      if (onNodeEmotionChange) {
-        const node = nodes.find((n) => n.id === nodeId);
-        if (node) {
-          onNodeEmotionChange(nodeId, node.data.label, emotion, intensity);
-        }
+      // Update the sentences array with emotion data
+      if (onTreeUpdate) {
+        // Find and update the sentence
+        const updatedSentences = sentences.map(s =>
+          s.id === nodeId
+            ? { ...s, emotion, intensity }
+            : s
+        );
+        onTreeUpdate(updatedSentences);
       }
     },
-    [nodes, onNodeEmotionChange, setNodes]
+    [nodes, sentences, onTreeUpdate, setNodes]
   );
 
   // Pass emotion handler and position to nodes via data
@@ -382,7 +423,7 @@ export function TreeInner({ text, onNodeEmotionChange }) {
         zoomOnScroll
         proOptions={{ hideAttribution: true }}
       >
-        <Background gap={20} color="#e5e7eb" />
+        <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
         <MiniMap pannable zoomable />
         <Controls />
       </ReactFlow>

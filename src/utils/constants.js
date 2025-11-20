@@ -55,6 +55,11 @@ export const NODE_STYLES = {
     border: '#c7d2fe',
     color: '#1f2937',
   },
+  sentence: {
+    background: '#ecfeff',
+    border: '#a5f3fc',
+    color: '#1f2937',
+  },
   argument: {
     background: '#ecfeff',
     border: '#a5f3fc',
@@ -109,7 +114,7 @@ export const EMOTION_COLORS = {
 };
 
 // Logging configuration
-export const LOGGING_ENABLED = true;
+export const LOGGING_ENABLED = false;
 export const LOG_PREFIX = {
   PHYSICS: '[Physics]',
   LAYOUT: '[Layout]',
