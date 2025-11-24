@@ -97,17 +97,48 @@ export default function HistoryGraph({
         const container = scrollContainerRef.current;
         if (!container) return;
 
-        const observer = new ResizeObserver((entries) => {
-            if (entries[0]) {
-                setContainerWidth(entries[0].contentRect.width);
+        // Helper to update width from the container element
+        const updateWidth = () => {
+            try {
+                const w = container.getBoundingClientRect().width || 0;
+                setContainerWidth(w);
+            } catch {
+                // defensive: ignore measurement errors
             }
-        });
+        };
 
-        observer.observe(container);
-        setContainerWidth(container.getBoundingClientRect().width);
+        // If ResizeObserver exists, use it for accurate updates. Otherwise fall back to window resize.
+        let observer;
+        if (typeof ResizeObserver !== 'undefined') {
+            observer = new ResizeObserver((entries) => {
+                if (entries && entries[0] && typeof entries[0].contentRect !== 'undefined') {
+                    setContainerWidth(entries[0].contentRect.width);
+                } else {
+                    // fallback to manual measurement
+                    updateWidth();
+                }
+            });
+            try {
+                observer.observe(container);
+            } catch {
+                // If observe throws, fallback to window resize
+                window.addEventListener('resize', updateWidth);
+            }
+        } else {
+            window.addEventListener('resize', updateWidth);
+        }
 
-        return () => observer.disconnect();
-    }, []);
+        // set initial width synchronously
+        updateWidth();
+
+        return () => {
+            if (observer && typeof observer.disconnect === 'function') {
+                observer.disconnect();
+            } else {
+                window.removeEventListener('resize', updateWidth);
+            }
+        };
+    }, [n]);
 
 
   // Helper to position tooltip from a mouse event
@@ -137,13 +168,14 @@ export default function HistoryGraph({
 
   return (
     // make container relative so tooltip can be absolutely positioned
-    <div className={`w-full h-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box'}}>
+    <div className={`w-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box'}}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
         <div className="text-xs text-gray-500">Edits: {history.length}</div>
       </div>
 
-      <div ref={scrollContainerRef} className="flex items-start gap-3 h-full overflow-auto">
+      <div ref={scrollContainerRef} className="flex items-start gap-3 overflow-auto">
+          <div style={ { width: finalSvgWidth, height: svgHeight, position: 'relative'}} >
         <svg
           ref={svgRef}
           width={finalSvgWidth}
@@ -194,6 +226,7 @@ export default function HistoryGraph({
             );
           })}
         </svg>
+      </div>
       </div>
 
       {/* Custom tooltip rendered absolutely within the container */}

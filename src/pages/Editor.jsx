@@ -101,7 +101,7 @@ export default function Editor() {
     const textareaRef = useRef(null);
 
     // Split state for vertical divider
-    const [bottomPct, setBottomPct] = useState(15);
+    const [bottomPct, setBottomPct] = useState(18);
     const verticalContainerRef = useRef(null);
     const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
