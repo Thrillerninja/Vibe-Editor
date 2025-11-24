@@ -35,91 +35,88 @@ export default function HistoryGraph({
       '#34d399', // teal-green
       '#fb7185', // rose
     ], []);
-    // Compute nodes and edges for SVG rendering
-    const { nodes, edges, laneYs} = useMemo(() => {
-      const nodes = [];
-      const edges = [];
+    // Compute nodes, edges, and SVG dimensions for rendering
+    const { nodes, edges, laneYs, contentWidth, svgHeight } = useMemo(() => {
+        const nodes = [];
+        const edges = [];
+        let maxLane = 0;
+        let maxX = 0;
 
-      let maxLane = 0;
+        history.forEach((commit, i) => {
+            const lane = commit.branchId;
+            maxLane = Math.max(maxLane, lane);
+            const y = lane * yStep + yOffset;
+            let x;
 
-      history.forEach((commit, i) => {
-        // Determine lane
-        let lane = commit.branchId;
-        maxLane = Math.max(maxLane, lane);
+            if (commit.parentId == null) {
+                x = xOffset;
+                nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title });
+            } else {
+                const parentIndex = history.findIndex((c) => c.id === commit.parentId);
+                if (parentIndex !== -1) {
+                    const parentNode = nodes.find((n) => n.i === commit.parentId);
+                    if (parentNode) {
+                        const parent = history[parentIndex];
+                        const parentLane = parent.branchId;
+                        const parentX = parentNode.x;
+                        const parentY = parentNode.y;
+                        x = parentX + xStep;
 
-        const y = lane * yStep + yOffset;
+                        nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title });
 
-        // Create edge to parent
-        if (commit.parentId == null) {
-            nodes.push({ i: i, x: xOffset, y: y, lane, ts: commit.ts, text: commit.text, title: commit.title });
-        } else {
-          const parentIndex = history.findIndex((c) => c.id === commit.parentId);
-          if (parentIndex !== -1) {
-            const parentNode = nodes.find((n) => n.i === commit.parentId);
-            const parent = history[parentIndex];
-            const parentLane = parent.branchId;
-            const parentX = parentNode.x;
-            const parentY = parentNode.y;
-            const x = parentX + xStep;
+                        const color = laneColors[lane % laneColors.length];
+                        if (Math.abs(parentLane - lane) === 0) {
+                            edges.push({ d: `M ${parentX} ${parentY} L ${x} ${y}`, color });
+                        } else {
+                            const cx = (parentX + x) / 2;
+                            const dStr = `M ${parentX} ${parentY} C ${cx + 5} ${parentY} ${cx - 5} ${y} ${x} ${y}`;
+                            edges.push({ d: dStr, color });
+                        }
+                    }
+                }
+            }
+            if (x) {
+                maxX = Math.max(maxX, x);
+            }
+        });
 
-            nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title });
+        const laneYs = Array(maxLane + 1).fill(0).map((_, i) => i * yStep + yOffset);
+        const calculatedContentWidth = maxX + xOffset * 2;
+        const contentHeight = maxLane * yStep + yOffset * 2;
 
-              const color = laneColors[lane % laneColors.length];
-              if (Math.abs(parentLane - lane) === 0) {
-                  // same lane -> straight line
-                  edges.push({ d: `M ${parentX} ${parentY} L ${x} ${y}`, color: color });
-              } else {
-                  // curve between lanes
-                  const cx = (parentX + x) / 2;
-                  const dStr = `M ${parentX} ${parentY} C ${cx + 5} ${parentY} ${cx - 5} ${y} ${x} ${y}`;
-                  edges.push({ d: dStr, color: color });
-              }
+        return { nodes, edges, laneYs, contentWidth: calculatedContentWidth, svgHeight: contentHeight };
+    }, [history, laneColors, xStep, yStep, yOffset]);
 
-          }
-        }
-      });
+    // Refs, state, and effects for responsive SVG
+    const svgRef = useRef(null);
+    const scrollContainerRef = useRef(null);
+    const [containerWidth, setContainerWidth] = useState(0);
+    const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, node: null });
 
-      const laneYs = Array(maxLane + 1).fill(0).map((_, i) => i * yStep + yOffset);
+    React.useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (!container) return;
 
-      return { nodes, edges, laneYs: laneYs };
-    }, [history, laneColors]);
+        const observer = new ResizeObserver((entries) => {
+            if (entries[0]) {
+                setContainerWidth(entries[0].contentRect.width);
+            }
+        });
 
-  // Refs and tooltip state for custom tooltip
-  const containerRef = useRef(null);
-  const svgRef = useRef(null);
-  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
-  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, node: null });
+        observer.observe(container);
+        setContainerWidth(container.getBoundingClientRect().width);
 
-  React.useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
+        return () => observer.disconnect();
+    }, []);
 
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        if (entry.target === container) {
-            console.log("ResizeObserver triggered for HistoryGraph container");
-          setContainerSize({
-            width: entry.contentRect.width,
-            height: entry.contentRect.height,
-          });
-        }
-      }
-    });
-
-    observer.observe(container);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [history.length]);
 
   // Helper to position tooltip from a mouse event
   function showTooltipAtMouse(e, node) {
-    const container = containerRef.current;
+    const container = scrollContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+    const x = e.clientX - rect.left + container.scrollLeft;
+    const y = e.clientY - rect.top + container.scrollTop;
     setTooltip({ visible: true, x, y, node });
   }
 
@@ -136,28 +133,26 @@ export default function HistoryGraph({
     );
   }
 
-  const svgWidth = containerSize.width || 400;
-  const svgHeight = containerSize.height || 120;
+  const finalSvgWidth = Math.max(contentWidth, containerWidth);
 
   return (
     // make container relative so tooltip can be absolutely positioned
-    <div ref={containerRef} className={`w-full h-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box'}}>
+    <div className={`w-full h-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box'}}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
         <div className="text-xs text-gray-500">Edits: {history.length}</div>
       </div>
 
-      <div className="flex items-start gap-3 h-full overflow-auto">
+      <div ref={scrollContainerRef} className="flex items-start gap-3 h-full overflow-auto">
         <svg
           ref={svgRef}
-          width="100%"
-          height="100%"
-          viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-          //preserveAspectRatio="xMinYMid meet"
+          width={finalSvgWidth}
+          height={svgHeight}
+          viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
         >
           {/* background horizontal lane lines */}
           {laneYs.map((y, li) => (
-            <line key={li} x1={0} y1={y} x2={svgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
+            <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
           ))}
 
           {/* edges */}
@@ -205,7 +200,7 @@ export default function HistoryGraph({
       {tooltip.visible && tooltip.node && (
         <div
           className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow max-w-xs"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -120%)', whiteSpace: 'normal' }}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -60%)', whiteSpace: 'normal' }}
           role="status"
           aria-hidden={false}
         >

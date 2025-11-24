@@ -103,6 +103,7 @@ export default function Editor() {
     // Split state for vertical divider
     const [bottomPct, setBottomPct] = useState(15);
     const verticalContainerRef = useRef(null);
+    const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
 
     // History entries now store full snapshots with parent/branch info.
@@ -310,12 +311,13 @@ export default function Editor() {
                 const clamped = Math.min(80, Math.max(20, pct));
                 setLeftPct(clamped);
             }
-            if (draggingVerticalRef.current && verticalContainerRef.current) {
-                const rect = verticalContainerRef.current.getBoundingClientRect();
+            if (draggingVerticalRef.current && verticalContainerRef.current && topPanelRef.current) {
+                const rect = verticalContainerRef.current.parentElement.getBoundingClientRect();
                 const y = Math.min(Math.max(clientY, rect.top), rect.bottom);
                 const pct = ((rect.bottom - y) / rect.height) * 100;
                 const clamped = Math.min(80, Math.max(5, pct));
-                setBottomPct(clamped);
+                verticalContainerRef.current.style.flexBasis = `${clamped}%`;
+                topPanelRef.current.style.flexBasis = `${100 - clamped}%`;
             }
         };
 
@@ -324,6 +326,13 @@ export default function Editor() {
             if (e.touches && e.touches[0]) onMove(e.touches[0].clientX, e.touches[0].clientY);
         };
         const endDrag = () => {
+            if (draggingVerticalRef.current && verticalContainerRef.current) {
+                const newBottomPct = parseFloat(verticalContainerRef.current.style.flexBasis);
+                if (!isNaN(newBottomPct)) {
+                    setBottomPct(newBottomPct);
+                }
+
+            }
             draggingHorizontalRef.current = false;
             draggingVerticalRef.current = false;
         };
@@ -421,6 +430,7 @@ export default function Editor() {
                 style={{userSelect: draggingHorizontalRef.current || draggingVerticalRef.current ? 'none' : undefined}}
             >
                 <div
+                    ref={topPanelRef}
                     className="flex-1 flex"
                     style={{flexBasis: `${100 - bottomPct}%`, minHeight: 0}}
                 >
