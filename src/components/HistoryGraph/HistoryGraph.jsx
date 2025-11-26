@@ -208,8 +208,8 @@ const HistoryGraph = forwardRef(({
     const container = scrollContainerRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left + container.scrollLeft;
-    const y = e.clientY - rect.top + container.scrollTop;
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
     setTooltip({visible: true, x, y, node});
   }
 
