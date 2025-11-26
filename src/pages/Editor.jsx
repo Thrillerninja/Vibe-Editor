@@ -20,6 +20,7 @@ const EXAMPLE_TEXT =
     'These innovations may help farmers cope with climate extremes.';
 
 export default function Editor() {
+    const historyGraphRef = useRef(null);
     useUserIdentification();
     const navigate = useNavigate();
 
@@ -106,9 +107,7 @@ export default function Editor() {
     const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
 
-    // History now lives inside the HistoryGraph component. Use a ref to call its
-    // imperative API (addCommit) and listen for revert confirmations.
-    const historyRef = useRef(null);
+
 
     const insertExample = () => {
         // Parse example text into sentences
@@ -121,7 +120,6 @@ export default function Editor() {
         });
 
         setSentences(newSentences);
-        addCommit(newSentences, "Inserted example")
     };
 
     const clearText = () => setSentences([]);
@@ -203,14 +201,14 @@ export default function Editor() {
         });
 
         setSentences(updatedSentences);
-        addCommit(updatedSentences, "Tree updated")
+        historyGraphRef.current?.addCommit(updatedSentences, 'Tree updated');
     }
 
-    function addCommit(sentences, title = "Text updated") {
-        if (historyRef.current && typeof historyRef.current.addCommit === 'function') {
-            historyRef.current.addCommit(sentences, title);
-        }
-    }
+    const handleRevertComplete = (revertedData) => {
+        setSentences(revertedData);
+    };
+
+
 
     // Handle horizontal drag start
     const onHorizontalHandleMouseDown = (e) => {
@@ -381,7 +379,7 @@ export default function Editor() {
                         ref={textareaRef}
                         value={text}
                         onChange={handleTextChange}
-x                       onBlur={() => addCommit(sentences, "Text updated")}
+                        onBlur={() => historyGraphRef.current?.addCommit(sentences, "Text updated")}
                         className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
                         placeholder="Enter your text here..."
                         style={{
@@ -423,14 +421,11 @@ x                       onBlur={() => addCommit(sentences, "Text updated")}
                     style={{flexBasis: `${bottomPct}%`, minHeight: 0}}
                 >
                     <div className="p-3 h-full">
-                        <HistoryGraph ref={historyRef} onRevertConfirmed={(entry) => {
-                            // Parent updates its sentences when HistoryGraph confirms a revert
-                            setSentences(entry.data);
-                            // Mark that the hierarchy needs regeneration to match the reverted text
-                            setHierarchyState('needs-full-regen');
-                        }} />
+                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete}/>
                     </div>
                 </div>
+
+
             </div>
         </div>
     );
