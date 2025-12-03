@@ -29,6 +29,7 @@ export default function Editor() {
 
     // Derived state: text is built from sentences
     const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
+    const prevTextRef = useRef(text);
 
     // AI hierarchy depth control (3-6 levels)
     const [maxDepth, setMaxDepth] = useState(3);
@@ -108,6 +109,10 @@ export default function Editor() {
     const draggingVerticalRef = useRef(false);
 
 
+    function addCommit(newSentences, title) {
+        historyGraphRef.current?.addCommit(newSentences, title);
+        prevTextRef.current = text;
+    }
 
     const insertExample = () => {
         // Parse example text into sentences
@@ -120,6 +125,7 @@ export default function Editor() {
         });
 
         setSentences(newSentences);
+        addCommit(newSentences, "Example inserted");
     };
 
     const clearText = () => setSentences([]);
@@ -162,6 +168,7 @@ export default function Editor() {
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
             setSentences(updatedSentences);
+            addCommit(updatedSentences, 'Hierarchy regenerated');
 
             console.log('[App] Dirty subtrees restructured, clean portions preserved');
             setHierarchyState('generated');
@@ -201,14 +208,12 @@ export default function Editor() {
         });
 
         setSentences(updatedSentences);
-        historyGraphRef.current?.addCommit(updatedSentences, 'Tree updated');
+        addCommit(updatedSentences, 'Tree updated');
     }
 
     const handleRevertComplete = (revertedData) => {
         setSentences(revertedData);
     };
-
-
 
     // Handle horizontal drag start
     const onHorizontalHandleMouseDown = (e) => {
@@ -282,6 +287,12 @@ export default function Editor() {
             window.removeEventListener('touchend', endDrag);
         };
     }, []);
+
+    function handleTextOnBlur(e) {
+        const value = e.target.value;
+        if (value === prevTextRef.current) return; // No change
+        addCommit(sentences, "Text edited");
+    }
 
     return (
         <div className="flex flex-col h-screen bg-gray-50">
@@ -379,7 +390,7 @@ export default function Editor() {
                         ref={textareaRef}
                         value={text}
                         onChange={handleTextChange}
-                        onBlur={() => historyGraphRef.current?.addCommit(sentences, "Text updated")}
+                        onBlur={handleTextOnBlur}
                         className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
                         placeholder="Enter your text here..."
                         style={{
@@ -456,7 +467,7 @@ function VerticalDividerHandle({
             <span
                 aria-hidden
                 className="block h-full bg-gray-300 group-hover:bg-gray-400"
-                style={{ width: '2px', margin: '0 auto' }}
+                style={{width: '2px', margin: '0 auto'}}
             />
         </button>
     );
@@ -485,7 +496,7 @@ function HorizontalDividerHandle({
             <span
                 aria-hidden
                 className="block w-full bg-gray-300 group-hover:bg-gray-400"
-                style={{ height: '2px', margin: 'auto 0' }}
+                style={{height: '2px', margin: 'auto 0'}}
             />
         </button>
     );
