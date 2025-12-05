@@ -586,7 +586,7 @@ export function rebuildSentenceOrderFromHierarchy(sentences, hierarchyNodes, max
 
     // Find top-level nodes by level (these are direct children of root)
     const topLevelNodes = hierarchyNodes.filter(n => n.level === maxLevel);
-
+    console.log(`TEST`, sentences);
     console.log(`${LOG_PREFIX.PARSER} Found ${topLevelNodes.length} top-level nodes at level ${maxLevel}`);
     console.log(`${LOG_PREFIX.PARSER} Top-level node IDs: ${topLevelNodes.map(n => n.id).join(', ')}`);
 

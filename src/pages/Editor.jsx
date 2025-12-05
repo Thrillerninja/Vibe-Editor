@@ -9,6 +9,8 @@ import {updateDirtyNodes} from '../services/claude';
 import {useUserIdentification} from '../hooks/useUserIdentification';
 import {applyDirtySubtreeRestructure, createPlaceholderHierarchy} from '../utils/hierarchyIntegration';
 import {hasDirtyNodes, clearDirtyFlags} from '../utils/dirtyTracking';
+import { ReactFlowProvider } from 'reactflow';
+import ElkTree from '../components/Tree/ELKTree';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -164,6 +166,8 @@ export default function Editor() {
 
             // Apply the restructured subtrees to the existing hierarchy
             let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle);
+            
+            console.log("UPDATED SENTENCES", updatedSentences); 
 
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
@@ -415,10 +419,10 @@ export default function Editor() {
                             id="graph-pane"
                             className="flex-1 relative overflow-hidden"
                         >
-                            <TreeVisualization
-                                sentences={sentences}
-                                onTreeUpdate={handleTreeUpdate}
-                            />
+                                <ReactFlowProvider>
+                                    <ElkTree sentences={sentences}/>
+                                </ReactFlowProvider>
+
                         </div>
                     </div>
                 </div>

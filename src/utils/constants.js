@@ -7,6 +7,9 @@ export const NODE_WIDTH = 200;
 export const NODE_MIN_HEIGHT = 56;
 export const NODE_PADDING = 24;
 
+
+export const LEAF_NODE_LEVEL = 0;
+
 // Typography
 export const FONT_SIZE = 13;
 export const LINE_HEIGHT_MULTIPLIER = 1.5;
@@ -21,7 +24,7 @@ export const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
   'elk.layered.spacing.nodeNodeBetweenLayers': 180,
-  'elk.spacing.nodeNode': 28,
+  'elk.spacing.nodeNode': 69,
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 };
 

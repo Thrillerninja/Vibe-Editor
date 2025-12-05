@@ -368,6 +368,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             content: '', // Groups don't have direct content
             children: [],
             isDirty: isDirty,
+            emotion: node.emotion,
+            intensity: node.intensity,
         });
     });
 
@@ -397,6 +399,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         children: topLevelNodes,
         startIdx: 0,
         isDirty: dirtyNodeIds.has('root'),
+        emotion: "NEUTRAL",
+        intensity: 0,
     };
 
     console.log(`${LOG_PREFIX.PARSER} Tree built with hierarchy: root + ${nodeMap.size} nodes`);

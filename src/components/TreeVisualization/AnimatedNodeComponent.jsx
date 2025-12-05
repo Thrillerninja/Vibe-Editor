@@ -17,17 +17,12 @@ import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal'
 /**
  * Gets node background color based on emotion
  */
-function getEmotionColor(emotion, intensity, type) {
-  if (!emotion || emotion === EMOTIONS.NEUTRAL) {
-    return NODE_STYLES[type]?.background || NODE_STYLES.argument.background;
+function getEmotionColor(emotion) {
+  if (emotion == undefined){
+    emotion = EMOTIONS.NEUTRAL;
   }
-
   const colors = EMOTION_COLORS[emotion];
-  if (!colors) return NODE_STYLES[type]?.background;
-
-  if (intensity < 33) return colors.light;
-  if (intensity < 66) return colors.medium;
-  return colors.strong;
+  return '#10b981';
 }
 
 /**
@@ -98,7 +93,7 @@ export function AnimatedNodeComponent({ id, data }) {
     }
   };
 
-  const bg = getEmotionColor(data.emotion, data.intensity || 0, data.type);
+  const bg = getEmotionColor(data.emotion);
   const border = getBorderColor(data.emotion, data.intensity || 0, data.type);
   const color = data.type === 'root' ? 'white' : '#1f2937';
 
