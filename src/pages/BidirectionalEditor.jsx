@@ -146,7 +146,7 @@ export default function BidirectionalEditor() {
       </div>
 
       {/* Main content */}
-      <div style={{ display: 'flex', gap: '8px', flex: 1, minHeight: 0 }}>
+      <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
         {/* LEFT: Text Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
@@ -170,38 +170,65 @@ export default function BidirectionalEditor() {
         </div>
 
         {/* CENTER: Buttons */}
-        <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '12px', width: '70px' }}>
-          <button
-            onClick={convertTextToTree}
-            style={{
-              padding: '10px 6px',
-              backgroundColor: '#3b82f6',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '20px',
-              fontWeight: 'bold',
-            }}
-          >
-            →
-          </button>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'center', 
+            gap: '12px', 
+            width: '5px',
+            alignItems: 'center',
+            overflow: 'visible',
+            position: 'relative',
+            zIndex: 10,
+            pointerEvents: 'auto'
+          }}>
+            <button
+              onClick={convertTextToTree}
+              style={{
+                width: '44px',
+                height: '44px',
+                padding: '0',
+                backgroundColor: '#000',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
+                </svg>
+            </button>
 
-          <button
-            onClick={convertTreeToText}
-            style={{
-              padding: '10px 6px',
-              backgroundColor: '#10b981',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '20px',
-              fontWeight: 'bold',
-            }}
-          >
-            ←
-          </button>
+            <button
+              onClick={convertTreeToText}
+              style={{
+                width: '44px',
+                height: '44px',
+                padding: '0',
+                backgroundColor: '#000',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                cursor: 'pointer',
+                fontSize: '24px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="19" y1="12" x2="5" y2="12"></line>
+                  <polyline points="12 19 5 12 12 5"></polyline>
+                </svg>
+            </button>
         </div>
 
         {/* RIGHT: Tree Pane */}
