@@ -2,16 +2,24 @@ import { Handle, Position } from "reactflow";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion } from 'framer-motion';
+import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
+import { em } from "framer-motion/client";
+
+
+function getEmotionColor(emotion) {
+  const colors = EMOTION_COLORS[emotion];
+  return ALTERNATIVE_EMOTION_COLORS[emotion];
+}
 
 export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.sentence || "");
-
+  const [editable, setEditable] = useState(data.isLeaf || false);
+  console.log('[TreeNode] Rendering node:', data);
   function applyChanges() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
   }
-
   // Init node display text with the sentence
   useEffect(() => {
     setNodeText(data.sentence || "");
@@ -44,6 +52,7 @@ export default function TreeNode({ data }) {
         <textarea
           value={nodeText}
           onChange={(e) => setNodeText(e.target.value)}
+          readOnly={!editable}
           style={{
             width: "100%",
             height: 120,
@@ -68,7 +77,7 @@ export default function TreeNode({ data }) {
         style={{
           padding: 12,
           borderRadius: 8,
-          background: "#10b981",
+          background: getEmotionColor(data.emotion),
           color: "white",
           textAlign: "center",
           cursor: "pointer",
@@ -76,7 +85,12 @@ export default function TreeNode({ data }) {
         }}
       >
         <Handle type="target" position={Position.Left} />
-        {nodeText}
+        {
+          // The inline command is within these brackets {}
+          nodeText.length > 50
+            ? nodeText.substring(0, 50) + '...'
+            : nodeText
+        }
         <Handle type="source" position={Position.Right} />
       </motion.div>
       {dialog}

@@ -12,23 +12,33 @@ import { runElk } from "../../utils/layoutEngine";
 import TreeNode from "./TreeNode";
 
 import { LEAF_NODE_LEVEL } from "../../utils/constants";
+import { em } from "framer-motion/client";
 
 const nodeTypes = { node: TreeNode };
 
 /**
  * Recursively convert tree structure to ELK nodes
- * Marks leaf nodes (level 1) as editable
+ * Marks leaf nodes (level 0) as editable
  */
 function treeToElkNodes(node, nodes = []) {
+  // Determine if this node is a leaf (no children OR type is "leaf")
+  const isLeaf = (!node.children || node.children.length === 0) || node.type === "leaf";
+  
+  // For leaf nodes, use content; for others, use label
+  const sentenceContent = isLeaf 
+    ? (node.content || node.label || "NodeDefault")
+    : (node.label || node.content || "Node");
+
   nodes.push({
     id: node.id,
     type: "node",
     width: 200,
     height: 60,
     data: {
-      sentence: node.label || node.content || "Node",
-      isLeaf: node.level === LEAF_NODE_LEVEL, // Only leaf nodes are editable
+      sentence: sentenceContent,
+      isLeaf: node.level === LEAF_NODE_LEVEL,
       nodeLevel: node.level,
+      emotion: node.emotion,
     },
   });
 
@@ -63,12 +73,12 @@ function treeToElkEdges(node, edges = []) {
  * - a NEW tree object when a node was changed (new object identity on the path),
  * - the original node object when nothing changed in that subtree.
  */
-function updateNodeInTree(node, nodeId, newLabel) {
+function updateNodeInTree(node, nodeId, newContent) {
   if (!node) return node;
 
   // If this is the target node, return a shallow copy with updated label
   if (node.id === nodeId) {
-    return { ...node, label: newLabel };
+    return { ...node, content: newContent };
   }
 
   // If no children, nothing to change; return the same node object
@@ -77,7 +87,7 @@ function updateNodeInTree(node, nodeId, newLabel) {
   }
 
   // Recurse into children, producing updatedChildren array
-  const updatedChildren = node.children.map(child => updateNodeInTree(child, nodeId, newLabel));
+  const updatedChildren = node.children.map(child => updateNodeInTree(child, nodeId, newContent));
 
   // Detect whether any child changed identity (immutability check)
   let changed = false;
@@ -118,10 +128,10 @@ export default function ElkTree({ tree, setTree }) {
   }, [tree]);
 
   // Handle node edit - only for leaf nodes
-  const handleNodeEdit = useCallback((nodeId, newLabel) => {
-    console.log('[ElkTree] Editing node', nodeId, 'to', newLabel);
+  const handleNodeEdit = useCallback((nodeId, newContent) => {
+    console.log('[ElkTree] Editing node', nodeId, 'to', newContent);
 
-    const updatedRoot = updateNodeInTree(tree, nodeId, newLabel);
+    const updatedRoot = updateNodeInTree(tree, nodeId, newContent);
 
     // If updateNodeInTree returns the same root object, nothing changed
     if (updatedRoot === tree) {

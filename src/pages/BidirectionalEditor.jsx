@@ -11,8 +11,10 @@
 import React, { useState, useEffect,useMemo } from 'react';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
-
+import { buildTree } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
+
+const RANDOM_POETRY= `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 
 function createNode(id, label, children = [], level = 0) {
   return {
@@ -27,7 +29,7 @@ export default function BidirectionalEditor() {
   const [sentences, setSentences] = useState([]);
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(null);
-  const [maxDepth, setMaxDepth] = useState(2);
+  const [maxDepth, setMaxDepth] = useState(3);
 
   // ═══════════════════════════════════════════════════════════════
   // LEFT PANE: Parse text into sentences
@@ -52,22 +54,30 @@ export default function BidirectionalEditor() {
   // BUTTON 1: TEXT → TREE
   // ═══════════════════════════════════════════════════════════════
 
-  const convertTextToTree = () => {
+  const convertTextToTree = async () => {
     console.log('[BidirectionalEditor] Converting text to tree...', sentences);
 
     // Build sentences as leaf nodes
-    const sentenceNodes = sentences.map((sentence, i) => ({
-      id: `s-${i}`,
-      label: sentence.content,
-      level: LEAF_NODE_LEVEL,
-      children: [],
-    }));
-    console.log('[BidirectionalEditor] Created sentence nodes:', sentenceNodes);
+    try {
+      // Ask the model to build a tree with `maxDepth` layers
+      const aiRoot = await buildTree(sentences, maxDepth);
+      console.log('[BidirectionalEditor] Claude returned tree:', aiRoot);
 
-    // Root node
-    const rootNode = createNode('Document', "Root", sentenceNodes, maxDepth);
-    console.log('[BidirectionalEditor] Created root node:', rootNode);
-    setTree(rootNode);
+      // If AI returned something valid, use it
+      setTree(aiRoot);
+    } catch (err) {
+      console.error('[BidirectionalEditor] AI tree generation failed, falling back to simple layout:', err);
+
+      // Fallback: same behavior as before (simple leaf-per-sentence)
+      const sentenceNodes = sentences.map((sentence, i) => ({
+        id: `s-${i}`,
+        label: sentence.content,
+        level: LEAF_NODE_LEVEL,
+        children: [],
+      }));
+      const rootNode = createNode('Document', "Root", sentenceNodes, maxDepth);
+      setTree(rootNode);
+    }
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -77,14 +87,15 @@ export default function BidirectionalEditor() {
   const convertTreeToText = () => {
     console.log('[BidirectionalEditor] Converting tree back to text...', tree);
     if (!tree) return;
-
+    console.log('[BidirectionalEditor] Current tree:', tree);
     // Collect all sentences from tree in order
     const collected = [];
-    
+    const collectedSentences = [];
     const traverse = (node) => {
       if (node.level === LEAF_NODE_LEVEL) {
         // This is a sentence node
         collected.push(node);
+        collectedSentences.push(node.content);
       } else if (node.children) {
         // Traverse children
         node.children.forEach(child => traverse(child));
@@ -92,15 +103,17 @@ export default function BidirectionalEditor() {
     };
 
     traverse(tree);
-    const newSentences = collected.map((n, i) => ({ id: `s-${i}`, content: n.label }));
-    const newText = newSentences.map(s => s.content).join(' ');
-    console.log('[BidirectionalEditor] Collected', collected, "New sentences:", newSentences);
+    console.log('[BidirectionalEditor] Collected sentences from tree:', collectedSentences);
+    const newSentences = collected.map((n, i) => ({ id: `s-${i}`, content: n.content }));
+    const newText = collectedSentences.map(s => s).join(' ');
+    console.log('[BidirectionalEditor] Collected', newSentences, "New sentences:", collectedSentences);
     setSentences(newSentences);
+    console.log('[BidirectionalEditor] Reconstructed text:', newText);
     setTextAreaContent(newText);
   };
 
   useEffect(() => {
-    const dummyText = `Hi, my name is Slim Shady. I'm back again with another hit single. This is the real Slim Shady, please stand up. I repeat, please stand up. Will the real Slim Shady please stand up`;
+    const dummyText = RANDOM_POETRY;
     handleTextChange(dummyText);
   }, []);
   // ═══════════════════════════════════════════════════════════════
@@ -111,17 +124,6 @@ export default function BidirectionalEditor() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', gap: '8px', padding: '8px' }}>
       {/* Header */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '40px' }}>
-        <label style={{ fontSize: '14px' }}>
-          Depth:
-          <input
-            type="number"
-            min="2"
-            max="6"
-            value={maxDepth}
-            onChange={(e) => setMaxDepth(Math.max(2, Math.min(6, parseInt(e.target.value) || 3)))}
-            style={{ width: '40px', marginLeft: '5px', padding: '4px' }}
-          />
-        </label>
         <button
           onClick={() => {
             setSentences([]);
@@ -148,7 +150,7 @@ export default function BidirectionalEditor() {
       {/* Main content */}
       <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
         {/* LEFT: Text Pane */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
             Text Input
           </div>
@@ -232,7 +234,7 @@ export default function BidirectionalEditor() {
         </div>
 
         {/* RIGHT: Tree Pane */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white',color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
             Tree
           </div>

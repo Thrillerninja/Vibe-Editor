@@ -87,6 +87,14 @@ export const EMOTION_LABELS = {
   [EMOTIONS.EMPHASIS]: 'Strong Emphasis',
 };
 
+export const ALTERNATIVE_EMOTION_COLORS ={
+  NEUTRAL:'#C7CEDB',
+  POSITIVE:'#6ee7b7',
+  NEGATIVE:'#f87171',
+  UNCERTAIN:'#fbbf24',
+  EMPHASIS:'#a78bfa',
+};
+
 // Emotion colors by intensity (0-100)
 export const EMOTION_COLORS = {
   [EMOTIONS.NEUTRAL]: {
@@ -110,7 +118,7 @@ export const EMOTION_COLORS = {
     strong: '#f59e0b',
   },
   [EMOTIONS.EMPHASIS]: {
-    light: '#ddd6fe',
+    light: '#fafafaff',
     medium: '#a78bfa',
     strong: '#7c3aed',
   },
