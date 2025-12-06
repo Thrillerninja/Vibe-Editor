@@ -425,14 +425,22 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         zoomOnScroll
         proOptions={{ hideAttribution: true }}
       >
-        <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
+        <Background 
+          variant="dots" 
+          bgColor="#ffffffff" 
+          color="#e0e3e7ff" 
+          gap={20} 
+          size={3} 
+        />
         <MiniMap 
           pannable 
           zoomable
+          style={{ bottom: -8, right: -8 }}
         />
         
         <Controls
           showInteractive={false}
+          style={{ bottom: -8, left: -8 }}
         />
 
         <Controls
@@ -441,36 +449,44 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
           showZoom={false}
           showInteractive={false}
           style={{
-            boxShadow: "0 0 0px"
+            boxShadow: "0 0 0px",
+            top: -8,
+            left: -8,
           }}
         >          
           <DimensionButton 
-            emoji="🎭" 
+            iconBw="FilterIcons/Emotion_bw.png"
+            iconRgb="FilterIcons/Emotion_rgb.png"
             label="Emotion" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
           <DimensionButton 
-            emoji="🗣️" 
+            iconBw="FilterIcons/Tone_bw.png"
+            iconRgb="FilterIcons/Tone_rgb.png"
             label="Tone" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
           <DimensionButton 
-            emoji="💡" 
+            iconBw="FilterIcons/Clarity_bw.png"
+            iconRgb="FilterIcons/Clarity_rgb.png"
             label="Clarity" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
           <DimensionButton 
-            emoji="🧩" 
+            iconBw="FilterIcons/Complexity_bw.png"
+            iconRgb="FilterIcons/Complexity_rgb.png"
             label="Complexity" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
           <DimensionButton 
-            emoji="➡️" 
+            iconBw="FilterIcons/Directness_bw.png"
+            iconRgb="FilterIcons/Directness_rgb.png"
             label="Directness" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
           <DimensionButton 
-            emoji="👥" 
+            iconBw="FilterIcons/Audience_bw.png"
+            iconRgb="FilterIcons/Audience_rgb.png"
             label="Audience" 
             onClick={() => alert('Something magical just happened. ✨')}
           />
