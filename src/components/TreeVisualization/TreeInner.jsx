@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import ReactFlow, {
   Background,
   Controls,
+  ControlButton,
   MiniMap,
   ConnectionMode,
   useReactFlow,
@@ -20,6 +21,7 @@ import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
+import { DimensionButton } from './VisDimensions/DimensionButtons';
 
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
@@ -424,8 +426,55 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
-        <MiniMap pannable zoomable />
-        <Controls />
+        <MiniMap 
+          pannable 
+          zoomable
+        />
+        
+        <Controls
+          showInteractive={false}
+        />
+
+        <Controls
+          position="top-left"
+          showFitView={false}
+          showZoom={false}
+          showInteractive={false}
+          style={{
+            boxShadow: "0 0 0px"
+          }}
+        >          
+          <DimensionButton 
+            emoji="🎭" 
+            label="Emotion" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+          <DimensionButton 
+            emoji="🗣️" 
+            label="Tone" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+          <DimensionButton 
+            emoji="💡" 
+            label="Clarity" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+          <DimensionButton 
+            emoji="🧩" 
+            label="Complexity" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+          <DimensionButton 
+            emoji="➡️" 
+            label="Directness" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+          <DimensionButton 
+            emoji="👥" 
+            label="Audience" 
+            onClick={() => alert('Something magical just happened. ✨')}
+          />
+        </Controls>
       </ReactFlow>
 
       {/* Reorder indicator - blue line between siblings */}
