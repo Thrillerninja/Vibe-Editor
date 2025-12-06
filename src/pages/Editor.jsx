@@ -9,6 +9,7 @@ import {updateDirtyNodes} from '../services/claude';
 import {useUserIdentification} from '../hooks/useUserIdentification';
 import {applyDirtySubtreeRestructure, createPlaceholderHierarchy} from '../utils/hierarchyIntegration';
 import {hasDirtyNodes, clearDirtyFlags} from '../utils/dirtyTracking';
+import {VerticalDivider} from '../components/VerticalDivider';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -401,11 +402,12 @@ export default function Editor() {
                     </div>
 
                     {/* Draggable Divider */}
-                    <VerticalDividerHandle
+                    <VerticalDivider    
+                        direction={1}   // Auto update this value once change are due to be transfered to either direction
                         onMouseDown={onHorizontalHandleMouseDown}
                         onTouchStart={onHorizontalHandleMouseDown}
                     />
-
+                    
                     {/* Right Pane (Canvas) */}
                     <div
                         className="flex flex-col"
@@ -439,37 +441,6 @@ export default function Editor() {
 
             </div>
         </div>
-    );
-}
-
-// A11y-friendly divider with mouse, touch, and keyboard support
-function VerticalDividerHandle({
-                                   onMouseDown,
-                                   onTouchStart,
-                               }) {
-    return (
-        <button
-            aria-label="Resize panels"
-            title="Drag to resize"
-            onMouseDown={onMouseDown}
-            onTouchStart={onTouchStart}
-            className="relative group"
-            style={{
-                // Wider hit area for usability; visible 2px line in center
-                width: '6px',
-                cursor: 'col-resize',
-                background: 'white',
-                border: 'none',
-                padding: 0,
-            }}
-        >
-            {/* Visible center line */}
-            <span
-                aria-hidden
-                className="block h-full bg-gray-300 group-hover:bg-gray-400"
-                style={{width: '2px', margin: '0 auto'}}
-            />
-        </button>
     );
 }
 
