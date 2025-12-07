@@ -30,6 +30,8 @@ export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(null);
   const [maxDepth, setMaxDepth] = useState(3);
+  const [isTreeRendering, setisTreeRendering] = useState(false);
+
 
   // ═══════════════════════════════════════════════════════════════
   // LEFT PANE: Parse text into sentences
@@ -56,7 +58,7 @@ export default function BidirectionalEditor() {
 
   const convertTextToTree = async () => {
     console.log('[BidirectionalEditor] Converting text to tree...', sentences);
-
+    setisTreeRendering(true);
     // Build sentences as leaf nodes
     try {
       // Ask the model to build a tree with `maxDepth` layers
@@ -78,6 +80,7 @@ export default function BidirectionalEditor() {
       const rootNode = createNode('Document', "Root", sentenceNodes, maxDepth);
       setTree(rootNode);
     }
+    setisTreeRendering(false);
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -121,7 +124,7 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', gap: '8px', padding: '8px' }}>
+    <div style={{ display: 'flex', backgroundColor: "#ffffff", flexDirection: 'column', height: '100vh', gap: '8px', padding: '8px' }}>
       {/* Header */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '40px' }}>
         <button
@@ -151,9 +154,6 @@ export default function BidirectionalEditor() {
       <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
         {/* LEFT: Text Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
-            Text Input
-          </div>
             <textarea
             value={textAreaContent}
             onChange={(e) => handleTextChange(e.target.value)}
@@ -186,27 +186,43 @@ export default function BidirectionalEditor() {
           }}>
             <button
               onClick={convertTextToTree}
+              disabled={isTreeRendering}
               style={{
                 width: '44px',
                 height: '44px',
                 padding: '0',
-                backgroundColor: '#000',
-                color: 'white',
+                backgroundColor: isTreeRendering ? '#555' : '#000',
+                opacity: isTreeRendering ? 0.6 : 1,
+                cursor: isTreeRendering ? 'not-allowed' : 'pointer',
                 border: 'none',
                 borderRadius: '50%',
-                cursor: 'pointer',
-                fontSize: '24px',
-                fontWeight: 'bold',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
               }}
             >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {isTreeRendering ? (
+                // SPINNER
+                <div
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    border: '3px solid white',
+                    borderTop: '3px solid transparent',
+                    borderRadius: '50%',
+                    animation: 'spin 0.8s linear infinite'
+                  }}
+                />
+              ) : (
+                // NORMAL ARROW SVG
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12"></line>
                   <polyline points="12 5 19 12 12 19"></polyline>
                 </svg>
+              )}
             </button>
+
 
             <button
               onClick={convertTreeToText}
@@ -235,9 +251,6 @@ export default function BidirectionalEditor() {
 
         {/* RIGHT: Tree Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white',color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ padding: '8px', borderBottom: '1px solid #e5e7eb', fontSize: '12px', fontWeight: 'bold', backgroundColor: '#f9fafb' }}>
-            Tree
-          </div>
           <div style={{ flex: 1, overflow: 'hidden' }}>
             {tree ? (
               <ElkTree tree={tree} setTree={setTree}/>
