@@ -8,6 +8,7 @@ import {
   EMOTION_LABELS,
   EMOTION_COLORS,
 } from "../../utils/constants";
+import { ToneRadarChart } from "../ToneRadar/ToneRadar";
 
 const TABS = [
   { key: "emotion", label: "Emotion" },
@@ -116,6 +117,20 @@ export function EmotionSelector({
     };
   };
 
+  // Initialize with neutral values (50 = center/balanced)
+  const [toneValues, setToneValues] = useState({
+    0: 50, // Formal-Casual
+    1: 50, // Serious-Funny
+    2: 50, // Respectful-Irreverent
+    3: 50, // Matter-of-Fact-Enthusiastic
+  });
+
+  const handleToneChange = (newValues) => {
+    setToneValues(newValues);
+    console.log('New tone values:', newValues);
+    // Send to your AI API here
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
@@ -186,7 +201,7 @@ export function EmotionSelector({
                       marginBottom: 6,
                     }}
                   >
-                    Ton einstellen
+                    Adjust Node
                   </h3>
                   <p
                     style={{
@@ -274,7 +289,7 @@ export function EmotionSelector({
                       color: "#374151",
                     }}
                   >
-                    Plutchik-Rad
+                    Plutchik-Wheel
                   </label>
 
                   <EmotionPad
@@ -291,15 +306,38 @@ export function EmotionSelector({
               )}
 
               {activeTab === "style" && (
-                <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
-                  Stil-Tab (kommt später).
-                </div>
+                <div>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: "#374151",
+                    }}
+                  >
+                    Tone-Radar
+                  </label>
+                  <ToneRadarChart
+                    values={toneValues}
+                    onChange={handleToneChange}
+                    className="w-full aspect-square max-w-md mx-auto"
+                  />
+
+                  <div className="mt-4 text-sm text-gray-600 grid grid-cols-2 gap-4">
+                    <p>Formal: {toneValues[0]}%</p>
+                    <p>Serious: {toneValues[1]}%</p>
+                    <p>Respectful: {toneValues[2]}%</p>
+                    <p>Matter-of-Fact: {toneValues[3]}%</p>
+                  </div>
+                </div>                
               )}
 
               {activeTab === "direct" && (
+              <div>
                 <div style={{ fontSize: 12, color: "#6b7280", padding: "20px 0" }}>
-                  Direktes Bearbeiten (kommt später).
+                Direktes Bearbeiten (kommt später).
                 </div>
+              </div>
               )}
             </div>
 
