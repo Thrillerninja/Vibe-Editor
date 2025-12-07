@@ -19,7 +19,8 @@ export function ToneRadarChart({ values, onChange, className = '' }){
   const chartRadius = 400;
   const ringRadius = 16;
   const hoverRadius = 40;
-  const centerThreshold = 5; // 5% threshold
+  const centerThreshold = 5;
+  const labelDistance = 14;
 
   const isClusteredAtCenter = () => {
     const nodesNearCenter = Object.values(values).filter(
@@ -79,7 +80,6 @@ export function ToneRadarChart({ values, onChange, className = '' }){
   };
 
   const handleDragStart = (axisIndex) => {
-    // Use the axis index directly - no guessing!
     setDraggingAxis(axisIndex);
   };
 
@@ -125,7 +125,7 @@ export function ToneRadarChart({ values, onChange, className = '' }){
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setIsHoveringCenter(false)}
       >
-        {/* Background circles */}
+        {/* Background circles*/}
         {[0.25, 0.5, 0.75, 1].map((scale) => (
           <circle
             key={scale}
@@ -133,9 +133,9 @@ export function ToneRadarChart({ values, onChange, className = '' }){
             cy={centerY}
             r={maxRadius * scale}
             fill="none"
-            stroke="rgb(229 231 235)"
+            stroke="rgba(0, 0, 0, 0.3)"
             strokeWidth="1"
-            opacity={0.5}
+            strokeDasharray={scale === 1 ? "0, 0" : "4, 4"}
           />
         ))}
 
@@ -150,13 +150,19 @@ export function ToneRadarChart({ values, onChange, className = '' }){
           />
         )}
 
-        {/* Axis lines */}
+        {/* Axis lines*/}
         {axes.map((axis, i) => {
           const angleRad = (axis.angle * Math.PI) / 180;
           const x1 = centerX - maxRadius * Math.cos(angleRad);
           const y1 = centerY - maxRadius * Math.sin(angleRad);
           const x2 = centerX + maxRadius * Math.cos(angleRad);
           const y2 = centerY + maxRadius * Math.sin(angleRad);
+
+          // Label positions at fixed distance from circle edge
+          const negX = centerX - (maxRadius + labelDistance + 2*axis.negative.length) * Math.cos(angleRad);
+          const negY = centerY - (maxRadius + labelDistance) * Math.sin(angleRad);
+          const posX = centerX + (maxRadius + labelDistance + 2*axis.positive.length) * Math.cos(angleRad);
+          const posY = centerY + (maxRadius + labelDistance) * Math.sin(angleRad);
 
           return (
             <g key={i}>
@@ -165,26 +171,36 @@ export function ToneRadarChart({ values, onChange, className = '' }){
                 y1={y1}
                 x2={x2}
                 y2={y2}
-                stroke="rgb(209 213 219)"
+                stroke="rgba(0, 0, 0, 0.3)"
                 strokeWidth="2"
               />
 
               <text
-                x={x1 - 10 * Math.cos(angleRad)}
-                y={y1 - 10 * Math.sin(angleRad)}
+                x={negX}
+                y={negY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="text-xs font-medium fill-gray-600"
+                className="text-xs font-medium"
+                style={{
+                  fill: 'rgba(55, 65, 81, 0.7)',
+                  textShadow: '0 1px 2px rgba(255, 255, 255, 0.7)',
+                  fontSize: '11px',
+                }}
               >
                 {axis.negative}
               </text>
 
               <text
-                x={x2 + 10 * Math.cos(angleRad)}
-                y={y2 + 10 * Math.sin(angleRad)}
+                x={posX}
+                y={posY}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                className="text-xs font-medium fill-gray-600"
+                className="text-xs font-medium"
+                style={{
+                  fill: 'rgba(55, 65, 81, 0.7)',
+                  textShadow: '0 1px 2px rgba(255, 255, 255, 0.7)',
+                  fontSize: '11px',
+                }}
               >
                 {axis.positive}
               </text>
@@ -195,9 +211,9 @@ export function ToneRadarChart({ values, onChange, className = '' }){
         {/* Filled polygon */}
         <motion.path
           d={getPolygonPath()}
-          fill="rgb(59 130 246)"
-          fillOpacity="0.2"
-          stroke="rgb(59 130 246)"
+          fill="rgb(59, 130, 246)"
+          fillOpacity="0.15"
+          stroke="rgb(59, 130, 246)"
           strokeWidth="2"
           initial={false}
           animate={{ d: getPolygonPath() }}
@@ -208,14 +224,11 @@ export function ToneRadarChart({ values, onChange, className = '' }){
         {axes.map((axis, i) => {
           const actualPos = getPointPosition(i, values[i] || 50);
           const ringPos = getRingPosition(i);
-          
-          // Only pull this specific node into ring if:
-          // 1. It's close to center AND
-          // 2. User is hovering center
+
           const isThisNodeNearCenter = isNodeNearCenter(i);
           const displayPos =
             shouldShowRing && isThisNodeNearCenter ? ringPos : actualPos;
-          
+
           const isActive = draggingAxis === i;
 
           return (
@@ -223,11 +236,16 @@ export function ToneRadarChart({ values, onChange, className = '' }){
               key={i}
               cx={displayPos.x}
               cy={displayPos.y}
-              r={isActive ? 10 : 8}
-              fill="rgb(59 130 246)"
+              r={isActive ? 9 : 7}
+              fill="rgb(59, 130, 246)"
               stroke="white"
               strokeWidth="2"
-              className="cursor-grab active:cursor-grabbing"
+              style={{
+                boxShadow: 'rgba(0, 0, 0, 0.1)',
+                filter: 'drop-shadow(2px 2px 3px rgba(0, 0, 0, 0.1))',
+                cursor: 'grab',
+              }}
+              className="active:cursor-grabbing"
               drag
               dragConstraints={{ left: 0, right: 0, top: 0, bottom: 0 }}
               dragElastic={0}
@@ -243,23 +261,25 @@ export function ToneRadarChart({ values, onChange, className = '' }){
           );
         })}
 
-        {/* Center indicator */}
+        {/* Center indicator dot */}
         <circle
           cx={centerX}
           cy={centerY}
           r="3"
-          fill="rgb(107 114 128)"
-          opacity="0.6"
+          fill="rgba(107, 114, 128, 0.5)"
         />
       </svg>
 
       {/* Hint text */}
-      {isClusteredAtCenter && !draggingAxis && (
+      {isClusteredAtCenter && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="text-center mt-2 text-xs text-gray-500"
+          className="text-center mt-3 text-xs"
+          style={{
+            color: 'rgba(55, 65, 81, 0.6)',
+          }}
         >
           Hover near center to spread
         </motion.div>
