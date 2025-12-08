@@ -14,6 +14,20 @@ import TreeNode from "./TreeNode";
 import { LEAF_NODE_LEVEL } from "../../utils/constants";
 import { em } from "framer-motion/client";
 import { ALTERNATIVE_EMOTION_COLORS } from "../../utils/constants";
+import { applyNodeChanges } from 'reactflow';
+
+
+function findNodeById(node, id) {
+  if (node.id === id) return node;
+  if (!node.children) return null;
+
+  for (const child of node.children) {
+    const found = findNodeById(child, id);
+    if (found) return found;
+  }
+
+  return null;
+}
 
 
 const Legend = () => (
@@ -50,6 +64,37 @@ const Legend = () => (
     ))}
   </div>
 );
+
+function applyCoordsToTree(tree, rfNodes) {
+  if (!tree) return tree;
+
+  // Build a lookup map: id → y
+  const yMap = new Map();
+  rfNodes.forEach((n) => {
+    if (n.id && n.position) {
+      yMap.set(n.id, n.position.y);
+    }
+  });
+
+  // Recursive updater
+  const update = (node) => {
+    const newY = yMap.get(node.id);
+    const updatedNode = newY !== undefined
+      ? { ...node, y_coord: newY }
+      : node;
+
+    if (!node.children) return updatedNode;
+
+    return {
+      ...updatedNode,
+      children: node.children.map(update)
+    };
+  };
+
+  return update(tree);
+}
+
+
 
 
 const nodeTypes = { node: TreeNode };
@@ -229,6 +274,25 @@ export default function ElkTree({ tree, setTree }) {
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
         nodesDraggable={true}
+        onNodesChange={(changes) => {
+          setNodes((nds) => {
+            const updated = applyNodeChanges(changes, nds);
+
+            // mutate tree nodes without calling setTree
+            for (const rfNode of updated) {
+              const y = rfNode.position?.y;
+              if (y == null) continue;
+
+              const treeNode = findNodeById(tree, rfNode.id);
+              if (treeNode) {
+                treeNode.y_coord = y;   // DIRECT mutation
+              }
+            }
+
+            return updated;
+          });
+        }}
+
       >
         <Background variant="dots" gap={40} size={4} color="#e0e3e7" />
         <Legend />

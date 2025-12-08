@@ -18,7 +18,7 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 1) SENTENCES → LEAF NODES
    - Every sentence from the input array MUST become exactly one leaf node.
    - Each leaf node MUST include these attributes:
-     id, level, type, label, content, emotion, children.
+     id, level, type, label, content, emotion, y_coord and children.
    - Leaf nodes must use level = ${LEAF_NODE_LEVEL}.
 
    Leaf node example:
@@ -29,12 +29,13 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
      "label": "Short label",
      "content": "Full sentence text here.",
      "emotion": "NEUTRAL",
+     "y_coord": 0,
      "children": []
    }
 
 2) TOPIC NODES (regular internal nodes)
    - Group semantically related sentences into topic nodes.
-   - Each topic node must include the same attributes (id, level, type, label, content, emotion, children).
+   - Each topic node must include the same attributes (id, level, type, label, content, emotion, y_coord, children).
    - Topic node children are the leaf nodes (or other topic nodes depending on depth).
 
 3) ROOT NODE

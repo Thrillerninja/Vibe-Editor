@@ -60,6 +60,23 @@ function treeSentencesToText(tree, currentTextareaContent) {
     return newText;
 }
 
+function addYCoord(node) {
+  if (!node) return node;
+
+  const updated = { 
+    ...node, 
+    y_coord: node.y_coord ?? 0   // default value
+  };
+
+  if (!node.children) return updated;
+
+  return {
+    ...updated,
+    children: node.children.map(addYCoord)
+  };
+}
+
+
 export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(null);
@@ -98,8 +115,9 @@ export default function BidirectionalEditor() {
       const aiRoot = await buildTree(sentences, maxDepth);
       console.log('[BidirectionalEditor] Claude returned tree:', aiRoot);
 
-      // If AI returned something valid, use it
-      setTree(aiRoot);
+      const withCoords = addYCoord(aiRoot);
+
+      setTree(withCoords);
     } catch (err) {
       console.error('[BidirectionalEditor] AI tree generation failed, falling back to simple layout:', err);
       alert("Failed to render Tree.\n" + err)
@@ -108,6 +126,7 @@ export default function BidirectionalEditor() {
         id: `s-${i}`,
         label: sentence.content,
         level: LEAF_NODE_LEVEL,
+        y_coord: i, 
         children: [],
       }));
       const rootNode = createNode('Document', "Root", [], maxDepth);
@@ -121,31 +140,28 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
 
   const convertTreeToText = () => {
-    console.log('[BidirectionalEditor] Converting tree back to text...', tree);
     if (!tree) return;
-    console.log('[BidirectionalEditor] Current tree:', tree);
-    // Collect all sentences from tree in order
-    const collectedNodes = [];
-    const collectedSentences = [];
-    const traverse = (node) => {
+
+    // 1) Collect all leaf nodes
+    const leaves = [];
+    const collect = (node) => {
       if (node.level === LEAF_NODE_LEVEL) {
-        // This is a sentence node
-        collectedNodes.push(node);
-        collectedSentences.push(node.content);
+        leaves.push(node);
       } else if (node.children) {
-        // Traverse children
-        node.children.forEach(child => traverse(child));
+        node.children.forEach(collect);
       }
     };
+    collect(tree);
 
-    traverse(tree);
-    console.log('[BidirectionalEditor] Collected sentences from tree:', collectedSentences);
-    const newText = collectedSentences.map(s => s).join(' ');
-    console.log("[BidirectionalEditor] New sentences:", collectedSentences);
-    console.log('[BidirectionalEditor] Reconstructed text:', newText);
+    // 2) Sort by y_coord (ascending = top-to-bottom)
+    leaves.sort((a, b) => (a.y_coord) - (b.y_coord));
+
+    // 3) Convert sorted nodes into text
+    const newText = leaves.map((n) => n.content).join(" ");
+
     setTextAreaContent(newText);
-    setDiffContent(newText);
   };
+
 
   useEffect(() => {
     const dummyText = RANDOM_POETRY;
