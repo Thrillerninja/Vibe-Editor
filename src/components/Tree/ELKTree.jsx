@@ -236,6 +236,8 @@ export default function ElkTree({ tree, setTree }) {
     console.log('[ElkTree] Layout effect triggered with', treeNodes.length, 'nodes');
 
     async function layout() {
+      setEdges([]); // Clear edges during layout
+      setNodes([]); // Clear nodes during layout
       const laidOut = await runElk(treeNodes, treeEdges);
       
       console.log('[ElkTree] runElk returned', laidOut.length, 'nodes:', laidOut);
@@ -261,7 +263,7 @@ export default function ElkTree({ tree, setTree }) {
 
   const onInit = useCallback((inst) => {
     rfRef.current = inst;
-  }, []);
+  }, [tree]);
 
   return (
     <div style={{ width: "100%", height: "100%" }}>

@@ -22,9 +22,8 @@ export default function TreeNode({ data }) {
     setIsDialogOpen(false);
   }
   function handleSave() {
-  data.setSentence(nodeText);
-  data.setEmotion?.(tempEmotion);     // call parent if provided
-  setIsDialogOpen(false);
+    data.setSentence(nodeText);
+    setIsDialogOpen(false);
   }
 
   function handleCancel() {

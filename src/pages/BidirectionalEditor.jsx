@@ -152,7 +152,7 @@ export default function BidirectionalEditor() {
       }
     };
     collect(tree);
-
+    console.log('[BidirectionalEditor] Collected leaf nodes:', leaves);
     // 2) Sort by y_coord (ascending = top-to-bottom)
     leaves.sort((a, b) => (a.y_coord) - (b.y_coord));
 
