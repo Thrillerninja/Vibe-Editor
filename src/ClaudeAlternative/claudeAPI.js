@@ -14,11 +14,16 @@ REQUESTED NUMBER OF LAYERS: ${layers}
 REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
 ------------------ TREE CREATION RULES ------------------
+0) OVERVIEW
+    - Keep the sentence order at ALL COSTS.
+    - Build a hierarchical tree with the specified number of layers.
+    - Use semantic grouping to cluster related sentences under topic nodes.
+    - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
 
 1) SENTENCES → LEAF NODES
    - Every sentence from the input array MUST become exactly one leaf node.
    - Each leaf node MUST include these attributes:
-     id, level, type, label, content, emotion, y_coord and children.
+     id, level, type, label, content, emotion, children.
    - Leaf nodes must use level = ${LEAF_NODE_LEVEL}.
 
    Leaf node example:
@@ -29,13 +34,12 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
      "label": "Short label",
      "content": "Full sentence text here.",
      "emotion": "NEUTRAL",
-     "y_coord": 0,
      "children": []
    }
 
 2) TOPIC NODES (regular internal nodes)
    - Group semantically related sentences into topic nodes.
-   - Each topic node must include the same attributes (id, level, type, label, content, emotion, y_coord, children).
+   - Each topic node must include the same attributes (id, level, type, label, content, emotion, children).
    - Topic node children are the leaf nodes (or other topic nodes depending on depth).
 
 3) ROOT NODE
