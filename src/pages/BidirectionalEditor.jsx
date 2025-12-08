@@ -106,6 +106,7 @@ export default function BidirectionalEditor() {
 
   const convertTextToTree = async () => {
     console.log('[BidirectionalEditor] Converting text to tree...', textAreaContent);
+    setTree(undefined)
     setisTreeRendering(true);
     // Build sentences as leaf nodes
     const sentences = textToSentences(textAreaContent)
