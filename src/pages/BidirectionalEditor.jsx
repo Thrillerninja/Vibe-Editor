@@ -8,13 +8,18 @@
  * Convert buttons parse/build directly, no helpers
  */
 
-import React, { useState, useEffect,useMemo } from 'react';
+import React, { useState, useEffect,useMemo, useRef} from 'react';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
 import { buildTree } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
+import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
+
 
 const RANDOM_POETRY= `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
+
+
+
 
 function createNode(id, label, children = [], level = 0) {
   return {
@@ -25,31 +30,57 @@ function createNode(id, label, children = [], level = 0) {
   };
 }
 
+function textToSentences(text) {
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .filter(s => s.length > 0)
+}
+
+function treeSentencesToText(tree, currentTextareaContent) {
+    console.log('[TEST] Converting tree back to text...', tree);
+    if (!tree) {
+      return "";
+    }
+    // Collect all sentences from tree in order
+    const collectedNodes = [];
+    const collectedSentences = [];
+    const traverse = (node) => {
+      if (node.level === LEAF_NODE_LEVEL) {
+        // This is a sentence node
+        collectedNodes.push(node);
+        collectedSentences.push(node.content);
+      } else if (node.children) {
+        // Traverse children
+        node.children.forEach(child => traverse(child));
+      }
+    };
+
+    traverse(tree);
+    const newText = collectedSentences.map(s => s).join(' ');
+    return newText;
+}
+
 export default function BidirectionalEditor() {
-  const [sentences, setSentences] = useState([]);
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(null);
   const [maxDepth, setMaxDepth] = useState(3);
   const [isTreeRendering, setisTreeRendering] = useState(false);
 
 
-  // ═══════════════════════════════════════════════════════════════
-  // LEFT PANE: Parse text into sentences
-  // ═══════════════════════════════════════════════════════════════
-  const handleTextChange = (newText) => {
-    console.log('[BidirectionalEditor] Text changed:', newText);
+  const historyGraphRef = useRef(null);
 
-    // Keep raw text state
-    setTextAreaContent(newText);
+  const commit = () => {
+      historyGraphRef.current?.addCommit(
+        { text: textAreaContent },
+        "Text updated"
+      );
+  }
 
-    // Split by sentence-ending punctuation with delimiters included
-    const newSentences = newText
-      .split(/(?<=[.!?])\s+/)
-      .filter(s => s.length > 0)
-      .map((content, i) => ({ id: `s-${i}`, content: content.trim() }));
 
-    console.log('[BidirectionalEditor] Parsed sentences:', newSentences.length, newSentences);
-    setSentences(newSentences);
+  const handleRevertComplete = (revertedTextAreaContent) => {
+    console.log(revertedTextAreaContent)
+    setTextAreaContent(revertedTextAreaContent.text);
+    //setSentences(handleTextChange(revertedTextAreaContent.text))
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -57,9 +88,11 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
 
   const convertTextToTree = async () => {
-    console.log('[BidirectionalEditor] Converting text to tree...', sentences);
+    console.log('[BidirectionalEditor] Converting text to tree...', textAreaContent);
     setisTreeRendering(true);
     // Build sentences as leaf nodes
+    const sentences = textToSentences(textAreaContent)
+    console.log('[BidirectionalEditor] Extracted sentences:', sentences);
     try {
       // Ask the model to build a tree with `maxDepth` layers
       const aiRoot = await buildTree(sentences, maxDepth);
@@ -69,7 +102,7 @@ export default function BidirectionalEditor() {
       setTree(aiRoot);
     } catch (err) {
       console.error('[BidirectionalEditor] AI tree generation failed, falling back to simple layout:', err);
-
+      alert("Failed to render Tree.\n" + err)
       // Fallback: same behavior as before (simple leaf-per-sentence)
       const sentenceNodes = sentences.map((sentence, i) => ({
         id: `s-${i}`,
@@ -77,8 +110,8 @@ export default function BidirectionalEditor() {
         level: LEAF_NODE_LEVEL,
         children: [],
       }));
-      const rootNode = createNode('Document', "Root", sentenceNodes, maxDepth);
-      setTree(rootNode);
+      const rootNode = createNode('Document', "Root", [], maxDepth);
+      //setTree(rootNode);
     }
     setisTreeRendering(false);
   };
@@ -92,12 +125,12 @@ export default function BidirectionalEditor() {
     if (!tree) return;
     console.log('[BidirectionalEditor] Current tree:', tree);
     // Collect all sentences from tree in order
-    const collected = [];
+    const collectedNodes = [];
     const collectedSentences = [];
     const traverse = (node) => {
       if (node.level === LEAF_NODE_LEVEL) {
         // This is a sentence node
-        collected.push(node);
+        collectedNodes.push(node);
         collectedSentences.push(node.content);
       } else if (node.children) {
         // Traverse children
@@ -107,18 +140,19 @@ export default function BidirectionalEditor() {
 
     traverse(tree);
     console.log('[BidirectionalEditor] Collected sentences from tree:', collectedSentences);
-    const newSentences = collected.map((n, i) => ({ id: `s-${i}`, content: n.content }));
     const newText = collectedSentences.map(s => s).join(' ');
-    console.log('[BidirectionalEditor] Collected', newSentences, "New sentences:", collectedSentences);
-    setSentences(newSentences);
+    console.log("[BidirectionalEditor] New sentences:", collectedSentences);
     console.log('[BidirectionalEditor] Reconstructed text:', newText);
     setTextAreaContent(newText);
+    setDiffContent(newText);
   };
 
   useEffect(() => {
     const dummyText = RANDOM_POETRY;
-    handleTextChange(dummyText);
+    setTextAreaContent(dummyText);
   }, []);
+
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -129,10 +163,10 @@ export default function BidirectionalEditor() {
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '40px' }}>
         <button
           onClick={() => {
-            setSentences([]);
             setTree(null);
             setTextAreaContent("");
           }}
+          disabled={isTreeRendering}
           style={{
             padding: '6px 12px',
             backgroundColor: '#ef4444',
@@ -145,9 +179,23 @@ export default function BidirectionalEditor() {
         >
           Clear
         </button>
-        <div style={{ marginLeft: 'auto', fontSize: '12px', color: '#666' }}>
-          Sentences: {sentences.length} | Tree: {tree ? '✓' : '✗'}
-        </div>
+        <button
+          onClick={() => {
+            commit();
+          }}
+          disabled={isTreeRendering}
+          style={{
+            padding: '6px 12px',
+            backgroundColor: '#ef4444',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontSize: '12px',
+          }}
+        >
+          Commit
+        </button>
       </div>
 
       {/* Main content */}
@@ -156,7 +204,7 @@ export default function BidirectionalEditor() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
             <textarea
             value={textAreaContent}
-            onChange={(e) => handleTextChange(e.target.value)}
+            onChange={(e) => setTextAreaContent(e.target.value)}
             placeholder="Insert text here..."
             style={{
                 flex: 1,
@@ -169,6 +217,7 @@ export default function BidirectionalEditor() {
                 color: '#000',
             }}
             />
+
         </div>
 
         {/* CENTER: Buttons */}
@@ -226,6 +275,7 @@ export default function BidirectionalEditor() {
 
             <button
               onClick={convertTreeToText}
+              disabled={isTreeRendering}
               style={{
                 width: '44px',
                 height: '44px',
@@ -262,6 +312,7 @@ export default function BidirectionalEditor() {
           </div>
         </div>
       </div>
+      <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete}/>
     </div>
   );
 }

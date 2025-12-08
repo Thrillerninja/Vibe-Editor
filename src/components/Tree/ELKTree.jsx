@@ -13,6 +13,44 @@ import TreeNode from "./TreeNode";
 
 import { LEAF_NODE_LEVEL } from "../../utils/constants";
 import { em } from "framer-motion/client";
+import { ALTERNATIVE_EMOTION_COLORS } from "../../utils/constants";
+
+
+const Legend = () => (
+  <div
+    style={{
+      position: "absolute",
+      top: 8,
+      right: 8,
+      background: "rgba(255,255,255,0.9)",
+      padding: "8px 12px",
+      borderRadius: 8,
+      border: "1px solid #ddd",
+      fontSize: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      zIndex: 999,
+      pointerEvents: "none",
+    }}
+  >
+    {Object.entries(ALTERNATIVE_EMOTION_COLORS).map(([emotion, color]) => (
+      <div key={emotion} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div
+          style={{
+            width: 14,
+            height: 14,
+            borderRadius: 4,
+            backgroundColor: color,
+            border: "1px solid #999",
+          }}
+        />
+        <span>{emotion}</span>
+      </div>
+    ))}
+  </div>
+);
+
 
 const nodeTypes = { node: TreeNode };
 
@@ -190,8 +228,10 @@ export default function ElkTree({ tree, setTree }) {
         fitView
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
+        nodesDraggable={true}
       >
         <Background variant="dots" gap={40} size={4} color="#e0e3e7" />
+        <Legend />
       </ReactFlow>
     </div>
   );

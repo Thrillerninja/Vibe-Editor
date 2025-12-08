@@ -8,7 +8,7 @@ function buildPrompt(sentences, layers) {
 You will receive an array of sentences and must build a hierarchical tree according to the following rules:
 
 INPUT SENTENCES:
-${sentences.map((sentence, i) => `${i + 1}. ${sentence.content}`).join("\n")}
+${sentences.map((sentence, i) => `${i + 1}. ${sentence}`).join("\n")}
 
 REQUESTED NUMBER OF LAYERS: ${layers}
 REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
@@ -86,6 +86,7 @@ const getClient = () => {
 };
 
 function extractFirstJson(text) {
+  console.log('[ClaudeALTERNATIVE Service] Extracting JSON from response text...', text);
   if (!text || typeof text !== 'string') throw new Error('No text to parse');
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
@@ -142,7 +143,9 @@ function sanitizeNode(node, ctx) {
 export async function buildTree(sentences, layers) {
   const client = getClient();
   const prompt = buildPrompt(sentences, layers);
+  console.log('[ClaudeALTERNATIVE Service] Sentences:', sentences);
   console.log('[ClaudeALTERNATIVE Service] layers:', layers);
+  console.log('[ClaudeALTERNATIVE Service] Built prompt:', prompt);
 
   try {
     const message = await client.messages.create({

@@ -15,7 +15,7 @@ export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.sentence || "");
   const [editable, setEditable] = useState(data.isLeaf || false);
-  console.log('[TreeNode] Rendering node:', data);
+  //console.log('[TreeNode] Rendering node:', data);
   function applyChanges() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
