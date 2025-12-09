@@ -108,6 +108,7 @@ export default function TreeNode({ data }) {
             <button
               key={emotion}
               onClick={() => applyEmotion(emotion)}
+              disabled={!editable}
               style={{
                 flex: 1,                                  // equal size
                 padding: "8px 0",
@@ -151,20 +152,21 @@ export default function TreeNode({ data }) {
           >
             Cancel
           </button>
-
-          <button
-            onClick={handleSave}
-            style={{
-              padding: "8px 14px",
-              background: "#10B981",
-              color: "white",
-              borderRadius: 6,
-              border: "none",
-              cursor: "pointer",
-            }}
-          >
-            Save
-          </button>
+          {editable && (
+            <button
+              onClick={handleSave}
+              style={{
+                padding: "8px 14px",
+                background: "#10B981",
+                color: "white",
+                borderRadius: 6,
+                border: "none",
+                cursor: "pointer",
+              }}
+            >
+              Save
+            </button>
+          )}
         </div>
       </div>
     </div>,
