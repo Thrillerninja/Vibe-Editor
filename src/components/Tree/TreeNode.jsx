@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { motion } from 'framer-motion';
 import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
 import { em } from "framer-motion/client";
+import { rewriteTextWithEmotion } from "../../ClaudeAlternative/claudeAPI";
 
 
 function getEmotionColor(emotion) {
@@ -16,7 +17,7 @@ export default function TreeNode({ data }) {
   const [nodeText, setNodeText] = useState(data.sentence || "");
   const [editable, setEditable] = useState(data.isLeaf || false);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
-  //console.log('[TreeNode] Rendering node:', data);
+  console.log('[TreeNode] Rendering node:', data);
   function applyChanges() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
@@ -24,6 +25,19 @@ export default function TreeNode({ data }) {
   function handleSave() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
+  }
+
+  function applyEmotion(emotion){
+    console.log('[TreeNode] Applying emotion', emotion, 'to node', data);
+    setNodeEmotion(`${emotion}`);
+    // TODO: rewrite the text with AI
+    if (data.isLeaf == true) {
+      (async () => {
+        const rewritten = await rewriteTextWithEmotion(nodeText, emotion);
+        setNodeText(rewritten);
+      })()
+    }
+
   }
 
   function handleCancel() {
@@ -93,7 +107,7 @@ export default function TreeNode({ data }) {
           {Object.entries(ALTERNATIVE_EMOTION_COLORS).map(([emotion, color]) => (
             <button
               key={emotion}
-              onClick={() => setNodeEmotion(emotion)}
+              onClick={() => applyEmotion(emotion)}
               style={{
                 flex: 1,                                  // equal size
                 padding: "8px 0",
@@ -109,11 +123,11 @@ export default function TreeNode({ data }) {
                 // green shimmer when selected
                 boxShadow:
                   nodeEmotion === emotion
-                    ? "0 0 10px 2px rgba(16, 185, 129, 0.7)"
+                    ? `0 0 10px 2px ${getEmotionColor(emotion)}`
                     : "none",
                 border:
                   nodeEmotion === emotion
-                    ? "2px solid #10B981"                  // emerald green highlight
+                    ? `2px solid ${getEmotionColor(emotion)}`                // emerald green highlight
                     : "1px solid #777",
               }}
             >
@@ -166,7 +180,7 @@ export default function TreeNode({ data }) {
         style={{
           padding: 12,
           borderRadius: 8,
-          background: getEmotionColor(data.emotion),
+          background: getEmotionColor(nodeEmotion),
           color: "white",
           textAlign: "center",
           cursor: "pointer",

@@ -108,20 +108,20 @@ function treeToElkNodes(node, nodes = []) {
   const isLeaf = (!node.children || node.children.length === 0) || node.type === "leaf";
   
   // For leaf nodes, use content; for others, use label
-  const sentenceContent = isLeaf 
+  var sentenceContent = isLeaf 
     ? (node.content || node.label || "NodeDefault")
     : (node.label || node.content || "Node");
-
+  sentenceContent = node.content
   nodes.push({
     id: node.id,
     type: "node",
     width: 200,
     height: 60,
     data: {
-      sentence: sentenceContent,
       isLeaf: node.level === LEAF_NODE_LEVEL,
       nodeLevel: node.level,
       emotion: node.emotion,
+      sentence: sentenceContent,
     },
   });
 
@@ -161,7 +161,10 @@ function updateNodeInTree(node, nodeId, newContent) {
 
   // If this is the target node, return a shallow copy with updated label
   if (node.id === nodeId) {
-    return { ...node, content: newContent };
+    return {
+      ...node,
+      content: newContent,
+    };
   }
 
   // If no children, nothing to change; return the same node object
@@ -215,7 +218,7 @@ export default function ElkTree({ tree, setTree }) {
     console.log('[ElkTree] Editing node', nodeId, 'to', newContent);
 
     const updatedRoot = updateNodeInTree(tree, nodeId, newContent);
-
+    console.log('[ElkTree] Updated root:', updatedRoot);
     // If updateNodeInTree returns the same root object, nothing changed
     if (updatedRoot === tree) {
       console.log('[ElkTree] No change detected for node', nodeId);

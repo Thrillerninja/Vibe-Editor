@@ -15,10 +15,11 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
 ------------------ TREE CREATION RULES ------------------
 0) OVERVIEW
-    - Keep the sentence order at ALL COSTS.
+    - Keep the sentence order in the tree at ALL COSTS.
     - Build a hierarchical tree with the specified number of layers.
     - Use semantic grouping to cluster related sentences under topic nodes.
     - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
+    - Every node MUST cintain the aggregated text of its children in the "content" attribute. Meaning you please concatenate all child contents for parent nodes.
 
 1) SENTENCES → LEAF NODES
    - Every sentence from the input array MUST become exactly one leaf node.
@@ -113,26 +114,40 @@ function extractFirstJson(text) {
 function sanitizeNode(node, ctx) {
   if (!node || typeof node !== 'object') return null;
 
-  // Assign a new s-id for this node
   const id = `s-${ctx.nextId++}`;
 
-  // Level: must be number; default heuristic
-  const level = typeof node.level === 'number' ? node.level : (node.children && node.children.length ? 1 : LEAF_NODE_LEVEL);
+  const level =
+    typeof node.level === 'number'
+      ? node.level
+      : (node.children && node.children.length ? 1 : LEAF_NODE_LEVEL);
 
-  // Type
-  const type = typeof node.type === 'string' ? node.type : (level === 0 ? 'root' : (level === LEAF_NODE_LEVEL ? 'leaf' : 'topic'));
+  const type =
+    typeof node.type === 'string'
+      ? node.type
+      : (level === 0 ? 'root' : (level === LEAF_NODE_LEVEL ? 'leaf' : 'topic'));
 
-  // Label / content
-  const label = (node.label != null ? String(node.label) : (node.content ? String(node.content).slice(0, 60) : ''));
-  const content = node.content != null ? String(node.content) : '';
+  const label =
+    node.label != null
+      ? String(node.label)
+      : (node.content ? String(node.content).slice(0, 60) : '');
 
-  // Emotion: ensure uppercase allowed token
-  let emotion = (typeof node.emotion === 'string') ? node.emotion.toUpperCase() : 'NEUTRAL';
+  const baseContent = node.content != null ? String(node.content) : '';
+
+  let emotion =
+    typeof node.emotion === 'string'
+      ? node.emotion.toUpperCase()
+      : 'NEUTRAL';
   if (!ALLOWED_EMOTIONS.includes(emotion)) emotion = 'NEUTRAL';
 
-  // Children: sanitize recursively (DFS)
+  // ⭐ Sanitize children first
   const rawChildren = Array.isArray(node.children) ? node.children : [];
   const children = rawChildren.map((ch) => sanitizeNode(ch, ctx)).filter(Boolean);
+
+  // ⭐ NEW: if children exist, create content = concatenation of children.content
+  const content =
+    children.length > 0
+      ? children.map((c) => c.content).join(' ')
+      : baseContent;
 
   return {
     id,
@@ -141,9 +156,10 @@ function sanitizeNode(node, ctx) {
     label,
     content,
     emotion,
-    children
+    children,
   };
 }
+
 
 export async function buildTree(sentences, layers) {
   const client = getClient();
@@ -181,4 +197,29 @@ export async function buildTree(sentences, layers) {
     console.error('[ClaudeALTERNATIVE Service] buildTree failed:', error);
     throw error;
   }
+}
+
+export async function rewriteTextWithEmotion(text, emotion) {
+  const client = getClient();
+  const prompt = `
+Rewrite the following text so that it strongly reflects the emotional tone "${emotion}".
+
+Rules:
+- Only return the rewritten text wihtoud leading/trailing " signs.
+- Keep the meaning.
+- Keep the original text length similar.
+- Do NOT mention the emotion explicitly.
+- Make the emotional tone clear through word choice and phrasing.
+
+Text:
+"${text}"
+`;
+
+  const response = await client.messages.create({
+    model: 'claude-3-5-haiku-20241022',
+    max_tokens: 300,
+    messages: [{ role: "user", content: prompt }]
+  });
+  const output = response?.content?.[0]?.text ?? "";
+  return output.trim();
 }
