@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect,useMemo, useRef} from 'react';
+import {useNavigate} from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
 import { buildTree } from '../ClaudeAlternative/claudeAPI';
@@ -82,8 +83,7 @@ export default function BidirectionalEditor() {
   const [tree, setTree] = useState(null);
   const [maxDepth, setMaxDepth] = useState(3);
   const [isTreeRendering, setisTreeRendering] = useState(false);
-
-
+  const navigate = useNavigate();
   const historyGraphRef = useRef(null);
 
   const commit = () => {
@@ -213,7 +213,15 @@ export default function BidirectionalEditor() {
         >
           Commit
         </button>
+              <button
+                        onClick={() => navigate('/stats')}
+                        className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+                        title="View analytics"
+                    >
+                        📊 Stats
+                    </button>
       </div>
+
 
       {/* Main content */}
       <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
