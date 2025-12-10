@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
-import ReactFlow, { Background, ConnectionMode } from "reactflow";
+import ReactFlow, { Background, ConnectionMode , Controls,} from "reactflow";
 import { runElk } from "../../utils/layoutEngine";
 import TreeNode from "./TreeNode";
 
@@ -34,8 +34,8 @@ const Legend = () => (
   <div
     style={{
       position: "absolute",
-      top: 8,
-      right: 8,
+      bottom: 8,
+      left: 8,
       background: "rgba(255,255,255,0.9)",
       padding: "8px 12px",
       borderRadius: 8,
@@ -279,6 +279,7 @@ export default function ElkTree({ tree, setTree }) {
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
         nodesDraggable={true}
+        minZoom={0.01} 
         onNodesChange={(changes) => {
           setNodes((nds) => {
             const updated = applyNodeChanges(changes, nds);
@@ -302,6 +303,7 @@ export default function ElkTree({ tree, setTree }) {
       >
         <Background variant="dots" gap={40} size={4} color="#e0e3e7" />
         <Legend />
+        <Controls showInteractive={false} position="bottom-right"/>
       </ReactFlow>
     </div>
   );

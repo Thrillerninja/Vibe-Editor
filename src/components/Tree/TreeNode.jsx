@@ -123,7 +123,7 @@ export default function TreeNode({ data }) {
                       width: 28,
                       height: 28,
                       border: "4px solid #ccc",
-                      borderTop: "4px solid #10B981",
+                      borderTop: `4px solid ${getEmotionColor(nodeEmotion)}`,
                       borderRadius: "50%",
                       animation: "spin 0.8s linear infinite",
                     }}
@@ -136,7 +136,7 @@ export default function TreeNode({ data }) {
                     <button
                       key={emotion}
                       onClick={() => applyEmotion(emotion)}
-                      disabled={!editable}
+                      disabled={!editable || isNodeRewriting || emotion == nodeEmotion}
                       style={{
                         flex: 1,
                         padding: "8px 0",
