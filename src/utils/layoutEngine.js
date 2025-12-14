@@ -26,7 +26,9 @@ export async function runElk(nodes, edges) {
     id: 'root',
     layoutOptions: ELK_OPTIONS,
     children: nodes.map((n) => {
-      const size = measureLabel(n.data.label);
+      // Use sentence as primary label fallback to ensure consistent sizing
+      const text = n.data?.label ?? n.data?.sentence ?? '';
+      const size = measureLabel(text);
       return {
         id: n.id,
         width: size.width,
@@ -75,8 +77,6 @@ export async function runElk(nodes, edges) {
         position: { x: p.x, y: p.y },
         width: p.width,
         height: p.height,
-        // Important for React Flow so it doesn’t try to auto-position:
-        // if you're on v11+, use `positionAbsolute` carefully; typically just `position` is fine.
         draggable: true,
       };
     });

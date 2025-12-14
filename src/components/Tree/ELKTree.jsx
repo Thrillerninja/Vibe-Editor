@@ -15,6 +15,10 @@ import { LEAF_NODE_LEVEL } from "../../utils/constants";
 import { em } from "framer-motion/client";
 import { ALTERNATIVE_EMOTION_COLORS } from "../../utils/constants";
 import { applyNodeChanges } from 'reactflow';
+import { useReactFlow } from 'reactflow';
+import { useReordering } from '../../hooks/useReordering';
+import { useFlowScreenConverters } from '../../utils/coords';
+import { ReorderIndicator } from '../TreeVisualization/ReorderIndicator';
 
 
 function findNodeById(node, id) {
@@ -28,6 +32,8 @@ function findNodeById(node, id) {
 
   return null;
 }
+
+
 
 
 const Legend = () => (
@@ -103,7 +109,7 @@ const nodeTypes = { node: TreeNode };
  * Recursively convert tree structure to ELK nodes
  * Marks leaf nodes (level 0) as editable
  */
-function treeToElkNodes(node, nodes = []) {
+function treeToElkNodes(node, nodes = [], parentId = null) {
   // Determine if this node is a leaf (no children OR type is "leaf")
   const isLeaf = (!node.children || node.children.length === 0) || node.type === "leaf";
   
@@ -117,6 +123,9 @@ function treeToElkNodes(node, nodes = []) {
     type: "node",
     width: 200,
     height: 60,
+    // Do NOT set parentNode for ReactFlow here; ELK returns absolute positions.
+    // Using parentNode causes ReactFlow to offset children relative to parents,
+    // stretching the tree to the right/down.
     data: {
       isLeaf: node.level === LEAF_NODE_LEVEL,
       nodeLevel: node.level,
@@ -126,7 +135,7 @@ function treeToElkNodes(node, nodes = []) {
   });
 
   if (node.children) {
-    node.children.forEach(child => treeToElkNodes(child, nodes));
+    node.children.forEach(child => treeToElkNodes(child, nodes, node.id));
   }
 
   return nodes;
@@ -200,6 +209,7 @@ export default function ElkTree({ tree, setTree }) {
   const [nodes, setNodes] = useState([]);
   const [edges, setEdges] = useState([]);
   const rfRef = useRef(null);
+  const containerRef = useRef(null);
 
   // Convert tree structure to ELK nodes and edges
   const treeNodes = useMemo(() => {
@@ -251,6 +261,8 @@ export default function ElkTree({ tree, setTree }) {
       const reactFlowNodes = laidOut.map((n) => ({
         ...n,
         type: "node",
+        sourcePosition: 'right',
+        targetPosition: 'left',
         data: {
           ...n.data,
           setSentence: (newText) => {
@@ -262,42 +274,237 @@ export default function ElkTree({ tree, setTree }) {
       console.log('[ElkTree] Setting ReactFlow nodes:', reactFlowNodes);
       setNodes(reactFlowNodes);
       setEdges(treeEdges);
+      // Ensure edges connect to initial ELK-computed positions
+      setTimeout(() => {
+        if (rfRef.current?.updateNodeInternals) {
+          console.log('[ElkTree] Updating edge internals after initial layout');
+          reactFlowNodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
+        }
+      }, 0);
     }
 
     layout();
   }, [tree]);
 
 
+    //===============================================================
+    // Node reordering stuff
+    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+  const [draggedId, setDraggedId] = useState(null);
+  const [reorderIndicator, setReorderIndicator] = useState(null);
+  const [reorderActive, setReorderActive] = useState(false);
+
+  const { findClosestSibling, checkReorderDrop } = useReordering();
+  const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
+  const { getNodes } = useReactFlow();
+  
+  // Update edges whenever nodes change position
+  useEffect(() => {
+    if (nodes.length > 0 && rfRef.current?.updateNodeInternals) {
+      console.log('[ElkTree] Updating edge internals for all', nodes.length, 'nodes');
+      nodes.forEach(n => {
+        rfRef.current.updateNodeInternals(n.id);
+      });
+    }
+  }, [nodes]);
+
+  const onNodeDragStart = useCallback((_, node) => {
+    setDraggedId(node.id);
+  }, []);
+
+  function reorderTreeChildren(tree, draggedId, targetId, insertBefore) {
+    // Support reordering across different parents on the same level
+    // 1) Find current parent of dragged and parent of target
+    function findParent(curr, childId) {
+      if (!curr?.children?.length) return null;
+      if (curr.children.some((c) => c.id === childId)) return curr;
+      for (const ch of curr.children) {
+        const res = findParent(ch, childId);
+        if (res) return res;
+      }
+      return null;
+    }
+
+    const draggedParent = findParent(tree, draggedId);
+    const targetParent = findParent(tree, targetId);
+    if (!draggedParent || !targetParent) return tree;
+
+    // 2) Remove dragged from its current parent's children
+    const removeDragged = (curr) => {
+      if (!curr?.children?.length) return curr;
+      if (curr.id === draggedParent.id) {
+        const children = curr.children.filter((c) => c.id !== draggedId);
+        return { ...curr, children };
+      }
+      const newChildren = curr.children.map(removeDragged);
+      for (let i = 0; i < newChildren.length; i++) {
+        if (newChildren[i] !== curr.children[i]) {
+          return { ...curr, children: newChildren };
+        }
+      }
+      return curr;
+    };
+
+    const withoutDragged = removeDragged(tree);
+
+    // 3) Insert dragged into targetParent's children at position relative to targetId
+    function insertIntoTargetParent(curr, draggedNode) {
+      if (!curr?.children?.length) return curr;
+      if (curr.id === targetParent.id) {
+        const children = [...curr.children];
+        const to = children.findIndex((c) => c.id === targetId);
+        if (to === -1) return curr;
+        const insertIndex = insertBefore ? to : to + 1;
+        children.splice(insertIndex, 0, draggedNode);
+        return { ...curr, children };
+      }
+      const newChildren = curr.children.map((c) => insertIntoTargetParent(c, draggedNode));
+      for (let i = 0; i < newChildren.length; i++) {
+        if (newChildren[i] !== curr.children[i]) {
+          return { ...curr, children: newChildren };
+        }
+      }
+      return curr;
+    }
+
+    // Find the dragged node object to reinsert
+    function findNode(curr, id) {
+      if (!curr) return null;
+      if (curr.id === id) return curr;
+      if (!curr.children) return null;
+      for (const ch of curr.children) {
+        const res = findNode(ch, id);
+        if (res) return res;
+      }
+      return null;
+    }
+
+    const draggedNode = findNode(tree, draggedId);
+    if (!draggedNode) return tree;
+
+    return insertIntoTargetParent(withoutDragged, draggedNode);
+  }
+
+
+
+  const onNodeDrag = useCallback((_, node) => {
+    // Compute closest sibling at same level and show separator
+    const closest = findClosestSibling(node.id, node.position.y);
+    if (closest) {
+      const screenPos = toScreenPoint({ x: closest.node.position.x, y: closest.node.position.y });
+      const screenSize = toScreenSize({ width: closest.node.width || 200, height: closest.node.height || 60 });
+      setReorderIndicator({
+        x: screenPos.x,
+        y: screenPos.y + (closest.insertBefore ? 0 : screenSize.height),
+        width: screenSize.width,
+        isAbove: closest.insertBefore,
+      });
+      setReorderActive(true);
+    } else {
+      setReorderIndicator(null);
+      setReorderActive(false);
+    }
+    
+    // Update edges for the dragged node during drag
+    if (rfRef.current?.updateNodeInternals) {
+      rfRef.current.updateNodeInternals(node.id);
+    }
+  }, [findClosestSibling, toScreenPoint, toScreenSize, draggedId]);
+
+  const onNodeDragStop = useCallback((_, node) => {
+    const reorder = checkReorderDrop(node.id, node.position.y);
+    setReorderIndicator(null);
+    setDraggedId(null);
+    
+    if (!reorder || !reorderActive) {
+      // Even if no reorder, update all edges after drag ends
+      if (rfRef.current?.updateNodeInternals) {
+        console.log('[ElkTree] Drag ended, updating all edge internals');
+        nodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
+      }
+      // If indicator wasn't active, snap node(s) back to ELK-computed positions
+      setTimeout(async () => {
+        const newNodesArr = treeToElkNodes(tree);
+        const newEdgesArr = treeToElkEdges(tree);
+        const laidOut = await runElk(newNodesArr, newEdgesArr);
+        const reactFlowNodes = laidOut.map((n) => ({
+          ...n,
+          type: 'node',
+          sourcePosition: 'right',
+          targetPosition: 'left',
+          data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
+        }));
+        setNodes(reactFlowNodes);
+        setEdges(newEdgesArr);
+        // Ensure edges connect to the restored positions
+        setTimeout(() => {
+          if (rfRef.current?.updateNodeInternals) {
+            console.log('[ElkTree] Updating edge internals after snap-back');
+            reactFlowNodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
+          }
+        }, 0);
+      }, 0);
+      return;
+    }
+
+    const newTree = reorderTreeChildren(
+      tree,
+      node.id,
+      reorder.targetSiblingId,
+      reorder.insertBefore
+    );
+
+    setTree(newTree);
+    // Single relayout after drop
+    setTimeout(async () => {
+      const newNodesArr = treeToElkNodes(newTree);
+      const newEdgesArr = treeToElkEdges(newTree);
+      const laidOut = await runElk(newNodesArr, newEdgesArr);
+      const reactFlowNodes = laidOut.map((n) => ({
+        ...n,
+        type: 'node',
+        sourcePosition: 'right',
+        targetPosition: 'left',
+        data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
+      }));
+      setNodes(reactFlowNodes);
+      setEdges(newEdgesArr);
+      
+      // Force ReactFlow to update edge positions after reordering
+      // This ensures edges reconnect properly to the new node positions
+      setTimeout(() => {
+        if (rfRef.current?.updateNodeInternals) {
+          console.log('[ElkTree] Updating edge internals after reorder');
+          reactFlowNodes.forEach(n => {
+            rfRef.current.updateNodeInternals(n.id);
+          });
+        }
+      }, 0);
+    }, 0);
+  }, [checkReorderDrop, tree, setTree, handleNodeEdit, nodes]);
+
+
+
   return (
-    <div style={{ width: "100%", height: "100%" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%", position: 'relative' }}>
       <ReactFlow
         onInit={onInit}
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
         fitView
+        fitViewOptions={{ padding: 0.1 }}
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={false}
         nodesDraggable={true}
         minZoom={0.01} 
+        onNodeDragStart={onNodeDragStart}
+        onNodeDrag={onNodeDrag}
+        onNodeDragStop={onNodeDragStop}
         onNodesChange={(changes) => {
-          setNodes((nds) => {
-            const updated = applyNodeChanges(changes, nds);
-
-            // mutate tree nodes without calling setTree
-            for (const rfNode of updated) {
-              const y = rfNode.position?.y;
-              if (y == null) continue;
-
-              const treeNode = findNodeById(tree, rfNode.id);
-              if (treeNode) {
-                treeNode.y_coord = y;   // DIRECT mutation
-              }
-            }
-
-            return updated;
-          });
-          
+          // Keep other nodes fixed during drag/reorder; accept only direct node position changes
+          setNodes((nds) => applyNodeChanges(changes, nds));
         }}
 
       >
@@ -305,6 +512,43 @@ export default function ElkTree({ tree, setTree }) {
         <Legend />
         <Controls showInteractive={false} position="bottom-right"/>
       </ReactFlow>
+        {reorderIndicator && (
+          (() => {
+            const rect = containerRef.current?.getBoundingClientRect?.() || { left: 0, top: 0 };
+            const left = (reorderIndicator.x - rect.left) - (reorderIndicator.width / 2);
+            const top = (reorderIndicator.y - rect.top) + (reorderIndicator.isAbove ? -10 : 10);
+            return (
+              <div
+                style={{
+                  position: 'absolute',
+                  left,
+                  top,
+                  width: reorderIndicator.width,
+                  height: 4,
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 2,
+                  pointerEvents: 'none',
+                  zIndex: 10000,
+                  boxShadow: '0 0 10px rgba(59, 130, 246, 0.7)'
+                }}
+              />
+            );
+          })()
+        )}
     </div>
   );
+}
+
+function getCandidateParentId(pointer, nodes) {
+  // Only consider nodes whose level === startLevel - 1 (direct parent level)
+  const parentCandidates = nodes.filter(n => n.data.level === startLevel - 1);
+  // Compute screen-space rects and choose the closest center within a tolerance
+  let best = null, minDist = Infinity;
+  for (const p of parentCandidates) {
+    const rect = toScreenRect(p);
+    const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+    const d = Math.hypot(pointer.x - cx, pointer.y - cy);
+    if (d < minDist && d < PARENT_PROXIMITY_THRESHOLD) { minDist = d; best = p.id; }
+  }
+  return best; // may be null → keep original parent on drop
 }

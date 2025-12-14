@@ -15,7 +15,7 @@ import { tr } from 'framer-motion/client';
 import { buildTree } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
-
+import { ReactFlowProvider } from 'reactflow';
 
 const RANDOM_POETRY= `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 const RANDOM_TEXT =  `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
@@ -327,8 +327,12 @@ export default function BidirectionalEditor() {
         {/* RIGHT: Tree Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white',color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ flex: 1, overflow: 'hidden' }}>
+
             {tree ? (
-              <ElkTree tree={tree} setTree={setTree}/>
+              <ReactFlowProvider>
+                <ElkTree tree={tree} setTree={setTree}/>
+              </ReactFlowProvider>
+
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999' }}>
                 Click → to create tree
