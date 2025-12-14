@@ -22,12 +22,14 @@ const RANDOM_TEXT =  `The day began with a gentle sense of positivity, as if som
 
 
 
-function createNode(id, label, children = [], level = 0) {
+function createNode(id, label, children = [], level = 0, isModified=false, emotion="NEUTRAL") {
   return {
     id: id,
     label:label,
     level:level,
     children:children,
+    isModified:isModified,
+    emotion:emotion
   };
 }
 
@@ -66,6 +68,8 @@ function addYCoord(node) {
 
   const updated = { 
     ...node, 
+    isModified:false,
+    emotion: node.emotion ?? "NEUTRAL", 
     y_coord: node.y_coord ?? 0   // default value
   };
 
@@ -78,13 +82,26 @@ function addYCoord(node) {
 }
 
 
+// Create a default dummy root node
+const createDummyRootNode = () => ({
+  id: 'root',
+  label: 'Document Root',
+  content: 'Document Root',
+  level: 0,
+  children: [],
+  isModified: false,
+  emotion: "NEUTRAL",
+  y_coord: 0
+});
+
 export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
-  const [tree, setTree] = useState(null);
+  const [tree, setTree] = useState(undefined);
   const [maxDepth, setMaxDepth] = useState(3);
   const [isTreeRendering, setisTreeRendering] = useState(false);
   const navigate = useNavigate();
   const historyGraphRef = useRef(null);
+  const lastPunctPosRef = useRef(-1); // Track last . ! ? position
 
   const commit = () => {
       historyGraphRef.current?.addCommit(
@@ -106,7 +123,7 @@ export default function BidirectionalEditor() {
 
   const convertTextToTree = async () => {
     console.log('[BidirectionalEditor] Converting text to tree...', textAreaContent);
-    setTree(undefined)
+    //setTree(undefined)
     setisTreeRendering(true);
     // Build sentences as leaf nodes
     const sentences = textToSentences(textAreaContent)
@@ -117,7 +134,8 @@ export default function BidirectionalEditor() {
       console.log('[BidirectionalEditor] Claude returned tree:', aiRoot);
 
       const withCoords = addYCoord(aiRoot);
-
+      console.log('[BidirectionalEditor] After addYCoord (with isModified):', withCoords);
+      
       setTree(withCoords);
     } catch (err) {
       console.error('[BidirectionalEditor] AI tree generation failed, falling back to simple layout:', err);
@@ -129,6 +147,8 @@ export default function BidirectionalEditor() {
         level: LEAF_NODE_LEVEL,
         y_coord: i, 
         children: [],
+        isModified: false,
+        emotion: "NEUTRAL"
       }));
       const rootNode = createNode('Document', "Root", [], maxDepth);
       //setTree(rootNode);
@@ -167,8 +187,70 @@ export default function BidirectionalEditor() {
   useEffect(() => {
     const dummyText = RANDOM_TEXT + "\n\n" + RANDOM_POETRY;
     setTextAreaContent(dummyText);
+    setTree(createDummyRootNode());
   }, []);
 
+  // Auto-add new sentences as isModified leaf nodes when text changes
+  useEffect(() => {
+    if (!textAreaContent || !tree) return;
+
+    // Find the last punctuation position
+    const lastPunctMatch = textAreaContent.match(/[.!?]/g);
+    if (!lastPunctMatch) return; // No punctuation yet
+    
+    const lastPunctPos = textAreaContent.lastIndexOf(lastPunctMatch[lastPunctMatch.length - 1]);
+    
+    // Only trigger if a NEW punctuation was added
+    if (lastPunctPos <= lastPunctPosRef.current) return;
+    lastPunctPosRef.current = lastPunctPos;
+
+    // Extract all complete sentences (ending with . ! ?)
+    const sentences = textToSentences(textAreaContent).map(s => s.trim()).filter(Boolean);
+
+    // Collect existing leaf contents
+    const existing = new Set();
+    const collect = (node) => {
+      if (node.level === LEAF_NODE_LEVEL && node.content) {
+        existing.add(String(node.content).trim());
+      }
+      if (node.children) node.children.forEach(collect);
+    };
+    collect(tree);
+
+    // Find sentences not in tree yet
+    const newSentences = sentences.filter(s => !existing.has(s));
+    if (newSentences.length === 0) return;
+
+    console.log('[BidirectionalEditor] New sentences detected:', newSentences);
+
+    setTree(prevTree => {
+      let maxY = -1;
+      const findMax = (node) => {
+        if (node.level === LEAF_NODE_LEVEL && node.y_coord !== undefined) {
+          maxY = Math.max(maxY, node.y_coord);
+        }
+        if (node.children) node.children.forEach(findMax);
+      };
+      findMax(prevTree);
+
+      const newLeafNodes = newSentences.map((s, i) => ({
+        id: `leaf-${Date.now()}-${i}`,
+        content: s,
+        label: s,
+        level: LEAF_NODE_LEVEL,
+        y_coord: maxY + i + 1,
+        children: [],
+        isModified: true,
+        emotion: 'NEUTRAL',
+      }));
+
+      return {
+        ...prevTree,
+        children: [...(prevTree.children || []), ...newLeafNodes],
+      };
+    });
+    
+  }, [textAreaContent]);
 
   // ═══════════════════════════════════════════════════════════════
   // RENDER
@@ -335,7 +417,7 @@ export default function BidirectionalEditor() {
 
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999' }}>
-                Click → to create tree
+                
               </div>
             )}
           </div>

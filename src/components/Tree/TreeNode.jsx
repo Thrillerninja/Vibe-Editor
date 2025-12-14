@@ -17,16 +17,18 @@ export default function TreeNode({ data }) {
   const [nodeText, setNodeText] = useState(data.sentence || "");
   const [editable, setEditable] = useState(data.isLeaf || false);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
+  const [nodeModified, setNodeModified] = useState(data.isModified || false);
 
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
 
-  console.log('[TreeNode] Rendering node:', data);
+  console.log('[TreeNode] Rendering node:', data, 'isModified:', data.isModified);
   function applyChanges() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
   }
   function handleSave() {
     data.setSentence(nodeText);
+    setNodeModified(true);
     setIsDialogOpen(false);
   }
 
@@ -218,11 +220,20 @@ export default function TreeNode({ data }) {
         style={{
           padding: 12,
           borderRadius: 8,
-          background: getEmotionColor(nodeEmotion),
-          color: "white",
+          //background: getEmotionColor(nodeEmotion),
+          color: "black",
           textAlign: "center",
           cursor: "pointer",
           width: 200,
+          background: nodeModified 
+            ? `repeating-linear-gradient(
+                45deg,
+                ${getEmotionColor(nodeEmotion)},
+                ${getEmotionColor(nodeEmotion)} 10px,
+                rgba(255, 200, 0, 0.4) 10px,
+                rgba(255, 200, 0, 0.4) 20px
+              )`
+            : getEmotionColor(nodeEmotion),
         }}
       >
         <Handle type="target" position={Position.Left} />

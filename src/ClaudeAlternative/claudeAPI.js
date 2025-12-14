@@ -149,6 +149,7 @@ function sanitizeNode(node, ctx) {
       ? children.map((c) => c.content).join(' ')
       : baseContent;
 
+  const isModified = false;
   return {
     id,
     level,
@@ -157,6 +158,7 @@ function sanitizeNode(node, ctx) {
     content,
     emotion,
     children,
+    isModified
   };
 }
 

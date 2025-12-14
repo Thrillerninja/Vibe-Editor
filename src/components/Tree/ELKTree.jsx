@@ -93,6 +93,7 @@ function applyCoordsToTree(tree, rfNodes) {
 
     return {
       ...updatedNode,
+      isModified: node.isModified,
       children: node.children.map(update)
     };
   };
@@ -123,6 +124,7 @@ function treeToElkNodes(node, nodes = [], parentId = null) {
     type: "node",
     width: 200,
     height: 60,
+
     // Do NOT set parentNode for ReactFlow here; ELK returns absolute positions.
     // Using parentNode causes ReactFlow to offset children relative to parents,
     // stretching the tree to the right/down.
@@ -131,6 +133,7 @@ function treeToElkNodes(node, nodes = [], parentId = null) {
       nodeLevel: node.level,
       emotion: node.emotion,
       sentence: sentenceContent,
+      isModified: node.isModified, 
     },
   });
 
@@ -239,17 +242,6 @@ export default function ElkTree({ tree, setTree }) {
     setTree(updatedRoot);
   }, [tree, setTree]);
 
-  // Layout with ELK
-  useEffect(() => {
-    if (treeNodes.length === 0) {
-      console.log('[ElkTree] No treeNodes, skipping layout');
-      return;
-    }
-
-    console.log('[ElkTree] Layout effect triggered with', treeNodes.length, 'nodes');
-
-
-  }, [treeNodes, treeEdges]);
 
   const onInit = useCallback((inst) => {
     rfRef.current = inst;
@@ -279,6 +271,35 @@ export default function ElkTree({ tree, setTree }) {
         if (rfRef.current?.updateNodeInternals) {
           console.log('[ElkTree] Updating edge internals after initial layout');
           reactFlowNodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
+        }
+      }, 0);
+    }
+
+    layout();
+  }, [tree]);
+
+  // Re-layout whenever the incoming tree changes (e.g., parent adds nodes)
+  useEffect(() => {
+    if (!tree || !rfRef.current) return;
+
+    async function layout() {
+      const laidOut = await runElk(treeNodes, treeEdges);
+
+      const reactFlowNodes = laidOut.map((n) => ({
+        ...n,
+        type: 'node',
+        sourcePosition: 'right',
+        targetPosition: 'left',
+        data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
+      }));
+
+      setNodes(reactFlowNodes);
+      setEdges(treeEdges);
+
+      // Ensure edges connect to the fresh positions
+      setTimeout(() => {
+        if (rfRef.current?.updateNodeInternals) {
+          reactFlowNodes.forEach((n) => rfRef.current.updateNodeInternals(n.id));
         }
       }, 0);
     }
