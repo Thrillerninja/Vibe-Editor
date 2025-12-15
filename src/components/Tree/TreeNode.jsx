@@ -14,7 +14,7 @@ function getEmotionColor(emotion) {
 
 export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [nodeText, setNodeText] = useState(data.sentence || "");
+  const [nodeText, setNodeText] = useState(data.content || data.sentence || "");
   const [editable, setEditable] = useState(data.isLeaf || true);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
   const [nodeModified, setNodeModified] = useState(data.isModified || false);
@@ -55,10 +55,10 @@ export default function TreeNode({ data }) {
     setNodeEmotion(data.emotion);
     setIsDialogOpen(false);
   }
-  // Init node display text with the sentence
+  // Init node display text with the content for editing
   useEffect(() => {
     setNodeText(data.sentence || "");
-  }, [data.sentence]);
+  }, [data.content, data.sentence]);
 
   // Sync visual modified state when data.isModified changes (e.g., after refresh)
   useEffect(() => {

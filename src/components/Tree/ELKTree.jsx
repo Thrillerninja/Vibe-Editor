@@ -72,11 +72,11 @@ function treeToElkNodes(node, nodes = [], parentId = null) {
   // Determine if this node is a leaf (no children OR type is "leaf")
   const isLeaf = (!node.children || node.children.length === 0) || node.type === "leaf";
   
-  // For leaf nodes, use content; for others, use label
-  var sentenceContent = isLeaf 
+  // For leaf nodes, use content; for non-leaf nodes, use label
+  const sentenceContent = isLeaf 
     ? (node.content || node.label || "NodeDefault")
     : (node.label || node.content || "Node");
-  sentenceContent = node.content
+  
   nodes.push({
     id: node.id,
     type: "node",
@@ -91,6 +91,7 @@ function treeToElkNodes(node, nodes = [], parentId = null) {
       nodeLevel: node.level,
       emotion: node.emotion,
       sentence: sentenceContent,
+      content: node.content,
       isModified: node.isModified, 
     },
   });
