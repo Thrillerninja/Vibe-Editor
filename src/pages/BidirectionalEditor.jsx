@@ -141,6 +141,7 @@ export default function BidirectionalEditor() {
       
       setTree(withCoords);
     } catch (err) {
+      setTree(createDummyRootNode());
       console.error('[BidirectionalEditor] AI tree generation failed, falling back to simple layout:', err);
       alert("Failed to render Tree.\n" + err)
       // Fallback: same behavior as before (simple leaf-per-sentence)
@@ -293,43 +294,44 @@ export default function BidirectionalEditor() {
     setTree(createDummyRootNode());
   }, []);
 
+
+
   // Auto-add new sentences as isModified leaf nodes when text changes
   useEffect(() => {
     console.log('[BidirectionalEditor] Tree: detecting text changes for auto-leaf addition...', textAreaContent, tree);
-    if (!textAreaContent || !tree) return;
+    if (!tree || !textAreaContent) return;
 
-    // Find the last punctuation position
+    // Collect every originalContent across the tree (not just leaves)
+    const existingOriginals = [];
+    const collectOriginals = (node) => {
+      if (!node) return;
+      if (node.originalContent) existingOriginals.push(String(node.originalContent).trim());
+      if (node.children) node.children.forEach(collectOriginals);
+    };
+    collectOriginals(tree);
+    console.log('[BidirectionalEditor] Existing originalContents:', existingOriginals);
+
+    // Wait for a completed sentence (ending with punctuation)
     const lastPunctMatch = textAreaContent.match(/[.!?]/g);
-    if (!lastPunctMatch) return; // No punctuation yet
-    
+    if (!lastPunctMatch) return;
     const lastPunctPos = textAreaContent.lastIndexOf(lastPunctMatch[lastPunctMatch.length - 1]);
-    
-    // Only trigger if a NEW punctuation was added
     if (lastPunctPos <= lastPunctPosRef.current) return;
     lastPunctPosRef.current = lastPunctPos;
 
-    // Extract all complete sentences (ending with . ! ?)
-    const sentences = textToSentences(textAreaContent).map(s => s.trim()).filter(Boolean);
-
-    // Collect existing leaf originalContent (use originalContent to ignore modifications)
-    const existing = new Set();
-    const collect = (node) => {
-      if (node.level === LEAF_NODE_LEVEL && node.originalContent) {
-        existing.add(String(node.originalContent).trim());
-      }
-      if (node.children) node.children.forEach(collect);
-    };
-    collect(tree);
-
-    // Find sentences not in tree yet
-    const newSentences = sentences.filter(s => !existing.has(s));
+    // Split textarea into sentences
+    const sentences = textToSentences(textAreaContent).map((s) => s.trim()).filter(Boolean);
+    const existingSet = new Set(existingOriginals.filter(Boolean));
+    const newSentences = sentences.filter((s) => !existingSet.has(s));
     if (newSentences.length === 0) return;
 
     console.log('[BidirectionalEditor] New sentences detected:', newSentences);
 
-    setTree(prevTree => {
+    setTree((prevTree) => {
+      if (!prevTree) return prevTree;
+
       let maxY = -1;
       const findMax = (node) => {
+        if (!node) return;
         if (node.level === LEAF_NODE_LEVEL && node.y_coord !== undefined) {
           maxY = Math.max(maxY, node.y_coord);
         }
@@ -346,7 +348,7 @@ export default function BidirectionalEditor() {
         children: [],
         isModified: true,
         emotion: 'NEUTRAL',
-        originalContent: s // Initialize originalContent to current content
+        originalContent: s
       }));
 
       return {
@@ -354,7 +356,6 @@ export default function BidirectionalEditor() {
         children: [...(prevTree.children || []), ...newLeafNodes],
       };
     });
-    
   }, [textAreaContent]);
 
   // ═══════════════════════════════════════════════════════════════
@@ -367,7 +368,7 @@ export default function BidirectionalEditor() {
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '40px' }}>
         <button
           onClick={() => {
-            setTree(null);
+            //setTree(createDummyRootNode());
             setTextAreaContent("");
           }}
           disabled={isTreeRendering}
