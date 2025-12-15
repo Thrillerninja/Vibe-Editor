@@ -14,20 +14,15 @@ function getEmotionColor(emotion) {
 
 export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [nodeText, setNodeText] = useState(data.content || data.sentence || "");
+  const [nodeText, setNodeText] = useState(data.content || "");
   const [editable, setEditable] = useState(data.isLeaf || true);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
   const [nodeModified, setNodeModified] = useState(data.isModified || false);
 
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
 
-  //console.log('[TreeNode] Rendering node:', data, 'isModified:', data.isModified);
-  function applyChanges() {
-    data.setSentence(nodeText);
-    setIsDialogOpen(false);
-  }
   function handleSave() {
-    if (data.sentence === nodeText) {
+    if (data.content === nodeText && data.emotion === nodeEmotion) {
       return; // No changes made
     }
     data.setSentence(nodeText, nodeEmotion);
@@ -36,29 +31,29 @@ export default function TreeNode({ data }) {
   }
 
   function applyEmotion(emotion){
+    if (data.isLeaf=== false)
+    { return;}
     console.log('[TreeNode] Applying emotion', emotion, 'to node', data);
     setIsNodeRewriting(true);
     setNodeEmotion(`${emotion}`);
-    if (data.isLeaf == true) {
-      (async () => {
+    (async () => {
         const rewritten = await rewriteTextWithEmotion(nodeText, emotion);
         setNodeText(rewritten);
       })().finally(() => {
         setIsNodeRewriting(false);
       });
-    }
 
   }
 
   function handleCancel() {
-    setNodeText(data.sentence || "");
+    setNodeText(data.content || "");
     setNodeEmotion(data.emotion);
     setIsDialogOpen(false);
   }
   // Init node display text with the content for editing
   useEffect(() => {
-    setNodeText(data.sentence || "");
-  }, [data.content, data.sentence]);
+    setNodeText(data.content || "");
+  }, [data.content]);
 
   // Sync visual modified state when data.isModified changes (e.g., after refresh)
   useEffect(() => {
@@ -200,7 +195,7 @@ export default function TreeNode({ data }) {
               >
                 Cancel
               </button>
-              {editable && (
+              {editable && data.isLeaf && (
                 <button
                   onClick={handleSave}
                   disabled={isNodeRewriting}
@@ -251,10 +246,10 @@ export default function TreeNode({ data }) {
       >
         <Handle type="target" position={Position.Left} />
         {
-          // The inline command is within these brackets {}
-          nodeText.length > 50
-            ? nodeText.substring(0, 50) + '...'
-            : nodeText
+          // Display label (for non-leaf nodes) or content (for leaf nodes)
+          (data.label || "").length > 50
+            ? (data.label || "").substring(0, 50) + '...'
+            : (data.label || "")
         }
         <Handle type="source" position={Position.Right} />
       </motion.div>
