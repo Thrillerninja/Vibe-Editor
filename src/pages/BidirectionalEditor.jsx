@@ -9,6 +9,7 @@
  */
 
 import React, { useState, useEffect,useMemo, useRef} from 'react';
+import DiffMatchPatch from 'diff-match-patch';
 import {useNavigate} from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
@@ -84,24 +85,18 @@ function addYCoord(node) {
 }
 
 
-// Create a default dummy root node
-const createDummyRootNode = () => ({
-  id: 'root',
-  label: 'Document Root',
-  content: 'Document Root',
-  level: 0,
-  children: [],
-  isModified: false,
-  emotion: "NEUTRAL",
-  y_coord: 0,
-  originalContent: 'Document Root' // Track original on creation
-});
+
 
 export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(undefined);
   const [maxDepth, setMaxDepth] = useState(3);
   const [isTreeRendering, setisTreeRendering] = useState(false);
+  const [showDiffModal, setShowDiffModal] = useState(false);
+  const [diffTokens, setDiffTokens] = useState([]);
+  const [diffTitle, setDiffTitle] = useState('Diff: Textarea vs Tree');
+  const [diffMode, setDiffMode] = useState('inspect'); // 'inspect' | 'apply'
+  const [pendingNewText, setPendingNewText] = useState('');
   const navigate = useNavigate();
   const historyGraphRef = useRef(null);
   const lastPunctPosRef = useRef(-1); // Track last . ! ? position
@@ -113,6 +108,18 @@ export default function BidirectionalEditor() {
       );
   }
 
+  // Create a default dummy root node
+  const createDummyRootNode = () => ({
+    id: 'root',
+    label: 'Document Root',
+    content: 'Document Root',
+    level: maxDepth - 1,
+    children: [],
+    isModified: false,
+    emotion: "NEUTRAL",
+    y_coord: 0,
+    originalContent: 'Document Root' // Track original on creation
+  });
 
   const handleRevertComplete = (revertedTextAreaContent) => {
     console.log(revertedTextAreaContent)
@@ -183,26 +190,26 @@ export default function BidirectionalEditor() {
   // Helper: Extract text from tree
   // - Collects all leaf nodes in order (sorted by y_coord)
   // - Returns the joined text
+  // Helper: Extract text from tree (leaf-only)
+  // Recursively collects only leaf nodes (level === LEAF_NODE_LEVEL),
+  // sorts them by y_coord, and concatenates their content.
   const extractTextFromTree = (treeNode) => {
     if (!treeNode) return "";
 
-    // 1) Collect all leaf nodes
     const leaves = [];
     const collect = (node) => {
+      if (!node) return;
       if (node.level === LEAF_NODE_LEVEL) {
         leaves.push(node);
-      } else if (node.children) {
+      } else if (node.children && node.children.length > 0) {
         node.children.forEach(collect);
       }
     };
     collect(treeNode);
-    console.log('[BidirectionalEditor] Collected leaf nodes:', leaves);
-    
-    // 2) Sort by y_coord (ascending = top-to-bottom)
-    leaves.sort((a, b) => (a.y_coord) - (b.y_coord));
 
-    // 3) Convert sorted nodes into text
-    return leaves.map((n) => n.content).join(" ");
+    leaves.sort((a, b) => (a.y_coord || 0) - (b.y_coord || 0));
+    console.log('[BidirectionalEditor] Extracted leaf nodes for text conversion:', leaves);
+    return leaves.map((n) => String(n.content)).join(" ");
   };
 
   // Main method: Convert tree to text and sync tree state
@@ -211,13 +218,34 @@ export default function BidirectionalEditor() {
 
     // Extract text from tree
     const newText = extractTextFromTree(tree);
+    console.log('[BidirectionalEditor] Converted tree back to text (preview only):', newText);
 
-    // Sync tree: clear isModified and set originalContent = content
-    const syncedTree = syncTreeAfterTextConversion(tree);
-    setTree(syncedTree);
+    // Show diff modal before applying
+    const dmp = new DiffMatchPatch();
+    const diffs = dmp.diff_main(textAreaContent, newText);
+    dmp.diff_cleanupSemantic(diffs);
+    setDiffTokens(diffs);
+    setDiffTitle('Apply: Tree → Text');
+    setPendingNewText(newText);
+    setDiffMode('apply');
+    setShowDiffModal(true);
+  };
 
-    // Update textarea with extracted text
-    setTextAreaContent(newText);
+  // ═══════════════════════════════════════════════════════════════
+  // QUICK DIFF: TEXTAREA ↔ TREE
+  // ═══════════════════════════════════════════════════════════════
+
+  const showTextVsTreeDiff = () => {
+    if (!tree) return;
+    const treeText = extractTextFromTree(tree);
+    const dmp = new DiffMatchPatch();
+    const diffs = dmp.diff_main(textAreaContent, treeText);
+    dmp.diff_cleanupSemantic(diffs);
+    setDiffTokens(diffs);
+    setDiffTitle('Diff: Textarea vs Tree');
+    setDiffMode('inspect');
+    setPendingNewText('');
+    setShowDiffModal(true);
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -401,6 +429,22 @@ export default function BidirectionalEditor() {
         >
           Commit
         </button>
+          <button
+            onClick={showTextVsTreeDiff}
+            disabled={isTreeRendering || !tree}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: '#111827',
+              color: 'white',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
+              fontSize: '12px',
+              opacity: isTreeRendering || !tree ? 0.7 : 1,
+            }}
+          >
+            Diff text↔tree
+          </button>
         <button
           onClick={() => navigate('/stats')}
           className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
@@ -600,6 +644,76 @@ export default function BidirectionalEditor() {
         </div>
       </div>
       <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete}/>
+
+      {showDiffModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ width: '88%', maxWidth: '980px', background: '#ffffff', color: '#0f172a', borderRadius: '12px', boxShadow: '0 15px 40px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '0.2px' }}>{diffTitle}</div>
+              <button onClick={() => { setPendingNewText(''); setDiffMode('inspect'); setShowDiffModal(false); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#6b7280' }}>✕</button>
+            </div>
+            <div style={{ padding: '12px 18px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', color: '#6b7280', fontSize: '12px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '12px', height: '12px', background: '#dcfce7', border: '1px solid #22c55e', borderRadius: '2px' }}></span>
+                  Added
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '12px', height: '12px', background: '#fee2e2', border: '1px solid #ef4444', borderRadius: '2px' }}></span>
+                  Removed
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                  <span style={{ width: '12px', height: '12px', background: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '2px' }}></span>
+                  Unchanged
+                </span>
+              </div>
+              <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '8px', maxHeight: '56vh', overflow: 'auto' }}>
+                <div style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace', fontSize: '13px', lineHeight: 1.6, padding: '12px' }}>
+                  {(!diffTokens || diffTokens.length === 0) && (
+                    <div style={{ color: '#6b7280' }}>No differences</div>
+                  )}
+                  {diffTokens && diffTokens.map((d, i) => {
+                    const [op, text] = d; // op: -1 delete, 0 equal, 1 insert
+                    const isDel = op === -1;
+                    const isIns = op === 1;
+                    const style = isIns
+                      ? { backgroundColor: '#dcfce7', color: '#14532d', padding: '0 2px', borderRadius: '3px' }
+                      : isDel
+                        ? { backgroundColor: '#fee2e2', color: '#7f1d1d', textDecoration: 'line-through', padding: '0 2px', borderRadius: '3px' }
+                        : { backgroundColor: '#f3f4f6', color: '#111827', padding: '0 2px', borderRadius: '3px' };
+                    return (
+                      <span key={i} style={style}>{text}</span>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              {diffMode === 'apply' && (
+                <button
+                  onClick={() => {
+                    const syncedTree = syncTreeAfterTextConversion(tree);
+                    setTree(syncedTree);
+                    setTextAreaContent(pendingNewText);
+                    setPendingNewText('');
+                    setDiffMode('inspect');
+                    setShowDiffModal(false);
+                  }}
+                  style={{ padding: '8px 14px', backgroundColor: '#111827', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+                >
+                  Apply Changes
+                </button>
+              )}
+              <button
+                onClick={() => { setPendingNewText(''); setDiffMode('inspect'); setShowDiffModal(false); }}
+                style={{ padding: '8px 14px', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                {diffMode === 'apply' ? 'Cancel' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
