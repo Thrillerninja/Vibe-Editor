@@ -21,18 +21,6 @@ import { useFlowScreenConverters } from '../../utils/coords';
 import { ReorderIndicator } from '../TreeVisualization/ReorderIndicator';
 
 
-function findNodeById(node, id) {
-  if (node.id === id) return node;
-  if (!node.children) return null;
-
-  for (const child of node.children) {
-    const found = findNodeById(child, id);
-    if (found) return found;
-  }
-
-  return null;
-}
-
 
 
 
@@ -70,36 +58,6 @@ const Legend = () => (
     ))}
   </div>
 );
-
-function applyCoordsToTree(tree, rfNodes) {
-  if (!tree) return tree;
-
-  // Build a lookup map: id → y
-  const yMap = new Map();
-  rfNodes.forEach((n) => {
-    if (n.id && n.position) {
-      yMap.set(n.id, n.position.y);
-    }
-  });
-
-  // Recursive updater
-  const update = (node) => {
-    const newY = yMap.get(node.id);
-    const updatedNode = newY !== undefined
-      ? { ...node, y_coord: newY }
-      : node;
-
-    if (!node.children) return updatedNode;
-
-    return {
-      ...updatedNode,
-      isModified: node.isModified,
-      children: node.children.map(update)
-    };
-  };
-
-  return update(tree);
-}
 
 
 
@@ -168,7 +126,7 @@ function treeToElkEdges(node, edges = []) {
  * - a NEW tree object when a node was changed (new object identity on the path),
  * - the original node object when nothing changed in that subtree.
  */
-function updateNodeInTree(node, nodeId, newContent) {
+function updateNodeInTree(node, nodeId, newContent, newEmotion) {
   if (!node) return node;
 
   // If this is the target node, return a shallow copy with updated label and set isModified
@@ -177,6 +135,7 @@ function updateNodeInTree(node, nodeId, newContent) {
       ...node,
       content: newContent,
       isModified: true,
+      emotion: newEmotion,
     };
   }
 
@@ -228,10 +187,10 @@ export default function ElkTree({ tree, setTree }) {
   }, [tree]);
 
   // Handle node edit - only for leaf nodes
-  const handleNodeEdit = useCallback((nodeId, newContent) => {
+  const handleNodeEdit = useCallback((nodeId, newContent, newEmotion) => {
     console.log('[ElkTree] Editing node', nodeId, 'to', newContent);
 
-    const updatedRoot = updateNodeInTree(tree, nodeId, newContent);
+    const updatedRoot = updateNodeInTree(tree, nodeId, newContent, newEmotion);
     console.log('[ElkTree] Updated root:', updatedRoot);
     // If updateNodeInTree returns the same root object, nothing changed
     if (updatedRoot === tree) {
@@ -258,8 +217,8 @@ export default function ElkTree({ tree, setTree }) {
         targetPosition: 'left',
         data: {
           ...n.data,
-          setSentence: (newText) => {
-            handleNodeEdit(n.id, newText);
+          setSentence: (newText, newEmotion) => {
+            handleNodeEdit(n.id, newText, newEmotion);
           },
         },
       }));

@@ -186,13 +186,18 @@ export async function restructureSubtreePreservingIds(subtreeRoot) {
     const responseText = message?.content?.[0]?.text ?? (message?.content ?? '');
     const parsed = extractFirstJson(responseText);
 
-    // Basic structure normalization: ensure children arrays
-    const normalize = (node) => {
+    // Basic structure normalization: ensure children arrays and preserve originalContent
+    const normalize = (node, originalNode) => {
       if (!node) return node;
-      const out = { ...node, children: Array.isArray(node.children) ? node.children.map(normalize) : [] };
+      const out = {
+        ...node,
+        children: Array.isArray(node.children) ? node.children.map((n, i) => normalize(n, originalNode?.children?.[i])) : [],
+        // Preserve originalContent from original if it exists, otherwise initialize to current content
+        originalContent: originalNode?.originalContent ?? node.content ?? ''
+      };
       return out;
     };
-    const normalized = normalize(parsed);
+    const normalized = normalize(parsed, subtreeRoot);
 
     if (!validateRestructuredSubtree(subtreeRoot, normalized)) {
       throw new Error('Invalid subtree returned: ids/levels/contents not preserved');
@@ -248,6 +253,10 @@ function sanitizeNode(node, ctx) {
       : baseContent;
 
   const isModified = false;
+  
+  // Initialize originalContent to current content (will be synced at tree-to-text conversion)
+  const originalContent = content;
+  
   return {
     id,
     level,
@@ -256,7 +265,8 @@ function sanitizeNode(node, ctx) {
     content,
     emotion,
     children,
-    isModified
+    isModified,
+    originalContent
   };
 }
 

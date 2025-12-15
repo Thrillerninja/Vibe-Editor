@@ -29,7 +29,9 @@ function createNode(id, label, children = [], level = 0, isModified=false, emoti
     level:level,
     children:children,
     isModified:isModified,
-    emotion:emotion
+    emotion:emotion,
+    content: '',
+    originalContent: '' // Tracks the original content at last sync point
   };
 }
 
@@ -91,7 +93,8 @@ const createDummyRootNode = () => ({
   children: [],
   isModified: false,
   emotion: "NEUTRAL",
-  y_coord: 0
+  y_coord: 0,
+  originalContent: 'Document Root' // Track original on creation
 });
 
 export default function BidirectionalEditor() {
@@ -160,8 +163,27 @@ export default function BidirectionalEditor() {
   // BUTTON 2: TREE → TEXT (flatten tree back to sentences)
   // ═══════════════════════════════════════════════════════════════
 
-  const convertTreeToText = () => {
-    if (!tree) return;
+  // Helper: Sync tree state after converting to text
+  // - Sets isModified to false for all nodes
+  // - Sets originalContent = content for all nodes (marks as committed)
+  const syncTreeAfterTextConversion = (node) => {
+    if (!node) return node;
+    const synced = {
+      ...node,
+      isModified: false,
+      originalContent: node.content
+    };
+    if (synced.children) {
+      synced.children = synced.children.map(syncTreeAfterTextConversion);
+    }
+    return synced;
+  };
+
+  // Helper: Extract text from tree
+  // - Collects all leaf nodes in order (sorted by y_coord)
+  // - Returns the joined text
+  const extractTextFromTree = (treeNode) => {
+    if (!treeNode) return "";
 
     // 1) Collect all leaf nodes
     const leaves = [];
@@ -172,14 +194,28 @@ export default function BidirectionalEditor() {
         node.children.forEach(collect);
       }
     };
-    collect(tree);
+    collect(treeNode);
     console.log('[BidirectionalEditor] Collected leaf nodes:', leaves);
+    
     // 2) Sort by y_coord (ascending = top-to-bottom)
     leaves.sort((a, b) => (a.y_coord) - (b.y_coord));
 
     // 3) Convert sorted nodes into text
-    const newText = leaves.map((n) => n.content).join(" ");
+    return leaves.map((n) => n.content).join(" ");
+  };
 
+  // Main method: Convert tree to text and sync tree state
+  const convertTreeToText = () => {
+    if (!tree) return;
+
+    // Extract text from tree
+    const newText = extractTextFromTree(tree);
+
+    // Sync tree: clear isModified and set originalContent = content
+    const syncedTree = syncTreeAfterTextConversion(tree);
+    setTree(syncedTree);
+
+    // Update textarea with extracted text
     setTextAreaContent(newText);
   };
 
@@ -230,15 +266,25 @@ export default function BidirectionalEditor() {
       };
     };
 
-    try {
-      const refreshedTree = await processNode(tree);
-      const withCoords = addYCoord(refreshedTree);
-      setTree(withCoords);
-      console.log('[BidirectionalEditor] Tree refreshed:', withCoords);
-    } finally {
-      setisTreeRendering(false);
+    // if root children are modifed regen everything.
+    const rootHasModifiedChild = tree.children && tree.children.some(child => child.isModified === true);
+    if (rootHasModifiedChild) {
+      console.log(`[BidirectionalEditor] Root has modified child, regenerating entire tree`);
+      convertTextToTree()
+    } else {
+      console.log(`[BidirectionalEditor] Root has no modified children, processing normally`);
+      try {
+            const refreshedTree = await processNode(tree);
+            const withCoords = addYCoord(refreshedTree);
+            setTree(withCoords);
+            console.log('[BidirectionalEditor] Tree refreshed:', withCoords);
+          } finally {
+            setisTreeRendering(false);
+          }
+      };
+
     }
-  };
+
 
 
   useEffect(() => {
@@ -249,6 +295,7 @@ export default function BidirectionalEditor() {
 
   // Auto-add new sentences as isModified leaf nodes when text changes
   useEffect(() => {
+    console.log('[BidirectionalEditor] Tree: detecting text changes for auto-leaf addition...', textAreaContent, tree);
     if (!textAreaContent || !tree) return;
 
     // Find the last punctuation position
@@ -264,11 +311,11 @@ export default function BidirectionalEditor() {
     // Extract all complete sentences (ending with . ! ?)
     const sentences = textToSentences(textAreaContent).map(s => s.trim()).filter(Boolean);
 
-    // Collect existing leaf contents
+    // Collect existing leaf originalContent (use originalContent to ignore modifications)
     const existing = new Set();
     const collect = (node) => {
-      if (node.level === LEAF_NODE_LEVEL && node.content) {
-        existing.add(String(node.content).trim());
+      if (node.level === LEAF_NODE_LEVEL && node.originalContent) {
+        existing.add(String(node.originalContent).trim());
       }
       if (node.children) node.children.forEach(collect);
     };
@@ -299,6 +346,7 @@ export default function BidirectionalEditor() {
         children: [],
         isModified: true,
         emotion: 'NEUTRAL',
+        originalContent: s // Initialize originalContent to current content
       }));
 
       return {

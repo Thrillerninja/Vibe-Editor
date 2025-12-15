@@ -27,7 +27,10 @@ export default function TreeNode({ data }) {
     setIsDialogOpen(false);
   }
   function handleSave() {
-    data.setSentence(nodeText);
+    if (data.sentence === nodeText) {
+      return; // No changes made
+    }
+    data.setSentence(nodeText, nodeEmotion);
     setNodeModified(true);
     setIsDialogOpen(false);
   }
@@ -36,14 +39,10 @@ export default function TreeNode({ data }) {
     console.log('[TreeNode] Applying emotion', emotion, 'to node', data);
     setIsNodeRewriting(true);
     setNodeEmotion(`${emotion}`);
-    // TODO: rewrite the text with AI
     if (data.isLeaf == true) {
       (async () => {
         const rewritten = await rewriteTextWithEmotion(nodeText, emotion);
         setNodeText(rewritten);
-        // Propagate the change back to the tree structure
-        data.setSentence(rewritten);
-        setNodeModified(true);
       })().finally(() => {
         setIsNodeRewriting(false);
       });
@@ -53,7 +52,7 @@ export default function TreeNode({ data }) {
 
   function handleCancel() {
     setNodeText(data.sentence || "");
-    setNodeEmotion(data.emotion || "NEUTRAL");
+    setNodeEmotion(data.emotion);
     setIsDialogOpen(false);
   }
   // Init node display text with the sentence
@@ -68,7 +67,7 @@ export default function TreeNode({ data }) {
 
   // Sync emotion when data.emotion changes (e.g., after Claude reevaluation)
   useEffect(() => {
-    setNodeEmotion(data.emotion || "NEUTRAL");
+    //setNodeEmotion(data.emotion || "NEUTRAL");
   }, [data.emotion]);
 
 
