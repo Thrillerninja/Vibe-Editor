@@ -401,13 +401,40 @@ export default function BidirectionalEditor() {
         >
           Commit
         </button>
-              <button
-                        onClick={() => navigate('/stats')}
-                        className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
-                        title="View analytics"
-                    >
-                        📊 Stats
-                    </button>
+        <button
+          onClick={() => navigate('/stats')}
+          className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+          title="View analytics"
+        >
+          📊 Stats
+        </button>
+        
+        {/* Max Depth Selector */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
+          <label htmlFor="maxDepth" style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>
+            Max Depth:
+          </label>
+          <select
+            id="maxDepth"
+            value={maxDepth}
+            onChange={(e) => setMaxDepth(Number(e.target.value))}
+            disabled={isTreeRendering}
+            style={{
+              padding: '6px 12px',
+              backgroundColor: 'white',
+              color: '#374151',
+              border: '1px solid #d1d5db',
+              borderRadius: '4px',
+              cursor: isTreeRendering ? 'not-allowed' : 'pointer',
+              fontSize: '12px',
+              outline: 'none',
+            }}
+          >
+            <option value={3}>3</option>
+            <option value={4}>4</option>
+            <option value={5}>5</option>
+          </select>
+        </div>
       </div>
 
 
