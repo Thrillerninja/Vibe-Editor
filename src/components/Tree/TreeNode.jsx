@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion } from 'framer-motion';
 import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
-import { em } from "framer-motion/client";
+import { em, s } from "framer-motion/client";
 import { rewriteTextWithEmotion } from "../../ClaudeAlternative/claudeAPI";
 
 
@@ -15,13 +15,13 @@ function getEmotionColor(emotion) {
 export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.sentence || "");
-  const [editable, setEditable] = useState(data.isLeaf || false);
+  const [editable, setEditable] = useState(data.isLeaf || true);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
   const [nodeModified, setNodeModified] = useState(data.isModified || false);
 
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
 
-  console.log('[TreeNode] Rendering node:', data, 'isModified:', data.isModified);
+  //console.log('[TreeNode] Rendering node:', data, 'isModified:', data.isModified);
   function applyChanges() {
     data.setSentence(nodeText);
     setIsDialogOpen(false);
@@ -41,6 +41,9 @@ export default function TreeNode({ data }) {
       (async () => {
         const rewritten = await rewriteTextWithEmotion(nodeText, emotion);
         setNodeText(rewritten);
+        // Propagate the change back to the tree structure
+        data.setSentence(rewritten);
+        setNodeModified(true);
       })().finally(() => {
         setIsNodeRewriting(false);
       });
@@ -57,6 +60,17 @@ export default function TreeNode({ data }) {
   useEffect(() => {
     setNodeText(data.sentence || "");
   }, [data.sentence]);
+
+  // Sync visual modified state when data.isModified changes (e.g., after refresh)
+  useEffect(() => {
+    setNodeModified(!!data.isModified);
+  }, [data.isModified]);
+
+  // Sync emotion when data.emotion changes (e.g., after Claude reevaluation)
+  useEffect(() => {
+    setNodeEmotion(data.emotion || "NEUTRAL");
+  }, [data.emotion]);
+
 
   const dialog = isDialogOpen ? createPortal(
     <div

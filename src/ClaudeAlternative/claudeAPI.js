@@ -1,7 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { LEAF_NODE_LEVEL } from '../utils/constants';
+import { LEAF_NODE_LEVEL, EMOTIONS } from '../utils/constants';
 
-const ALLOWED_EMOTIONS = ['POSITIVE', 'NEGATIVE', 'NEUTRAL', 'EMPHASIS', 'UNCERTAIN'];
+// Allowed emotions come from shared constants; enforce uppercase tokens for Claude
+const ALLOWED_EMOTIONS = Object.keys(EMOTIONS).map(k => k.toUpperCase());
 
 function buildPrompt(sentences, layers) {
   return `
@@ -59,13 +60,13 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 4) ATTRIBUTE REQUIREMENTS
    - EVERY node must have: id, level, type, label, content, emotion, children.
    - Node ids should be integers (unique), but your response will be re-mapped to "s-<n>" ids by the client.
-   - Choose emotion for each node from: [POSITIVE, NEGATIVE, NEUTRAL, EMPHASIS, UNCERTAIN].
+  - Choose emotion for each node from: [${ALLOWED_EMOTIONS.join(', ')}].
 
 5) TREE DEPTH
    - The number of layers requested (${layers}) determines the depth.
-     level = 0 → root
-     level = 1 → topic nodes
-     level = ${LEAF_NODE_LEVEL} → leaf nodes
+    level = 0 → root
+    level = 1 → topic nodes
+    level = ${LEAF_NODE_LEVEL} → leaf nodes
 
 6) OUTPUT FORMAT
    - Output a SINGLE JSON object representing the ROOT node.
@@ -104,6 +105,103 @@ function extractFirstJson(text) {
     // Try to be a bit more permissive: remove trailing commas
     const cleaned = jsonText.replace(/,\s*}/g, '}').replace(/,\s*]/g, ']');
     return JSON.parse(cleaned);
+  }
+}
+
+// Build a prompt to restructure a subtree while preserving ids and levels
+function buildRestructurePrompt(subtreeRoot) {
+  const inputJson = JSON.stringify(subtreeRoot, null, 2);
+  return `
+You will receive a JSON object representing the ROOT of a subtree. Your job is to RESTRUCTURE the subtree while strictly preserving these constraints:
+
+HARD CONSTRAINTS (do not violate):
+1) Preserve every node's id EXACTLY as provided.
+2) Preserve every node's level EXACTLY as provided.
+3) Preserve the exact set of nodes (no new nodes, no missing nodes).
+4) Preserve leaf node contents EXACTLY (content strings must be unchanged).
+5) Do not change any string in the 'content' fields for ANY node.
+6) Return a SINGLE JSON object representing the NEW subtree rooted at the same root id.
+
+Things you should change if necessary:
+  - Choose emotion for each node from: [${ALLOWED_EMOTIONS.join(', ')}].
+  - Restructure the tree to improve semantic grouping and hierarchy, while respecting the constraints above.
+  - You MAY update 'label' fields to better summarize, but DO NOT change any 'content' values.
+
+
+ADDITIONAL REQUIREMENTS:
+- Ensure the result is a valid tree (no cycles) and levels are consistent with parent/child relations.
+- Children arrays must only contain valid nodes at level = parent.level + 1 (except leaves at the fixed leaf level ${LEAF_NODE_LEVEL}).
+- The root of the returned subtree MUST have the same id and level as the input root.
+
+INPUT SUBTREE (JSON):
+${inputJson}
+
+OUTPUT FORMAT:
+- Output ONLY a single JSON object representing the restructured subtree (no extra commentary).
+`;
+}
+
+// Validate that the returned subtree preserves required invariants.
+function validateRestructuredSubtree(originalRoot, newRoot) {
+  const flatten = (node, acc = new Map()) => {
+    if (!node) return acc;
+    acc.set(node.id, { level: node.level, content: node.content, type: node.type });
+    (node.children || []).forEach((ch) => flatten(ch, acc));
+    return acc;
+  };
+
+  const origMap = flatten(originalRoot);
+  const newMap = flatten(newRoot);
+
+  // Same set of ids
+  if (origMap.size !== newMap.size) return false;
+  for (const id of origMap.keys()) {
+    if (!newMap.has(id)) return false;
+  }
+
+  // Same level per id, and same content for all nodes (strict per prompt)
+  for (const [id, o] of origMap.entries()) {
+    const n = newMap.get(id);
+    if (o.level !== n.level) return false;
+    if ((o.content ?? '') !== (n.content ?? '')) return false;
+  }
+
+  // Root id/level must match
+  if (!newRoot || newRoot.id !== originalRoot.id || newRoot.level !== originalRoot.level) return false;
+
+  return true;
+}
+
+export async function restructureSubtreePreservingIds(subtreeRoot) {
+  const client = getClient();
+  const prompt = buildRestructurePrompt(subtreeRoot);
+  console.log('[ClaudeALTERNATIVE Service] Restructuring subtree with prompt:', prompt);
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const responseText = message?.content?.[0]?.text ?? (message?.content ?? '');
+    const parsed = extractFirstJson(responseText);
+
+    // Basic structure normalization: ensure children arrays
+    const normalize = (node) => {
+      if (!node) return node;
+      const out = { ...node, children: Array.isArray(node.children) ? node.children.map(normalize) : [] };
+      return out;
+    };
+    const normalized = normalize(parsed);
+
+    if (!validateRestructuredSubtree(subtreeRoot, normalized)) {
+      throw new Error('Invalid subtree returned: ids/levels/contents not preserved');
+    }
+
+    return normalized;
+  } catch (err) {
+    console.error('[ClaudeALTERNATIVE Service] restructureSubtreePreservingIds failed:', err);
+    throw err;
   }
 }
 

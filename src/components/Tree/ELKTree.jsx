@@ -171,11 +171,12 @@ function treeToElkEdges(node, edges = []) {
 function updateNodeInTree(node, nodeId, newContent) {
   if (!node) return node;
 
-  // If this is the target node, return a shallow copy with updated label
+  // If this is the target node, return a shallow copy with updated label and set isModified
   if (node.id === nodeId) {
     return {
       ...node,
       content: newContent,
+      isModified: true,
     };
   }
 

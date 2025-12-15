@@ -12,7 +12,7 @@ import React, { useState, useEffect,useMemo, useRef} from 'react';
 import {useNavigate} from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
-import { buildTree } from '../ClaudeAlternative/claudeAPI';
+import { buildTree, restructureSubtreePreservingIds } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
@@ -181,6 +181,63 @@ export default function BidirectionalEditor() {
     const newText = leaves.map((n) => n.content).join(" ");
 
     setTextAreaContent(newText);
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // REFRESH TREE: Regenerate subtrees with modified children using Claude (preserve ids/levels/contents)
+  // ═══════════════════════════════════════════════════════════════
+
+  const refreshEmotionsInModifiedSubtree = async () => {
+    if (!tree) return;
+    setisTreeRendering(true);
+    console.log('[BidirectionalEditor] Refreshing tree...');
+
+    // Deep-clear isModified flags in a subtree
+    const clearModified = (node) => {
+      if (!node) return node;
+      const out = { ...node, isModified: false };
+      if (out.children) out.children = out.children.map(clearModified);
+      return out;
+    };
+
+    // Recursive function to check and regenerate nodes with modified children
+    const processNode = async (node) => {
+      if (!node || !node.children || node.children.length === 0) {
+        return node;
+      }
+      console.log('[BidirectionalEditor] Processing node:', node, node.content);
+      // Check if any direct children have isModified = true
+      const hasModifiedChild = node.children.some(child => child.isModified === true);
+      console.log(`[BidirectionalEditor] Node ${node.id} has modified child:`, hasModifiedChild, node.children);
+      if (hasModifiedChild) {
+        try {
+          console.log(`[BidirectionalEditor] Regenerating subtree for node ${node.id} (preserve ids/levels/contents)`);
+          const regenerated = await restructureSubtreePreservingIds(node);
+          const cleaned = clearModified(regenerated);
+          return cleaned;
+        } catch (e) {
+          console.error('[BidirectionalEditor] Subtree regeneration failed, keeping original node:', e);
+          return node;
+        }
+      }
+
+      // Recursively process children
+      const processedChildren = await Promise.all(node.children.map(child => processNode(child)));
+
+      return {
+        ...node,
+        children: processedChildren
+      };
+    };
+
+    try {
+      const refreshedTree = await processNode(tree);
+      const withCoords = addYCoord(refreshedTree);
+      setTree(withCoords);
+      console.log('[BidirectionalEditor] Tree refreshed:', withCoords);
+    } finally {
+      setisTreeRendering(false);
+    }
   };
 
 
@@ -408,7 +465,50 @@ export default function BidirectionalEditor() {
 
         {/* RIGHT: Tree Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white',color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            <button
+                onClick={refreshEmotionsInModifiedSubtree}
+                disabled={isTreeRendering || !tree}
+                title="Update emotions in modified subtrees"
+                style={{
+                  position: 'absolute',
+                  top: '12px',
+                  left: '12px',
+                  zIndex: 100,
+                  width: '44px',
+                  height: '44px',
+                  padding: '0',
+                  backgroundColor: isTreeRendering || !tree ? '#555' : '#000',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '50%',
+                  cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
+                  opacity: isTreeRendering || !tree ? 0.6 : 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                }}
+              >
+                {isTreeRendering ? (
+                  // SPINNER
+                  <div
+                    style={{
+                      width: '20px',
+                      height: '20px',
+                      border: '3px solid white',
+                      borderTop: '3px solid transparent',
+                      borderRadius: '50%',
+                      animation: 'spin 0.8s linear infinite'
+                    }}
+                  />
+                ) : (
+                  // CIRCULAR ARROW SVG
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                  </svg>
+                )}
+            </button>
 
             {tree ? (
               <ReactFlowProvider>
