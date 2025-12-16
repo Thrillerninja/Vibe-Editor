@@ -16,11 +16,18 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
 ------------------ TREE CREATION RULES ------------------
 0) OVERVIEW
-    - Keep the sentence order in the tree at ALL COSTS.
+    - 🚨 CRITICAL: Keep the sentence order in the tree at ALL COSTS - this is the #1 rule.
     - Build a hierarchical tree with the specified number of layers.
     - Use semantic grouping to cluster related sentences under topic nodes.
     - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
-    - Every node MUST cintain the aggregated text of its children in the "content" attribute. Meaning you please concatenate all child contents for parent nodes.
+    - Every node MUST contain the aggregated text of its children in the "content" attribute. Meaning you please concatenate all child contents for parent nodes.
+    
+🚨 SENTENCE ORDER IS SACRED:
+   - Sentences are numbered 1 to ${sentences.length} in the input above
+   - When you traverse the output tree depth-first (left-to-right), sentences MUST appear in order 1, 2, 3, ..., ${sentences.length}
+   - Groups organize sentences but NEVER reorder them
+   - If Group A has sentences 1-3 and Group B has 4-6, Group A MUST be listed before Group B in the tree
+   - Within each group, sentences must maintain their original order
 
 1) SENTENCES → LEAF NODES
    - Every sentence from the input array MUST become exactly one leaf node.
@@ -111,41 +118,251 @@ function extractFirstJson(text) {
 // Build a prompt to restructure a subtree while preserving ids and levels
 function buildRestructurePrompt(subtreeRoot) {
   const inputJson = JSON.stringify(subtreeRoot, null, 2);
+
+  // Extract sentence order from the tree (leaf nodes at level 0)
+  const extractSentences = (node, sentences = []) => {
+    if (!node) return sentences;
+    if (node.level === LEAF_NODE_LEVEL) {
+      sentences.push({ id: node.id, content: node.content });
+      return sentences;
+    }
+    if (node.children) {
+      node.children.forEach(child => extractSentences(child, sentences));
+    }
+    return sentences;
+  };
+
+  const sentences = extractSentences(subtreeRoot);
+  // Don't show IDs to Claude - just indices and content
+  const sentenceListDisplay = sentences.map((s, idx) => `  [${idx}] \"${s.content}\"`).join('\n');
+
+  // Mark which nodes are dirty in the prompt, and show sentence ranges for parent nodes
+  // We'll use internal node IDs (node-0, node-1, etc) instead of real IDs
+  let nodeIdCounter = 0;
+  const nodeIdMap = new Map(); // real ID -> display ID
+
+  const markDirtyNodes = (node, level = 0) => {
+    const indent = '  '.repeat(level);
+
+    // Assign a display ID if this node doesn't have one yet
+    if (!nodeIdMap.has(node.id)) {
+      if (node.level === LEAF_NODE_LEVEL) {
+        // For leaf nodes, use their sentence index
+        const sentenceIdx = sentences.findIndex(s => s.id === node.id);
+        nodeIdMap.set(node.id, `sentence-${sentenceIdx}`);
+      } else {
+        // For parent nodes, use a simple counter
+        nodeIdMap.set(node.id, `node-${nodeIdCounter++}`);
+      }
+    }
+
+    const displayId = nodeIdMap.get(node.id);
+    let result = `${indent}- ${displayId} (level ${node.level})`;
+
+    // Show sentence range for non-leaf nodes
+    if (node.level !== LEAF_NODE_LEVEL && node.children && node.children.length > 0) {
+      const descendantSentences = [];
+      extractSentences(node, descendantSentences);
+      const indices = descendantSentences.map(s => sentences.findIndex(sent => sent.id === s.id));
+      if (indices.length > 0) {
+        const min = Math.min(...indices);
+        const max = Math.max(...indices);
+        result += ` → contains sentences [${min}..${max}]`;
+      }
+    }
+
+    if (node.isModified) {
+      result += ' [DIRTY - can be modified]';
+    } else {
+      result += ' [CLEAN - preserve label/emotion exactly]';
+    }
+    if (node.children && node.children.length > 0) {
+      result += '\n' + node.children.map(c => markDirtyNodes(c, level + 1)).join('\n');
+    }
+    return result;
+  };
+
+  const nodeStatus = markDirtyNodes(subtreeRoot);
+
+  // Create a simplified JSON representation without real IDs
+  const createSimplifiedJson = (node) => {
+    const displayId = nodeIdMap.get(node.id);
+    const out = {
+      id: displayId,
+      level: node.level,
+      type: node.type,
+      label: node.label,
+      emotion: node.emotion
+    };
+
+    if (node.level === LEAF_NODE_LEVEL) {
+      // For sentences, show index reference instead of full content
+      const sentenceIdx = sentences.findIndex(s => s.id === node.id);
+      out.sentence_index = sentenceIdx;
+    } else if (node.children && node.children.length > 0) {
+      out.children = node.children.map(createSimplifiedJson);
+    }
+
+    return out;
+  };
+
+  const simplifiedJson = JSON.stringify(createSimplifiedJson(subtreeRoot), null, 2);
+
   return `
-You will receive a JSON object representing the ROOT of a subtree. Your job is to RESTRUCTURE the subtree while strictly preserving these constraints:
+You will receive a JSON object representing the ROOT of a subtree. Your job is to RESTRUCTURE only the DIRTY nodes while preserving CLEAN nodes exactly.
 
-HARD CONSTRAINTS (do not violate):
-1) Preserve every node's id EXACTLY as provided.
-2) Preserve every node's level EXACTLY as provided.
-3) Preserve the exact set of nodes (no new nodes, no missing nodes).
-4) Preserve leaf node contents EXACTLY (content strings must be unchanged).
-5) Do not change any string in the 'content' fields for ANY node.
-6) Return a SINGLE JSON object representing the NEW subtree rooted at the same root id.
+🚨🚨🚨 MOST CRITICAL RULE - DO NOT REORDER SENTENCES 🚨🚨🚨
 
-Things you should change if necessary:
-  - Choose emotion for each node from: [${ALLOWED_EMOTIONS.join(', ')}].
-  - Restructure the tree to improve semantic grouping and hierarchy, while respecting the constraints above.
-  - You MAY update 'label' fields to better summarize, but DO NOT change any 'content' values.
+SENTENCE ORDER IS SACRED AND CANNOT CHANGE:
+The sentences below are numbered [0] to [${sentences.length - 1}] and MUST appear in your output in EXACTLY this order.
+When you output the tree, a depth-first traversal MUST encounter sentences in this EXACT sequence.
 
+SENTENCES (THIS IS THE REQUIRED ORDER - DO NOT SORT OR REARRANGE):
+${sentenceListDisplay}
 
-ADDITIONAL REQUIREMENTS:
-- Ensure the result is a valid tree (no cycles) and levels are consistent with parent/child relations.
-- Children arrays must only contain valid nodes at level = parent.level + 1 (except leaves at the fixed leaf level ${LEAF_NODE_LEVEL}).
-- The root of the returned subtree MUST have the same id and level as the input root.
+❌ WRONG: If the input has sentence [0] then [2] then [1], DO NOT "fix" it to [0] [1] [2]
+✅ CORRECT: Keep them as [0] [2] [1] - the user chose this order intentionally
 
-INPUT SUBTREE (JSON):
-${inputJson}
+The sentence IDs may look "out of order" (like s-3, s-2, s-4) but this is INTENTIONAL.
+The user has manually arranged them this way. Your job is to add semantic structure, NOT to reorder.
+
+KEY CONCEPT - WORKING WITH SENTENCE RANGES:
+- Parent nodes organize CONTIGUOUS RANGES of sentences by their INDEX (0, 1, 2...)
+- Example: A parent containing sentences [0..2] has the sentences at indices 0, 1, and 2
+- Ranges help you group sentences semantically without changing their order
+- The index order [0, 1, 2, 3, ...] is FIXED - you can only change grouping, not sequence
+
+CRITICAL RULES FOR DIRTY vs CLEAN NODES:
+- Nodes marked with isModified=true are DIRTY and CAN be modified
+- Nodes marked with isModified=false or missing isModified are CLEAN and MUST be preserved exactly
+
+WHAT YOU CAN DO WITH DIRTY NODES:
+1) Update 'label' fields to better describe the content
+2) Update 'emotion' fields (choose from: [${ALLOWED_EMOTIONS.join(', ')}])
+3) Reorganize grouping by specifying sentence ranges (see OUTPUT FORMAT below)
+4) Split into multiple nodes OR delete and reassign children (ONLY for non-root dirty nodes)
+
+WHAT YOU MUST PRESERVE FOR CLEAN NODES:
+1) Keep 'label' field EXACTLY as provided (DO NOT change even slightly)
+2) Keep 'emotion' field EXACTLY as provided
+3) Keep children structure EXACTLY as provided
+4) Clean nodes are reference points - they anchor the structure
+
+🎯 SIMPLIFIED OUTPUT FORMAT - USE SENTENCE RANGES:
+Instead of outputting the full nested tree with all sentence nodes, you can use a simpler format:
+
+For parent nodes (level > ${LEAF_NODE_LEVEL}), you can specify which sentences they contain using "sentence_range":
+{
+  "id": "existing-node-id",
+  "level": 1,
+  "type": "topic",
+  "label": "Updated label",
+  "emotion": "JOY",
+  "sentence_range": [0, 2]  // This means: contains sentences at indices 0, 1, and 2
+}
+
+This tells us "this parent node contains sentences 0, 1, and 2 from the sentence list above".
+The system will automatically place those sentence nodes as children in the correct order.
+
+You can EITHER:
+- Output full nested structure with "children" array (traditional way)
+- Output parent nodes with "sentence_range" array (simpler way)
+
+If you use sentence_range, the sentences will be automatically placed as children in order.
+
+CONCRETE EXAMPLE:
+If sentences are: [0] "Hello", [1] "World", [2] "Foo", [3] "Bar"
+
+Option 1 - Using sentence_range (RECOMMENDED):
+{
+  "id": "node-0",
+  "level": 1,
+  "label": "Greetings",
+  "emotion": "JOY",
+  "sentence_range": [0, 1]  // Contains sentences 0 and 1
+}
+
+Option 2 - Using nested structure:
+{
+  "id": "node-0",
+  "level": 1,
+  "label": "Greetings",
+  "emotion": "JOY",
+  "children": [
+    {"id": "sentence-0", "sentence_index": 0, ...},
+    {"id": "sentence-1", "sentence_index": 1, ...}
+  ]
+}
+
+ABSOLUTE CONSTRAINTS (NEVER violate):
+1) SENTENCE ORDER: Sentences must appear in order [0, 1, 2, ...]
+2) Use the node IDs provided below (node-0, node-1, sentence-0, etc)
+3) Preserve every node's 'level' EXACTLY as provided
+4) Don't create or delete sentence nodes - only reorganize grouping
+5) Root node can only have its label/emotion updated (cannot be deleted or split)
+
+NODE STATUS IN INPUT:
+${nodeStatus}
+
+SIMPLIFIED INPUT (with display IDs):
+${simplifiedJson}
 
 OUTPUT FORMAT:
-- Output ONLY a single JSON object representing the restructured subtree (no extra commentary).
+- Output a single JSON object with the same structure
+- Use sentence_range format OR nested children with sentence_index
+- Use the display IDs shown above (node-X, sentence-X)
+- No explanatory text, just valid JSON
+- Sentence order [0, 1, 2, ...] is automatically maintained if you use ranges correctly
 `;
 }
 
 // Validate that the returned subtree preserves required invariants.
 function validateRestructuredSubtree(originalRoot, newRoot) {
+  // Extract sentence order from tree (depth-first traversal)
+  const extractSentenceOrder = (node, order = []) => {
+    if (!node) return order;
+    if (node.level === LEAF_NODE_LEVEL) {
+      order.push(node.id);
+      return order;
+    }
+    if (node.children) {
+      node.children.forEach(child => extractSentenceOrder(child, order));
+    }
+    return order;
+  };
+
+  const originalOrder = extractSentenceOrder(originalRoot);
+  const newOrder = extractSentenceOrder(newRoot);
+
+  // CRITICAL: Validate sentence order is preserved
+  if (originalOrder.length !== newOrder.length) {
+    console.error('[Validation] Sentence count mismatch:', originalOrder.length, 'vs', newOrder.length);
+    return false;
+  }
+
+  for (let i = 0; i < originalOrder.length; i++) {
+    if (originalOrder[i] !== newOrder[i]) {
+      console.error('[Validation] SENTENCE ORDER VIOLATED at position', i + 1);
+      console.error('  Expected:', originalOrder[i]);
+      console.error('  Got:', newOrder[i]);
+      console.error('  Original order:', originalOrder.join(' → '));
+      console.error('  New order:', newOrder.join(' → '));
+      return false;
+    }
+  }
+
+  console.log('[Validation] ✓ Sentence order preserved:', originalOrder.length, 'sentences');
+
   const flatten = (node, acc = new Map()) => {
     if (!node) return acc;
-    acc.set(node.id, { level: node.level, content: node.content, type: node.type });
+    acc.set(node.id, {
+      level: node.level,
+      content: node.content,
+      type: node.type,
+      label: node.label,
+      emotion: node.emotion,
+      isModified: node.isModified
+    });
     (node.children || []).forEach((ch) => flatten(ch, acc));
     return acc;
   };
@@ -154,21 +371,43 @@ function validateRestructuredSubtree(originalRoot, newRoot) {
   const newMap = flatten(newRoot);
 
   // Same set of ids
-  if (origMap.size !== newMap.size) return false;
+  if (origMap.size !== newMap.size) {
+    console.error('[Validation] Node count mismatch:', origMap.size, 'vs', newMap.size);
+    return false;
+  }
+
   for (const id of origMap.keys()) {
-    if (!newMap.has(id)) return false;
+    if (!newMap.has(id)) {
+      console.error('[Validation] Missing node in restructured tree:', id);
+      return false;
+    }
   }
 
   // Same level per id, and same content for all nodes (strict per prompt)
   for (const [id, o] of origMap.entries()) {
     const n = newMap.get(id);
-    if (o.level !== n.level) return false;
-    if ((o.content ?? '') !== (n.content ?? '')) return false;
+
+    if (o.level !== n.level) {
+      console.error('[Validation] Level changed for node', id, ':', o.level, '→', n.level);
+      return false;
+    }
+
+    if ((o.content ?? '') !== (n.content ?? '')) {
+      console.error('[Validation] Content changed for node', id);
+      return false;
+    }
+
+    // Note: We don't validate clean node label/emotion changes here
+    // Instead, we fix them in the normalize step below
   }
 
   // Root id/level must match
-  if (!newRoot || newRoot.id !== originalRoot.id || newRoot.level !== originalRoot.level) return false;
+  if (!newRoot || newRoot.id !== originalRoot.id || newRoot.level !== originalRoot.level) {
+    console.error('[Validation] Root node id/level mismatch');
+    return false;
+  }
 
+  console.log('[Validation] ✓ All constraints validated successfully');
   return true;
 }
 
@@ -186,18 +425,119 @@ export async function restructureSubtreePreservingIds(subtreeRoot) {
     const responseText = message?.content?.[0]?.text ?? (message?.content ?? '');
     const parsed = extractFirstJson(responseText);
 
-    // Basic structure normalization: ensure children arrays and preserve originalContent
-    const normalize = (node, originalNode) => {
-      if (!node) return node;
+    // Build a map of original nodes by ID for quick lookup
+    const originalMap = new Map();
+    const buildMap = (node) => {
+      if (!node) return;
+      originalMap.set(node.id, node);
+      if (node.children) node.children.forEach(buildMap);
+    };
+    buildMap(subtreeRoot);
+
+    // Extract all sentence nodes (leaf nodes) in depth-first order
+    const sentenceNodes = [];
+    const extractSentences = (node) => {
+      if (!node) return;
+      if (node.level === LEAF_NODE_LEVEL) {
+        sentenceNodes.push(node);
+        return;
+      }
+      if (node.children) node.children.forEach(extractSentences);
+    };
+    extractSentences(subtreeRoot);
+
+    // Build display ID to real ID mapping
+    const displayToReal = new Map();
+    let nodeCounter = 0;
+    const buildDisplayMap = (node) => {
+      if (!node) return;
+      if (node.level === LEAF_NODE_LEVEL) {
+        const sentenceIdx = sentenceNodes.findIndex(s => s.id === node.id);
+        displayToReal.set(`sentence-${sentenceIdx}`, node.id);
+      } else {
+        displayToReal.set(`node-${nodeCounter++}`, node.id);
+      }
+      if (node.children) node.children.forEach(buildDisplayMap);
+    };
+    buildDisplayMap(subtreeRoot);
+
+    // Create a map of Claude's output by display ID
+    const claudeOutputMap = new Map();
+    const mapClaudeOutput = (node) => {
+      if (!node) return;
+      claudeOutputMap.set(node.id, node);
+      if (node.children) node.children.forEach(mapClaudeOutput);
+    };
+    mapClaudeOutput(parsed);
+
+    // Normalization: recursively rebuild tree, using Claude's updates where provided
+    const normalize = (originalNode) => {
+      if (!originalNode) return null;
+
+      // Find the corresponding display ID for this original node
+      let displayId;
+      if (originalNode.level === LEAF_NODE_LEVEL) {
+        const sentenceIdx = sentenceNodes.findIndex(s => s.id === originalNode.id);
+        displayId = `sentence-${sentenceIdx}`;
+      } else {
+        // Find which node-X this corresponds to
+        displayId = Array.from(displayToReal.entries()).find(([dId, rId]) => rId === originalNode.id)?.[0];
+      }
+
+      // Get Claude's output for this node (if any)
+      const claudeNode = displayId ? claudeOutputMap.get(displayId) : null;
+
+      let children = [];
+
+      if (claudeNode?.sentence_range && Array.isArray(claudeNode.sentence_range) && claudeNode.sentence_range.length === 2) {
+        // Claude specified a sentence range for this node
+        const [start, end] = claudeNode.sentence_range;
+        console.log(`[Normalize] Expanding sentence_range [${start}, ${end}] for node ${originalNode.id}`);
+
+        for (let i = start; i <= end && i < sentenceNodes.length; i++) {
+          children.push(sentenceNodes[i]);
+        }
+      } else if (claudeNode?.children) {
+        // Claude provided explicit children
+        children = claudeNode.children.map(child => {
+          if (child.sentence_index !== undefined) {
+            // Reference to a sentence by index
+            return sentenceNodes[child.sentence_index];
+          } else {
+            // Find the original node this references
+            const childRealId = displayToReal.get(child.id) || child.id;
+            const childOriginal = originalMap.get(childRealId);
+            return childOriginal ? normalize(childOriginal) : null;
+          }
+        }).filter(Boolean);
+      } else if (originalNode.children) {
+        // Claude didn't specify children - use original structure
+        children = originalNode.children.map(normalize).filter(Boolean);
+      }
+
       const out = {
-        ...node,
-        children: Array.isArray(node.children) ? node.children.map((n, i) => normalize(n, originalNode?.children?.[i])) : [],
-        // Preserve originalContent from original if it exists, otherwise initialize to current content
-        originalContent: originalNode?.originalContent ?? node.content ?? ''
+        ...originalNode,
+        label: claudeNode?.label || originalNode.label,
+        emotion: claudeNode?.emotion || originalNode.emotion,
+        children,
+        originalContent: originalNode.originalContent ?? originalNode.content ?? ''
       };
+
+      // If this was a clean node, restore original label and emotion
+      if (!originalNode.isModified && originalNode.isModified !== undefined) {
+        if (claudeNode?.label && out.label !== originalNode.label) {
+          console.warn(`[Normalize] Restoring clean node label for ${originalNode.id}: "${out.label}" → "${originalNode.label}"`);
+          out.label = originalNode.label;
+        }
+        if (claudeNode?.emotion && out.emotion !== originalNode.emotion) {
+          console.warn(`[Normalize] Restoring clean node emotion for ${originalNode.id}: ${out.emotion} → ${originalNode.emotion}`);
+          out.emotion = originalNode.emotion;
+        }
+      }
+
       return out;
     };
-    const normalized = normalize(parsed, subtreeRoot);
+    const normalized = normalize(subtreeRoot);
 
     if (!validateRestructuredSubtree(subtreeRoot, normalized)) {
       throw new Error('Invalid subtree returned: ids/levels/contents not preserved');
@@ -253,10 +593,10 @@ function sanitizeNode(node, ctx) {
       : baseContent;
 
   const isModified = false;
-  
+
   // Initialize originalContent to current content (will be synced at tree-to-text conversion)
   const originalContent = content;
-  
+
   return {
     id,
     level,
@@ -300,6 +640,40 @@ export async function buildTree(sentences, layers) {
     if (!sanitized) {
       throw new Error('Parsed tree was invalid after sanitization');
     }
+
+    // Validate sentence order is preserved
+    const extractSentenceContent = (node, contents = []) => {
+      if (!node) return contents;
+      if (node.level === LEAF_NODE_LEVEL) {
+        contents.push(node.content);
+        return contents;
+      }
+      if (node.children) {
+        node.children.forEach(child => extractSentenceContent(child, contents));
+      }
+      return contents;
+    };
+
+    const treeSentences = extractSentenceContent(sanitized);
+
+    // Check if all input sentences are present in order
+    if (treeSentences.length !== sentences.length) {
+      console.error('[Validation] Sentence count mismatch in generated tree');
+      console.error('  Expected:', sentences.length, 'sentences');
+      console.error('  Got:', treeSentences.length, 'sentences');
+      throw new Error(`Sentence count mismatch: expected ${sentences.length}, got ${treeSentences.length}`);
+    }
+
+    for (let i = 0; i < sentences.length; i++) {
+      if (treeSentences[i] !== sentences[i]) {
+        console.error('[Validation] SENTENCE ORDER VIOLATED in generated tree at position', i + 1);
+        console.error('  Expected:', sentences[i]);
+        console.error('  Got:', treeSentences[i]);
+        throw new Error(`Sentence order violation at position ${i + 1}`);
+      }
+    }
+
+    console.log('[Validation] ✓ Generated tree preserves sentence order:', sentences.length, 'sentences');
 
     return sanitized;
 

@@ -312,12 +312,17 @@ export default function ElkTree({ tree, setTree }) {
     const targetParent = findParent(tree, targetId);
     if (!draggedParent || !targetParent) return tree;
 
+    console.log('[ElkTree] Reordering:', draggedId, '→', insertBefore ? 'before' : 'after', targetId);
+    console.log('[ElkTree] Dragged parent:', draggedParent.id, ', Target parent:', targetParent.id);
+
     // 2) Remove dragged from its current parent's children
+    // Mark the dragged parent as modified since its children changed
     const removeDragged = (curr) => {
       if (!curr?.children?.length) return curr;
       if (curr.id === draggedParent.id) {
         const children = curr.children.filter((c) => c.id !== draggedId);
-        return { ...curr, children };
+        console.log('[ElkTree] Marking parent', curr.id, 'as modified (child removed)');
+        return { ...curr, children, isModified: true };
       }
       const newChildren = curr.children.map(removeDragged);
       for (let i = 0; i < newChildren.length; i++) {
@@ -331,6 +336,7 @@ export default function ElkTree({ tree, setTree }) {
     const withoutDragged = removeDragged(tree);
 
     // 3) Insert dragged into targetParent's children at position relative to targetId
+    // Mark both the dragged node and target parent as modified
     function insertIntoTargetParent(curr, draggedNode) {
       if (!curr?.children?.length) return curr;
       if (curr.id === targetParent.id) {
@@ -338,8 +344,12 @@ export default function ElkTree({ tree, setTree }) {
         const to = children.findIndex((c) => c.id === targetId);
         if (to === -1) return curr;
         const insertIndex = insertBefore ? to : to + 1;
-        children.splice(insertIndex, 0, draggedNode);
-        return { ...curr, children };
+        // Mark the dragged node as modified (it was reordered)
+        const modifiedDraggedNode = { ...draggedNode, isModified: true };
+        children.splice(insertIndex, 0, modifiedDraggedNode);
+        console.log('[ElkTree] Marking parent', curr.id, 'as modified (child added at index', insertIndex, ')');
+        console.log('[ElkTree] Marking dragged node', draggedNode.id, 'as modified');
+        return { ...curr, children, isModified: true };
       }
       const newChildren = curr.children.map((c) => insertIntoTargetParent(c, draggedNode));
       for (let i = 0; i < newChildren.length; i++) {
@@ -365,7 +375,45 @@ export default function ElkTree({ tree, setTree }) {
     const draggedNode = findNode(tree, draggedId);
     if (!draggedNode) return tree;
 
-    return insertIntoTargetParent(withoutDragged, draggedNode);
+    const reorderedTree = insertIntoTargetParent(withoutDragged, draggedNode);
+    
+    // Also mark ancestors of both parents as modified (recursively up the tree)
+    const markAncestorsModified = (curr, targetIds) => {
+      if (!curr?.children?.length) return curr;
+      
+      // Check if any child matches target IDs or if this node is a target
+      const hasTargetChild = curr.children.some(c => 
+        targetIds.includes(c.id) || c.isModified
+      );
+      
+      if (hasTargetChild || targetIds.includes(curr.id)) {
+        const newChildren = curr.children.map(c => markAncestorsModified(c, targetIds));
+        console.log('[ElkTree] Marking ancestor', curr.id, 'as modified');
+        return { ...curr, children: newChildren, isModified: true };
+      }
+      
+      const newChildren = curr.children.map(c => markAncestorsModified(c, targetIds));
+      let changed = false;
+      for (let i = 0; i < newChildren.length; i++) {
+        if (newChildren[i] !== curr.children[i]) {
+          changed = true;
+          break;
+        }
+      }
+      
+      return changed ? { ...curr, children: newChildren } : curr;
+    };
+    
+    // Mark ancestors of both the dragged parent and target parent
+    const parentsToMark = [draggedParent.id];
+    if (draggedParent.id !== targetParent.id) {
+      parentsToMark.push(targetParent.id);
+    }
+    
+    const finalTree = markAncestorsModified(reorderedTree, parentsToMark);
+    
+    console.log('[ElkTree] Reorder complete, marked nodes as modified');
+    return finalTree;
   }
 
 

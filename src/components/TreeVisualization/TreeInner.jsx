@@ -39,6 +39,8 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
   const rfRef = useRef(null);
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
+  const layoutVersionRef = useRef(0); // Track layout computation version
+  const draggedNodePositionRef = useRef(null); // Preserve dragged node position
 
   // Custom hooks
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
@@ -124,16 +126,20 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
 
   // Apply ELK layout when sentences change
   useEffect(() => {
-    // Don't update layout while dragging
+    // Don't START new layout while dragging - wait for drag to complete
     if (isDraggingRef.current) {
-      console.log(`${LOG_PREFIX.LAYOUT} Skipping layout update (dragging)`);
+      console.log(`${LOG_PREFIX.LAYOUT} Skipping layout start (dragging in progress)`);
       return;
     }
 
+    // Increment layout version to invalidate any in-flight layouts
+    layoutVersionRef.current += 1;
+    const currentVersion = layoutVersionRef.current;
+    
     let cancelled = false;
 
     const applyLayout = async () => {
-      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for ${flat.nodes.length} nodes`);
+      console.log(`${LOG_PREFIX.LAYOUT} Starting layout computation v${currentVersion} for ${flat.nodes.length} nodes`);
 
       // Preserve ONLY metadata (emotion, intensity) from existing nodes
       // Always use NEW label/content from flat.nodes
@@ -153,15 +159,48 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         return n;
       });
 
+      // Run layout computation (this is async and may take time)
       const laidOut = await runElk(withData, flat.edges);
 
-      if (!cancelled && !isDraggingRef.current) {
-        console.log(`${LOG_PREFIX.LAYOUT} Setting ${laidOut.length} nodes`);
-        setNodes(laidOut);
-        setEdges(flat.edges);
-      } else {
-        console.log(`${LOG_PREFIX.LAYOUT} Layout cancelled`);
+      // Check multiple conditions before applying layout:
+      // 1. Not cancelled (component still mounted, dependencies haven't changed)
+      // 2. Not currently dragging (don't interrupt active drag)
+      // 3. No newer layout has started (prevent applying stale layouts)
+      const isStale = currentVersion !== layoutVersionRef.current;
+      
+      if (cancelled) {
+        console.log(`${LOG_PREFIX.LAYOUT} Layout v${currentVersion} cancelled (effect cleanup)`);
+        return;
       }
+      
+      if (isDraggingRef.current) {
+        console.log(`${LOG_PREFIX.LAYOUT} Layout v${currentVersion} skipped (drag in progress)`);
+        return;
+      }
+      
+      if (isStale) {
+        console.log(`${LOG_PREFIX.LAYOUT} Layout v${currentVersion} stale (current version: v${layoutVersionRef.current})`);
+        return;
+      }
+
+      // If a node was being dragged recently, preserve its final position
+      // This prevents the layout from overwriting the user's drag result
+      if (draggedNodePositionRef.current) {
+        const { nodeId, position } = draggedNodePositionRef.current;
+        const draggedNode = laidOut.find(n => n.id === nodeId);
+        
+        if (draggedNode) {
+          console.log(`${LOG_PREFIX.LAYOUT} Preserving dragged node ${nodeId} position:`, position);
+          draggedNode.position = { ...position };
+        }
+        
+        // Clear the preserved position after applying
+        draggedNodePositionRef.current = null;
+      }
+
+      console.log(`${LOG_PREFIX.LAYOUT} Applying layout v${currentVersion}: ${laidOut.length} nodes`);
+      setNodes(laidOut);
+      setEdges(flat.edges);
     };
 
     applyLayout();
@@ -186,6 +225,13 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
     (event, node) => {
       console.log(`${LOG_PREFIX.DRAG} Drag start: ${node.id}`);
       isDraggingRef.current = true;
+      
+      // Store the dragged node's starting position
+      // This will be updated in onNodeDrag and preserved in onNodeDragStop
+      draggedNodePositionRef.current = {
+        nodeId: node.id,
+        position: { ...node.position }
+      };
 
       // Close emotion modal when dragging ANY node
       setOpenEmotionNodeId(null);
@@ -202,6 +248,11 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
  */
   const onNodeDrag = useCallback(
     (event, node) => {
+      // Update the stored position continuously during drag
+      if (draggedNodePositionRef.current && draggedNodePositionRef.current.nodeId === node.id) {
+        draggedNodePositionRef.current.position = { ...node.position };
+      }
+
       // Sync physics simulation
       physics.updateDraggedPosition(node.position.x, node.position.y);
 
@@ -269,8 +320,21 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
    */
   const onNodeDragStop = useCallback(
     (event, node) => {
-      console.log(`${LOG_PREFIX.DRAG} Drag stop: ${node.id}`);
+      console.log(`${LOG_PREFIX.DRAG} Drag stop: ${node.id} at position (${node.position.x}, ${node.position.y})`);
+      
+      // Preserve the final drag position for the next layout computation
+      // This ensures that if a layout is in-flight or starts soon after,
+      // it won't overwrite the user's drag result
+      draggedNodePositionRef.current = {
+        nodeId: node.id,
+        position: { ...node.position }
+      };
+      
+      // IMPORTANT: Set isDraggingRef to false AFTER storing position
+      // This allows any pending layouts to proceed, but they will respect
+      // the preserved position
       isDraggingRef.current = false;
+      
       setReorderIndicator(null);
       setReparentTarget(null);
 
@@ -297,7 +361,10 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         // Stop physics
         physics.stop();
 
-        // Re-layout will happen automatically via useEffect when sentences change
+        // Increment layout version to invalidate any in-flight layouts
+        // A new layout will be triggered automatically via useEffect when sentences change
+        layoutVersionRef.current += 1;
+        console.log(`${LOG_PREFIX.LAYOUT} Invalidated layouts, new version: v${layoutVersionRef.current}`);
       } else {
         // Try reparenting (different parent)
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
@@ -306,18 +373,38 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         // Stop physics
         physics.stop();
 
-        // Re-layout after reparent
+        // Invalidate in-flight layouts and trigger new one after reparent
+        layoutVersionRef.current += 1;
+        
+        // Re-layout after reparent with debounce
         setTimeout(async () => {
           if (!isDraggingRef.current) {
-            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
+            const currentVersion = layoutVersionRef.current;
+            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent (v${currentVersion})`);
+            
             const laidOut = await runElk(
               rfRef.current.getNodes(),
               rfRef.current.getEdges()
             );
-            setNodes(laidOut);
+            
+            // Only apply if this is still the latest layout
+            if (currentVersion === layoutVersionRef.current && !isDraggingRef.current) {
+              setNodes(laidOut);
+            } else {
+              console.log(`${LOG_PREFIX.LAYOUT} Skipping stale reparent layout v${currentVersion} (current: v${layoutVersionRef.current})`);
+            }
           }
         }, 50);
       }
+      
+      // Clear preserved position after a short delay
+      // This gives the layout effect time to capture it
+      setTimeout(() => {
+        if (draggedNodePositionRef.current?.nodeId === node.id) {
+          console.log(`${LOG_PREFIX.DRAG} Clearing preserved position for ${node.id}`);
+          draggedNodePositionRef.current = null;
+        }
+      }, 200);
     },
     [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, sentences, onTreeUpdate]
   );

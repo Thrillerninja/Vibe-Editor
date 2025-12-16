@@ -8,9 +8,9 @@
  * Convert buttons parse/build directly, no helpers
  */
 
-import React, { useState, useEffect,useMemo, useRef} from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DiffMatchPatch from 'diff-match-patch';
-import {useNavigate} from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
 import { tr } from 'framer-motion/client';
 import { buildTree, restructureSubtreePreservingIds } from '../ClaudeAlternative/claudeAPI';
@@ -18,19 +18,19 @@ import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
 
-const RANDOM_POETRY= `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
-const RANDOM_TEXT =  `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
+const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
+const RANDOM_TEXT = `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
 
 
 
-function createNode(id, label, children = [], level = 0, isModified=false, emotion="NEUTRAL") {
+function createNode(id, label, children = [], level = 0, isModified = false, emotion = "NEUTRAL") {
   return {
     id: id,
-    label:label,
-    level:level,
-    children:children,
-    isModified:isModified,
-    emotion:emotion,
+    label: label,
+    level: level,
+    children: children,
+    isModified: isModified,
+    emotion: emotion,
     content: '',
     originalContent: '' // Tracks the original content at last sync point
   };
@@ -43,36 +43,36 @@ function textToSentences(text) {
 }
 
 function treeSentencesToText(tree, currentTextareaContent) {
-    console.log('[TEST] Converting tree back to text...', tree);
-    if (!tree) {
-      return "";
+  console.log('[TEST] Converting tree back to text...', tree);
+  if (!tree) {
+    return "";
+  }
+  // Collect all sentences from tree in order
+  const collectedNodes = [];
+  const collectedSentences = [];
+  const traverse = (node) => {
+    if (node.level === LEAF_NODE_LEVEL) {
+      // This is a sentence node
+      collectedNodes.push(node);
+      collectedSentences.push(node.content);
+    } else if (node.children) {
+      // Traverse children
+      node.children.forEach(child => traverse(child));
     }
-    // Collect all sentences from tree in order
-    const collectedNodes = [];
-    const collectedSentences = [];
-    const traverse = (node) => {
-      if (node.level === LEAF_NODE_LEVEL) {
-        // This is a sentence node
-        collectedNodes.push(node);
-        collectedSentences.push(node.content);
-      } else if (node.children) {
-        // Traverse children
-        node.children.forEach(child => traverse(child));
-      }
-    };
+  };
 
-    traverse(tree);
-    const newText = collectedSentences.map(s => s).join(' ');
-    return newText;
+  traverse(tree);
+  const newText = collectedSentences.map(s => s).join(' ');
+  return newText;
 }
 
 function addYCoord(node) {
   if (!node) return node;
 
-  const updated = { 
-    ...node, 
-    isModified:false,
-    emotion: node.emotion ?? "NEUTRAL", 
+  const updated = {
+    ...node,
+    // Preserve isModified flag - don't clear it here
+    emotion: node.emotion ?? "NEUTRAL",
     y_coord: node.y_coord ?? 0   // default value
   };
 
@@ -102,10 +102,10 @@ export default function BidirectionalEditor() {
   const lastPunctPosRef = useRef(-1); // Track last . ! ? position
 
   const commit = () => {
-      historyGraphRef.current?.addCommit(
-        { text: textAreaContent },
-        "Text updated"
-      );
+    historyGraphRef.current?.addCommit(
+      { text: textAreaContent },
+      "Text updated"
+    );
   }
 
   // Create a default dummy root node
@@ -145,7 +145,7 @@ export default function BidirectionalEditor() {
 
       const withCoords = addYCoord(aiRoot);
       console.log('[BidirectionalEditor] After addYCoord (with isModified):', withCoords);
-      
+
       setTree(withCoords);
     } catch (err) {
       setTree(createDummyRootNode());
@@ -156,7 +156,7 @@ export default function BidirectionalEditor() {
         id: `s-${i}`,
         label: sentence.content,
         level: LEAF_NODE_LEVEL,
-        y_coord: i, 
+        y_coord: i,
         children: [],
         isModified: false,
         emotion: "NEUTRAL"
@@ -265,29 +265,194 @@ export default function BidirectionalEditor() {
       return out;
     };
 
+    // Helper: Extract only dirty nodes from a subtree for restructuring
+    const extractDirtySubtree = (node) => {
+      if (!node) return null;
+
+      // If this node itself is dirty, include it with all its children (dirty or not)
+      // Claude needs the full context to reorganize the dirty node's children
+      if (node.isModified === true) {
+        return {
+          ...node,
+          children: node.children ? node.children.map(child => ({ ...child })) : []
+        };
+      }
+
+      // If node is clean but has dirty children, we need to process those children
+      if (!node.children || node.children.length === 0) {
+        return null; // Leaf node, not dirty, skip
+      }
+
+      const dirtyChildren = node.children
+        .map(child => extractDirtySubtree(child))
+        .filter(Boolean);
+
+      if (dirtyChildren.length === 0) {
+        return null; // No dirty descendants
+      }
+
+      // Return node with only dirty children
+      return {
+        ...node,
+        children: dirtyChildren
+      };
+    };
+
+    // Helper: Merge restructured dirty nodes back into the clean tree
+    const mergeRestructuredNodes = (originalNode, restructuredSubtree) => {
+      if (!originalNode) return originalNode;
+      if (!restructuredSubtree) return originalNode;
+
+      // If the restructured subtree is for this node, replace it
+      if (originalNode.id === restructuredSubtree.id) {
+        // Merge: take label/emotion from restructured, preserve clean children
+        const mergedChildren = (restructuredSubtree.children || []).map(restructuredChild => {
+          const originalChild = (originalNode.children || []).find(c => c.id === restructuredChild.id);
+          if (!originalChild) {
+            // New child from restructuring (shouldn't happen with our constraints)
+            return restructuredChild;
+          }
+          // Recursively merge
+          return mergeRestructuredNodes(originalChild, restructuredChild);
+        });
+
+        return {
+          ...originalNode,
+          ...restructuredSubtree,
+          children: mergedChildren,
+          isModified: false // Clear dirty flag
+        };
+      }
+
+      // This node wasn't restructured, but children might have been
+      if (!originalNode.children || originalNode.children.length === 0) {
+        return originalNode;
+      }
+
+      const mergedChildren = originalNode.children.map(child => {
+        // Find if this child was restructured
+        const findRestructured = (subtree) => {
+          if (!subtree) return null;
+          if (subtree.id === child.id) return subtree;
+          if (!subtree.children) return null;
+          for (const c of subtree.children) {
+            const found = findRestructured(c);
+            if (found) return found;
+          }
+          return null;
+        };
+
+        const restructuredChild = findRestructured(restructuredSubtree);
+        return mergeRestructuredNodes(child, restructuredChild);
+      });
+
+      return {
+        ...originalNode,
+        children: mergedChildren
+      };
+    };
+
     // Recursive function to check and regenerate nodes with modified children
     const processNode = async (node) => {
-      if (!node || !node.children || node.children.length === 0) {
-        return node;
-      }
-      console.log('[BidirectionalEditor] Processing node:', node, node.content);
-      // Check if any direct children have isModified = true
-      const hasModifiedChild = node.children.some(child => child.isModified === true);
-      console.log(`[BidirectionalEditor] Node ${node.id} has modified child:`, hasModifiedChild, node.children);
-      if (hasModifiedChild) {
+      if (!node) return node;
+
+      console.log('[BidirectionalEditor] Processing node:', node.id, 'isModified:', node.isModified);
+
+      // If this node itself is modified (e.g., reordered or edited), regenerate it
+      if (node.isModified === true) {
         try {
-          console.log(`[BidirectionalEditor] Regenerating subtree for node ${node.id} (preserve ids/levels/contents)`);
+          console.log(`[BidirectionalEditor] Node ${node.id} is dirty, regenerating with Claude`);
           const regenerated = await restructureSubtreePreservingIds(node);
           const cleaned = clearModified(regenerated);
           return cleaned;
         } catch (e) {
-          console.error('[BidirectionalEditor] Subtree regeneration failed, keeping original node:', e);
+          console.error('[BidirectionalEditor] Subtree regeneration failed for node', node.id, ':', e);
+          // Keep the node with its dirty flag so user can retry
           return node;
         }
       }
 
-      // Recursively process children
-      const processedChildren = await Promise.all(node.children.map(child => processNode(child)));
+      // Node is clean, but check if children need processing
+      if (!node.children || node.children.length === 0) {
+        return node; // Leaf node, nothing to do
+      }
+
+      // Check if any direct children are modified
+      const hasModifiedChild = node.children.some(child => child.isModified === true);
+
+      if (hasModifiedChild) {
+        // This clean node has dirty children - only restructure the dirty ones
+        // and preserve clean children exactly as-is (no label changes)
+        console.log(`[BidirectionalEditor] Node ${node.id} is clean but has dirty children`);
+
+        // Separate dirty and clean children
+        const dirtyChildren = [];
+        const cleanChildren = [];
+
+        for (const child of node.children) {
+          if (child.isModified === true) {
+            dirtyChildren.push(child);
+          } else {
+            cleanChildren.push(child);
+          }
+        }
+
+        console.log(`[BidirectionalEditor] Processing ${dirtyChildren.length} dirty children, preserving ${cleanChildren.length} clean children`);
+
+        // Process dirty children - catch errors individually to preserve state
+        const processedDirty = await Promise.all(
+          dirtyChildren.map(async child => {
+            try {
+              return await processNode(child);
+            } catch (e) {
+              console.error(`[BidirectionalEditor] Failed to process dirty child ${child.id}, keeping with dirty flag:`, e);
+              return child; // Keep original with dirty flag
+            }
+          })
+        );
+
+        // Recursively process clean children (they might have dirty descendants)
+        const processedClean = await Promise.all(
+          cleanChildren.map(async child => {
+            try {
+              return await processNode(child);
+            } catch (e) {
+              console.error(`[BidirectionalEditor] Failed to process clean child ${child.id}, keeping as-is:`, e);
+              return child; // Keep original
+            }
+          })
+        );
+
+        // Reconstruct children array maintaining original order
+        const processedChildren = node.children.map(child => {
+          const processed = [...processedDirty, ...processedClean].find(c => c.id === child.id);
+          return processed || child;
+        });
+
+        return {
+          ...node,
+          children: processedChildren
+        };
+      }
+
+      // No modified children, but might have modified descendants
+      const processedChildren = await Promise.all(
+        node.children.map(async child => {
+          try {
+            return await processNode(child);
+          } catch (e) {
+            console.error(`[BidirectionalEditor] Failed to process descendant ${child.id}, keeping as-is:`, e);
+            return child; // Keep original
+          }
+        })
+      );
+
+      // Check if any children actually changed
+      const childrenChanged = processedChildren.some((child, i) => child !== node.children[i]);
+
+      if (!childrenChanged) {
+        return node; // Nothing changed, return original
+      }
 
       return {
         ...node,
@@ -295,24 +460,36 @@ export default function BidirectionalEditor() {
       };
     };
 
-    // if root children are modifed regen everything.
-    const rootHasModifiedChild = tree.children && tree.children.some(child => child.isModified === true);
-    if (rootHasModifiedChild) {
-      console.log(`[BidirectionalEditor] Root has modified child, regenerating entire tree`);
-      convertTextToTree()
-    } else {
-      console.log(`[BidirectionalEditor] Root has no modified children, processing normally`);
-      try {
-            const refreshedTree = await processNode(tree);
-            const withCoords = addYCoord(refreshedTree);
-            setTree(withCoords);
-            console.log('[BidirectionalEditor] Tree refreshed:', withCoords);
-          } finally {
-            setisTreeRendering(false);
-          }
+    // Process tree incrementally - only regenerate modified subtrees
+    // Note: We process the tree recursively, not just check root's children
+    // This allows for incremental updates at any level
+    try {
+      const refreshedTree = await processNode(tree);
+
+      // Check if any nodes still have dirty flags (indicating partial failure)
+      const countDirtyNodes = (node) => {
+        if (!node) return 0;
+        let count = node.isModified ? 1 : 0;
+        if (node.children) {
+          count += node.children.reduce((sum, child) => sum + countDirtyNodes(child), 0);
+        }
+        return count;
       };
 
+      const dirtyCount = countDirtyNodes(refreshedTree);
+      const withCoords = addYCoord(refreshedTree);
+      setTree(withCoords);
+
+      if (dirtyCount > 0) {
+        alert(`Tree refresh partially completed. ${dirtyCount} node(s) failed and remain dirty for retry.`);
+      }
+    } catch (error) {
+      console.error('[BidirectionalEditor] Tree refresh failed:', error);
+      alert('Failed to refresh tree: ' + error.message + '\n\nThe tree state has been preserved. You can try again.');
+    } finally {
+      setisTreeRendering(false);
     }
+  }
 
 
 
@@ -429,22 +606,22 @@ export default function BidirectionalEditor() {
         >
           Commit
         </button>
-          <button
-            onClick={showTextVsTreeDiff}
-            disabled={isTreeRendering || !tree}
-            style={{
-              padding: '6px 12px',
-              backgroundColor: '#111827',
-              color: 'white',
-              border: 'none',
-              borderRadius: '4px',
-              cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
-              fontSize: '12px',
-              opacity: isTreeRendering || !tree ? 0.7 : 1,
-            }}
-          >
-            Diff text↔tree
-          </button>
+        <button
+          onClick={showTextVsTreeDiff}
+          disabled={isTreeRendering || !tree}
+          style={{
+            padding: '6px 12px',
+            backgroundColor: '#111827',
+            color: 'white',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
+            fontSize: '12px',
+            opacity: isTreeRendering || !tree ? 0.7 : 1,
+          }}
+        >
+          Diff text↔tree
+        </button>
         <button
           onClick={() => navigate('/stats')}
           className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
@@ -452,7 +629,7 @@ export default function BidirectionalEditor() {
         >
           📊 Stats
         </button>
-        
+
         {/* Max Depth Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
           <label htmlFor="maxDepth" style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>
@@ -486,52 +663,128 @@ export default function BidirectionalEditor() {
       <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
         {/* LEFT: Text Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-            <textarea
+          <textarea
             value={textAreaContent}
             onChange={(e) => setTextAreaContent(e.target.value)}
             placeholder="Insert text here..."
             style={{
-                flex: 1,
-                padding: '12px',
-                border: 'none',
-                fontFamily: 'monospace',
-                fontSize: '13px',
-                resize: 'none',
-                outline: 'none',
-                color: '#000',
+              flex: 1,
+              padding: '12px',
+              border: 'none',
+              fontFamily: 'monospace',
+              fontSize: '13px',
+              resize: 'none',
+              outline: 'none',
+              color: '#000',
             }}
-            />
+          />
 
         </div>
 
         {/* CENTER: Buttons */}
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            justifyContent: 'center', 
-            gap: '12px', 
-            width: '5px',
-            alignItems: 'center',
-            overflow: 'visible',
-            position: 'relative',
-            zIndex: 10,
-            pointerEvents: 'auto'
-          }}>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          gap: '12px',
+          width: '5px',
+          alignItems: 'center',
+          overflow: 'visible',
+          position: 'relative',
+          zIndex: 10,
+          pointerEvents: 'auto'
+        }}>
+          <button
+            onClick={convertTextToTree}
+            disabled={isTreeRendering}
+            style={{
+              width: '44px',
+              height: '44px',
+              padding: '0',
+              backgroundColor: isTreeRendering ? '#555' : '#000',
+              opacity: isTreeRendering ? 0.6 : 1,
+              cursor: isTreeRendering ? 'not-allowed' : 'pointer',
+              border: 'none',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            {isTreeRendering ? (
+              // SPINNER
+              <div
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  border: '3px solid white',
+                  borderTop: '3px solid transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite'
+                }}
+              />
+            ) : (
+              // NORMAL ARROW SVG
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <polyline points="12 5 19 12 12 19"></polyline>
+              </svg>
+            )}
+          </button>
+
+
+          <button
+            onClick={convertTreeToText}
+            disabled={isTreeRendering}
+            style={{
+              width: '44px',
+              height: '44px',
+              padding: '0',
+              backgroundColor: '#000',
+              color: 'white',
+              border: 'none',
+              borderRadius: '50%',
+              cursor: 'pointer',
+              fontSize: '24px',
+              fontWeight: 'bold',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="19" y1="12" x2="5" y2="12"></line>
+              <polyline points="12 19 5 12 12 5"></polyline>
+            </svg>
+          </button>
+        </div>
+
+        {/* RIGHT: Tree Pane */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
             <button
-              onClick={convertTextToTree}
-              disabled={isTreeRendering}
+              onClick={refreshEmotionsInModifiedSubtree}
+              disabled={isTreeRendering || !tree}
+              title="Update emotions in modified subtrees"
               style={{
+                position: 'absolute',
+                top: '12px',
+                left: '12px',
+                zIndex: 100,
                 width: '44px',
                 height: '44px',
                 padding: '0',
-                backgroundColor: isTreeRendering ? '#555' : '#000',
-                opacity: isTreeRendering ? 0.6 : 1,
-                cursor: isTreeRendering ? 'not-allowed' : 'pointer',
+                backgroundColor: isTreeRendering || !tree ? '#555' : '#000',
+                color: 'white',
                 border: 'none',
                 borderRadius: '50%',
+                cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
+                opacity: isTreeRendering || !tree ? 0.6 : 1,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
               }}
             >
               {isTreeRendering ? (
@@ -547,103 +800,27 @@ export default function BidirectionalEditor() {
                   }}
                 />
               ) : (
-                // NORMAL ARROW SVG
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12"></line>
-                  <polyline points="12 5 19 12 12 19"></polyline>
+                // CIRCULAR ARROW SVG
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
                 </svg>
               )}
             </button>
 
-
-            <button
-              onClick={convertTreeToText}
-              disabled={isTreeRendering}
-              style={{
-                width: '44px',
-                height: '44px',
-                padding: '0',
-                backgroundColor: '#000',
-                color: 'white',
-                border: 'none',
-                borderRadius: '50%',
-                cursor: 'pointer',
-                fontSize: '24px',
-                fontWeight: 'bold',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <line x1="19" y1="12" x2="5" y2="12"></line>
-                  <polyline points="12 19 5 12 12 5"></polyline>
-                </svg>
-            </button>
-        </div>
-
-        {/* RIGHT: Tree Pane */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white',color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
-          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-            <button
-                onClick={refreshEmotionsInModifiedSubtree}
-                disabled={isTreeRendering || !tree}
-                title="Update emotions in modified subtrees"
-                style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '12px',
-                  zIndex: 100,
-                  width: '44px',
-                  height: '44px',
-                  padding: '0',
-                  backgroundColor: isTreeRendering || !tree ? '#555' : '#000',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '50%',
-                  cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
-                  opacity: isTreeRendering || !tree ? 0.6 : 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                }}
-              >
-                {isTreeRendering ? (
-                  // SPINNER
-                  <div
-                    style={{
-                      width: '20px',
-                      height: '20px',
-                      border: '3px solid white',
-                      borderTop: '3px solid transparent',
-                      borderRadius: '50%',
-                      animation: 'spin 0.8s linear infinite'
-                    }}
-                  />
-                ) : (
-                  // CIRCULAR ARROW SVG
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
-                  </svg>
-                )}
-            </button>
-
             {tree ? (
               <ReactFlowProvider>
-                <ElkTree tree={tree} setTree={setTree}/>
+                <ElkTree tree={tree} setTree={setTree} />
               </ReactFlowProvider>
 
             ) : (
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999' }}>
-                
+
               </div>
             )}
           </div>
         </div>
       </div>
-      <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete}/>
+      <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete} />
 
       {showDiffModal && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(17,24,39,0.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
