@@ -17,10 +17,13 @@ import { buildTree, restructureSubtreePreservingIds } from '../ClaudeAlternative
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
+import { exportFile } from '../components/Import/Export/Export';
+import { importTxt } from '../components/Import/Export/Import';
+import { applySentenceEdit } from '../utils/sentenceEditor';
+
 
 const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 const RANDOM_TEXT = `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
-
 
 
 function createNode(id, label, children = [], level = 0, isModified = false, emotion = "NEUTRAL") {
@@ -563,6 +566,46 @@ export default function BidirectionalEditor() {
     });
   }, [textAreaContent]);
 
+  // ═════════════════════════════════════════════════════════════════
+  // IMPORT HANDLER
+  // ═════════════════════════════════════════════════════════════════
+  const handleImport = async (e) => {
+    const file = e.target.files[0]; 
+    if (!file) return;
+
+    const importedText = await importTxt(file);
+    setTextAreaContent(importedText);
+
+    e.target.value = null; // Reset file input
+  };
+
+  // ═══════════════════════════════════════════════════════════════
+  // EXPORT HANDLER
+  // ═══════════════════════════════════════════════════════════════
+  const [exportFormat, setExportFormat] = useState('txt'); // default to txt
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportFilename, setExportFilename] = useState("vibe_text");
+
+  const handleOpenExportDialog = () => {
+    const currentText = String(textAreaContent ?? "");
+    if (!currentText.trim()) {
+      alert("Please add some text before exporting");
+      return;
+    }
+    setExportFilename("vibe_text");
+    setExportFormat("txt");
+    setIsExportDialogOpen(true);
+  };
+
+  const handleConfirmExport = () => {
+    exportFile(textAreaContent, exportFormat, exportFilename || "vibe_text");
+    setIsExportDialogOpen(false);
+  };
+
+  const handleCancelExport = () => {
+    setIsExportDialogOpen(false);
+  };
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -630,6 +673,25 @@ export default function BidirectionalEditor() {
           📊 Stats
         </button>
 
+        {/* NEU: Import-„Button“ */}
+        <label className="px-3 py-1.5 text-sm rounded-md bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm cursor-pointer">
+          Import (.txt)
+          <input
+            type="file"
+            accept=".txt"
+            onChange={handleImport}
+            className="hidden"
+          />
+        </label>
+        
+        {/* NEU: Export-Button */}
+        <button
+          onClick={handleOpenExportDialog}
+          className="px-3 py-1.5 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm border border-indigo-700"
+        >
+          Export
+        </button>
+        
         {/* Max Depth Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
           <label htmlFor="maxDepth" style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>
@@ -886,6 +948,81 @@ export default function BidirectionalEditor() {
                 style={{ padding: '8px 14px', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
               >
                 {diffMode === 'apply' ? 'Cancel' : 'Close'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isExportDialogOpen && (
+        <div className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6 space-y-4">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Export text
+            </h2>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                File name
+              </label>
+              <input
+                type="text"
+                value={exportFilename}
+                onChange={(e) => setExportFilename(e.target.value)}
+                placeholder="vibe_text"
+                className="w-full px-3 py-2 text-sm rounded-md border border-gray-300 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium text-gray-700">
+                Format
+              </span>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-800">
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="txt"
+                    checked={exportFormat === "txt"}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                  />
+                  .txt
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-800">
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="pdf"
+                    checked={exportFormat === "pdf"}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                  />
+                  .pdf
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-800">
+                  <input
+                    type="radio"
+                    name="exportFormat"
+                    value="docx"
+                    checked={exportFormat === "docx"}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                  />
+                  .docx
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                onClick={handleCancelExport}
+                className="px-3 py-1.5 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmExport}
+                className="px-3 py-1.5 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
+              >
+                Download
               </button>
             </div>
           </div>
