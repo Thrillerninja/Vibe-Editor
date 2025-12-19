@@ -20,7 +20,7 @@ import { ReactFlowProvider } from 'reactflow';
 import { exportFile } from '../components/Import/Export/Export';
 import { importTxt } from '../components/Import/Export/Import';
 import { applySentenceEdit } from '../utils/sentenceEditor';
-
+import { refreshEmotionsInModifiedSubtree } from '../utils/EmotionUpdate';
 
 const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 const RANDOM_TEXT = `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
@@ -255,239 +255,18 @@ export default function BidirectionalEditor() {
   // REFRESH TREE: Regenerate subtrees with modified children using Claude (preserve ids/levels/contents)
   // ═══════════════════════════════════════════════════════════════
 
-  const refreshEmotionsInModifiedSubtree = async () => {
+  const handleRefreshTree = async () => {
     if (!tree) return;
     setisTreeRendering(true);
-    console.log('[BidirectionalEditor] Refreshing tree...');
-
-    // Deep-clear isModified flags in a subtree
-    const clearModified = (node) => {
-      if (!node) return node;
-      const out = { ...node, isModified: false };
-      if (out.children) out.children = out.children.map(clearModified);
-      return out;
-    };
-
-    // Helper: Extract only dirty nodes from a subtree for restructuring
-    const extractDirtySubtree = (node) => {
-      if (!node) return null;
-
-      // If this node itself is dirty, include it with all its children (dirty or not)
-      // Claude needs the full context to reorganize the dirty node's children
-      if (node.isModified === true) {
-        return {
-          ...node,
-          children: node.children ? node.children.map(child => ({ ...child })) : []
-        };
-      }
-
-      // If node is clean but has dirty children, we need to process those children
-      if (!node.children || node.children.length === 0) {
-        return null; // Leaf node, not dirty, skip
-      }
-
-      const dirtyChildren = node.children
-        .map(child => extractDirtySubtree(child))
-        .filter(Boolean);
-
-      if (dirtyChildren.length === 0) {
-        return null; // No dirty descendants
-      }
-
-      // Return node with only dirty children
-      return {
-        ...node,
-        children: dirtyChildren
-      };
-    };
-
-    // Helper: Merge restructured dirty nodes back into the clean tree
-    const mergeRestructuredNodes = (originalNode, restructuredSubtree) => {
-      if (!originalNode) return originalNode;
-      if (!restructuredSubtree) return originalNode;
-
-      // If the restructured subtree is for this node, replace it
-      if (originalNode.id === restructuredSubtree.id) {
-        // Merge: take label/emotion from restructured, preserve clean children
-        const mergedChildren = (restructuredSubtree.children || []).map(restructuredChild => {
-          const originalChild = (originalNode.children || []).find(c => c.id === restructuredChild.id);
-          if (!originalChild) {
-            // New child from restructuring (shouldn't happen with our constraints)
-            return restructuredChild;
-          }
-          // Recursively merge
-          return mergeRestructuredNodes(originalChild, restructuredChild);
-        });
-
-        return {
-          ...originalNode,
-          ...restructuredSubtree,
-          children: mergedChildren,
-          isModified: false // Clear dirty flag
-        };
-      }
-
-      // This node wasn't restructured, but children might have been
-      if (!originalNode.children || originalNode.children.length === 0) {
-        return originalNode;
-      }
-
-      const mergedChildren = originalNode.children.map(child => {
-        // Find if this child was restructured
-        const findRestructured = (subtree) => {
-          if (!subtree) return null;
-          if (subtree.id === child.id) return subtree;
-          if (!subtree.children) return null;
-          for (const c of subtree.children) {
-            const found = findRestructured(c);
-            if (found) return found;
-          }
-          return null;
-        };
-
-        const restructuredChild = findRestructured(restructuredSubtree);
-        return mergeRestructuredNodes(child, restructuredChild);
-      });
-
-      return {
-        ...originalNode,
-        children: mergedChildren
-      };
-    };
-
-    // Recursive function to check and regenerate nodes with modified children
-    const processNode = async (node) => {
-      if (!node) return node;
-
-      console.log('[BidirectionalEditor] Processing node:', node.id, 'isModified:', node.isModified);
-
-      // If this node itself is modified (e.g., reordered or edited), regenerate it
-      if (node.isModified === true) {
-        try {
-          console.log(`[BidirectionalEditor] Node ${node.id} is dirty, regenerating with Claude`);
-          const regenerated = await restructureSubtreePreservingIds(node);
-          const cleaned = clearModified(regenerated);
-          return cleaned;
-        } catch (e) {
-          console.error('[BidirectionalEditor] Subtree regeneration failed for node', node.id, ':', e);
-          // Keep the node with its dirty flag so user can retry
-          return node;
-        }
-      }
-
-      // Node is clean, but check if children need processing
-      if (!node.children || node.children.length === 0) {
-        return node; // Leaf node, nothing to do
-      }
-
-      // Check if any direct children are modified
-      const hasModifiedChild = node.children.some(child => child.isModified === true);
-
-      if (hasModifiedChild) {
-        // This clean node has dirty children - only restructure the dirty ones
-        // and preserve clean children exactly as-is (no label changes)
-        console.log(`[BidirectionalEditor] Node ${node.id} is clean but has dirty children`);
-
-        // Separate dirty and clean children
-        const dirtyChildren = [];
-        const cleanChildren = [];
-
-        for (const child of node.children) {
-          if (child.isModified === true) {
-            dirtyChildren.push(child);
-          } else {
-            cleanChildren.push(child);
-          }
-        }
-
-        console.log(`[BidirectionalEditor] Processing ${dirtyChildren.length} dirty children, preserving ${cleanChildren.length} clean children`);
-
-        // Process dirty children - catch errors individually to preserve state
-        const processedDirty = await Promise.all(
-          dirtyChildren.map(async child => {
-            try {
-              return await processNode(child);
-            } catch (e) {
-              console.error(`[BidirectionalEditor] Failed to process dirty child ${child.id}, keeping with dirty flag:`, e);
-              return child; // Keep original with dirty flag
-            }
-          })
-        );
-
-        // Recursively process clean children (they might have dirty descendants)
-        const processedClean = await Promise.all(
-          cleanChildren.map(async child => {
-            try {
-              return await processNode(child);
-            } catch (e) {
-              console.error(`[BidirectionalEditor] Failed to process clean child ${child.id}, keeping as-is:`, e);
-              return child; // Keep original
-            }
-          })
-        );
-
-        // Reconstruct children array maintaining original order
-        const processedChildren = node.children.map(child => {
-          const processed = [...processedDirty, ...processedClean].find(c => c.id === child.id);
-          return processed || child;
-        });
-
-        return {
-          ...node,
-          children: processedChildren
-        };
-      }
-
-      // No modified children, but might have modified descendants
-      const processedChildren = await Promise.all(
-        node.children.map(async child => {
-          try {
-            return await processNode(child);
-          } catch (e) {
-            console.error(`[BidirectionalEditor] Failed to process descendant ${child.id}, keeping as-is:`, e);
-            return child; // Keep original
-          }
-        })
-      );
-
-      // Check if any children actually changed
-      const childrenChanged = processedChildren.some((child, i) => child !== node.children[i]);
-
-      if (!childrenChanged) {
-        return node; // Nothing changed, return original
-      }
-
-      return {
-        ...node,
-        children: processedChildren
-      };
-    };
-
-    // Process tree incrementally - only regenerate modified subtrees
-    // Note: We process the tree recursively, not just check root's children
-    // This allows for incremental updates at any level
     try {
-      const refreshedTree = await processNode(tree);
-
-      // Check if any nodes still have dirty flags (indicating partial failure)
-      const countDirtyNodes = (node) => {
-        if (!node) return 0;
-        let count = node.isModified ? 1 : 0;
-        if (node.children) {
-          count += node.children.reduce((sum, child) => sum + countDirtyNodes(child), 0);
-        }
-        return count;
-      };
-
-      const dirtyCount = countDirtyNodes(refreshedTree);
+      const { refreshedTree, dirtyCount, success } = await refreshEmotionsInModifiedSubtree(tree);
       const withCoords = addYCoord(refreshedTree);
       setTree(withCoords);
 
-      if (dirtyCount > 0) {
+      if (!success) {
         alert(`Tree refresh partially completed. ${dirtyCount} node(s) failed and remain dirty for retry.`);
       }
     } catch (error) {
-      console.error('[BidirectionalEditor] Tree refresh failed:', error);
       alert('Failed to refresh tree: ' + error.message + '\n\nThe tree state has been preserved. You can try again.');
     } finally {
       setisTreeRendering(false);
@@ -863,7 +642,7 @@ export default function BidirectionalEditor() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
             <button
-              onClick={refreshEmotionsInModifiedSubtree}
+              onClick={handleRefreshTree}
               disabled={isTreeRendering || !tree}
               title="Update emotions in modified subtrees"
               style={{
