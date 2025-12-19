@@ -265,9 +265,9 @@ export default function ElkTree({ tree, setTree }) {
   }, [tree]);
 
 
-    //===============================================================
-    // Node reordering using custom hook
-    // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  //===============================================================
+  // Node reordering using custom hook
+  // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 
   // Helper functions for tree conversion (needed by reordering hook)
   const treeToElkNodesHelper = useCallback((root) => treeToElkNodes(root), []);

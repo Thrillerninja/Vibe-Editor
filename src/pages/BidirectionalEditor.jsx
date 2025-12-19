@@ -103,6 +103,10 @@ export default function BidirectionalEditor() {
   const navigate = useNavigate();
   const historyGraphRef = useRef(null);
   const lastPunctPosRef = useRef(-1); // Track last . ! ? position
+  const [exportFormat, setExportFormat] = useState('txt'); // default to txt
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [exportFilename, setExportFilename] = useState("vibe_text");
+
 
   const commit = () => {
     historyGraphRef.current?.addCommit(
@@ -281,8 +285,6 @@ export default function BidirectionalEditor() {
     setTree(createDummyRootNode());
   }, []);
 
-
-
   // Auto-add new sentences as isModified leaf nodes when text changes
   useEffect(() => {
     console.log('[BidirectionalEditor] Tree: detecting text changes for auto-leaf addition...', textAreaContent, tree);
@@ -361,9 +363,7 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
   // EXPORT HANDLER
   // ═══════════════════════════════════════════════════════════════
-  const [exportFormat, setExportFormat] = useState('txt'); // default to txt
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
-  const [exportFilename, setExportFilename] = useState("vibe_text");
+
 
   const handleOpenExportDialog = () => {
     const currentText = String(textAreaContent ?? "");

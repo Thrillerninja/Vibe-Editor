@@ -186,6 +186,7 @@ export function getReorderIndicator(node, findClosestSibling, toScreenPoint, toS
 /**
  * Custom hook to manage all reordering state and callbacks
  * Encapsulates draggedId, reorderIndicator, reorderActive state and all related handlers
+ * This function concerns all issues with node reordering, reparenting etc. Whenever nodes move, this should handle it.
  */
 export function useNodeReordering(tree, setTree, rfRef, nodes, setNodes, setEdges, treeToElkNodes, treeToElkEdges, runElk, handleNodeEdit) {
   const [draggedId, setDraggedId] = useState(null);
