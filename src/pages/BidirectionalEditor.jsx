@@ -12,14 +12,12 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DiffMatchPatch from 'diff-match-patch';
 import { useNavigate } from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
-import { tr } from 'framer-motion/client';
-import { buildTree, restructureSubtreePreservingIds } from '../ClaudeAlternative/claudeAPI';
+import { buildTree } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
 import { exportFile } from '../components/Import/Export/Export';
 import { importTxt } from '../components/Import/Export/Import';
-import { applySentenceEdit } from '../utils/sentenceEditor';
 import { refreshEmotionsInModifiedSubtree } from '../utils/EmotionUpdate';
 
 const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
@@ -97,23 +95,74 @@ export default function BidirectionalEditor() {
   const [isTreeRendering, setisTreeRendering] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [diffTokens, setDiffTokens] = useState([]);
-  const [diffTitle, setDiffTitle] = useState('Diff: Textarea vs Tree');
-  const [diffMode, setDiffMode] = useState('inspect'); // 'inspect' | 'apply'
-  const [pendingNewText, setPendingNewText] = useState('');
+  const [diffTitle, setDiffTitle] = useState('Review changes before commit');
+  const [pendingCommitText, setPendingCommitText] = useState('');
   const navigate = useNavigate();
   const historyGraphRef = useRef(null);
   const lastPunctPosRef = useRef(-1); // Track last . ! ? position
   const [exportFormat, setExportFormat] = useState('txt'); // default to txt
   const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
   const [exportFilename, setExportFilename] = useState("vibe_text");
+  const committedTextRef = useRef('');
+  const [hasCommitted, setHasCommitted] = useState(false);
+  const lastSyncedTreeRef = useRef(null);
+  const isSyncingToTextRef = useRef(false);
 
-
-  const commit = () => {
+  const recordCommit = (commitText, title = "Text updated") => {
     historyGraphRef.current?.addCommit(
-      { text: textAreaContent },
-      "Text updated"
+      { text: commitText },
+      title
     );
-  }
+    committedTextRef.current = commitText;
+    setHasCommitted(true);
+
+    // Clear all isModified flags after committing
+    if (tree) {
+      const clearModifiedFlags = (node) => {
+        if (!node) return node;
+        const cleaned = {
+          ...node,
+          isModified: false
+        };
+        if (node.children) {
+          cleaned.children = node.children.map(clearModifiedFlags);
+        }
+        return cleaned;
+      };
+      const cleanedTree = clearModifiedFlags(tree);
+      setTree(cleanedTree);
+    }
+  };
+
+  const handleCommitClick = () => {
+    const currentText = textAreaContent ?? '';
+
+    if (!currentText.trim()) {
+      alert('Nothing to commit yet.');
+      return;
+    }
+
+    if (!hasCommitted) {
+      recordCommit(currentText, 'Initial commit');
+      return;
+    }
+
+    const previousText = committedTextRef.current ?? '';
+
+    if (previousText === currentText) {
+      alert('No changes since last commit.');
+      return;
+    }
+
+    const dmp = new DiffMatchPatch();
+    const diffs = dmp.diff_main(previousText, currentText);
+    dmp.diff_cleanupSemantic(diffs);
+
+    setDiffTokens(diffs);
+    setDiffTitle('Review changes before commit');
+    setPendingCommitText(currentText);
+    setShowDiffModal(true);
+  };
 
   // Create a default dummy root node
   const createDummyRootNode = () => ({
@@ -152,7 +201,7 @@ export default function BidirectionalEditor() {
 
       const withCoords = addYCoord(aiRoot);
       console.log('[BidirectionalEditor] After addYCoord (with isModified):', withCoords);
-
+      
       setTree(withCoords);
     } catch (err) {
       setTree(createDummyRootNode());
@@ -178,25 +227,6 @@ export default function BidirectionalEditor() {
   // BUTTON 2: TREE → TEXT (flatten tree back to sentences)
   // ═══════════════════════════════════════════════════════════════
 
-  // Helper: Sync tree state after converting to text
-  // - Sets isModified to false for all nodes
-  // - Sets originalContent = content for all nodes (marks as committed)
-  const syncTreeAfterTextConversion = (node) => {
-    if (!node) return node;
-    const synced = {
-      ...node,
-      isModified: false,
-      originalContent: node.content
-    };
-    if (synced.children) {
-      synced.children = synced.children.map(syncTreeAfterTextConversion);
-    }
-    return synced;
-  };
-
-  // Helper: Extract text from tree
-  // - Collects all leaf nodes in order (sorted by y_coord)
-  // - Returns the joined text
   // Helper: Extract text from tree (leaf-only)
   // Recursively collects only leaf nodes (level === LEAF_NODE_LEVEL),
   // sorts them by y_coord, and concatenates their content.
@@ -219,40 +249,13 @@ export default function BidirectionalEditor() {
     return leaves.map((n) => String(n.content)).join(" ");
   };
 
-  // Main method: Convert tree to text and sync tree state
+  // Main method: Convert tree to text (extract only, don't modify tree)
   const convertTreeToText = () => {
     if (!tree) return;
 
-    // Extract text from tree
+    // Extract text from tree and apply to textarea
     const newText = extractTextFromTree(tree);
-    console.log('[BidirectionalEditor] Converted tree back to text (preview only):', newText);
-
-    // Show diff modal before applying
-    const dmp = new DiffMatchPatch();
-    const diffs = dmp.diff_main(textAreaContent, newText);
-    dmp.diff_cleanupSemantic(diffs);
-    setDiffTokens(diffs);
-    setDiffTitle('Apply: Tree → Text');
-    setPendingNewText(newText);
-    setDiffMode('apply');
-    setShowDiffModal(true);
-  };
-
-  // ═══════════════════════════════════════════════════════════════
-  // QUICK DIFF: TEXTAREA ↔ TREE
-  // ═══════════════════════════════════════════════════════════════
-
-  const showTextVsTreeDiff = () => {
-    if (!tree) return;
-    const treeText = extractTextFromTree(tree);
-    const dmp = new DiffMatchPatch();
-    const diffs = dmp.diff_main(textAreaContent, treeText);
-    dmp.diff_cleanupSemantic(diffs);
-    setDiffTokens(diffs);
-    setDiffTitle('Diff: Textarea vs Tree');
-    setDiffMode('inspect');
-    setPendingNewText('');
-    setShowDiffModal(true);
+    setTextAreaContent(newText);
   };
 
   // ═══════════════════════════════════════════════════════════════
@@ -262,6 +265,22 @@ export default function BidirectionalEditor() {
   const handleRefreshTree = async () => {
     if (!tree) return;
     setisTreeRendering(true);
+
+    var fullRerednerNeeded = false;
+    for (const child of tree.children) {
+      if (child.isModified ) {
+        fullRerednerNeeded = true;
+        console.log('Modified child node detected for refresh:', child);
+      }
+      console.log('Child node:', child);
+    }
+
+    if (fullRerednerNeeded) {
+      console.log('Starting tree refresh for modified subtrees...');
+      convertTextToTree();
+      return;
+    }
+
     try {
       const { refreshedTree, dirtyCount, success } = await refreshEmotionsInModifiedSubtree(tree);
       const withCoords = addYCoord(refreshedTree);
@@ -285,8 +304,51 @@ export default function BidirectionalEditor() {
     setTree(createDummyRootNode());
   }, []);
 
+  // Auto-apply tree changes to text whenever tree is modified
+  useEffect(() => {
+    // Skip if tree hasn't changed (same reference)
+    if (!tree || tree === lastSyncedTreeRef.current) return;
+    
+    // Check if tree has any leaf nodes
+    const leaves = [];
+    const collectLeaves = (node) => {
+      if (!node) return;
+      if (node.level === LEAF_NODE_LEVEL) {
+        leaves.push(node);
+        return;
+      }
+      if (node.children) node.children.forEach(collectLeaves);
+    };
+    collectLeaves(tree);
+    
+    if (leaves.length === 0) {
+      lastSyncedTreeRef.current = tree;
+      return; // Skip if no leaves yet
+    }
+
+    console.log('[BidirectionalEditor] Tree changed, syncing to text...', leaves.length, 'leaves');
+    const newText = extractTextFromTree(tree);
+    
+    // Mark that we're syncing to prevent text change from triggering auto-leaf logic
+    isSyncingToTextRef.current = true;
+    lastSyncedTreeRef.current = tree;
+    setTextAreaContent(newText);
+  }, [tree]);
+
+  useEffect(() => {
+    if (hasCommitted) return;
+    if (!textAreaContent || !textAreaContent.trim()) return;
+    recordCommit(textAreaContent, 'Initial commit');
+  }, [textAreaContent, hasCommitted]);
+
   // Auto-add new sentences as isModified leaf nodes when text changes
   useEffect(() => {
+    // Skip if this text change came from tree sync
+    if (isSyncingToTextRef.current) {
+      isSyncingToTextRef.current = false;
+      return;
+    }
+    
     console.log('[BidirectionalEditor] Tree: detecting text changes for auto-leaf addition...', textAreaContent, tree);
     if (!tree || !textAreaContent) return;
 
@@ -412,9 +474,7 @@ export default function BidirectionalEditor() {
           Clear
         </button>
         <button
-          onClick={() => {
-            commit();
-          }}
+          onClick={handleCommitClick}
           disabled={isTreeRendering}
           style={{
             padding: '6px 12px',
@@ -427,22 +487,6 @@ export default function BidirectionalEditor() {
           }}
         >
           Commit
-        </button>
-        <button
-          onClick={showTextVsTreeDiff}
-          disabled={isTreeRendering || !tree}
-          style={{
-            padding: '6px 12px',
-            backgroundColor: '#111827',
-            color: 'white',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: isTreeRendering || !tree ? 'not-allowed' : 'pointer',
-            fontSize: '12px',
-            opacity: isTreeRendering || !tree ? 0.7 : 1,
-          }}
-        >
-          Diff text↔tree
         </button>
         <button
           onClick={() => navigate('/stats')}
@@ -559,7 +603,7 @@ export default function BidirectionalEditor() {
 
         </div>
 
-        {/* CENTER: Buttons */}
+        {/* CENTER */}
         <div style={{
           display: 'flex',
           flexDirection: 'column',
@@ -572,70 +616,6 @@ export default function BidirectionalEditor() {
           zIndex: 10,
           pointerEvents: 'auto'
         }}>
-          <button
-            onClick={convertTextToTree}
-            disabled={isTreeRendering}
-            style={{
-              width: '44px',
-              height: '44px',
-              padding: '0',
-              backgroundColor: isTreeRendering ? '#555' : '#000',
-              opacity: isTreeRendering ? 0.6 : 1,
-              cursor: isTreeRendering ? 'not-allowed' : 'pointer',
-              border: 'none',
-              borderRadius: '50%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            {isTreeRendering ? (
-              // SPINNER
-              <div
-                style={{
-                  width: '20px',
-                  height: '20px',
-                  border: '3px solid white',
-                  borderTop: '3px solid transparent',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite'
-                }}
-              />
-            ) : (
-              // NORMAL ARROW SVG
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-                <polyline points="12 5 19 12 12 19"></polyline>
-              </svg>
-            )}
-          </button>
-
-
-          <button
-            onClick={convertTreeToText}
-            disabled={isTreeRendering}
-            style={{
-              width: '44px',
-              height: '44px',
-              padding: '0',
-              backgroundColor: '#000',
-              color: 'white',
-              border: 'none',
-              borderRadius: '50%',
-              cursor: 'pointer',
-              fontSize: '24px',
-              fontWeight: 'bold',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="19" y1="12" x2="5" y2="12"></line>
-              <polyline points="12 19 5 12 12 5"></polyline>
-            </svg>
-          </button>
         </div>
 
         {/* RIGHT: Tree Pane */}
@@ -705,7 +685,7 @@ export default function BidirectionalEditor() {
           <div style={{ width: '88%', maxWidth: '980px', background: '#ffffff', color: '#0f172a', borderRadius: '12px', boxShadow: '0 15px 40px rgba(0,0,0,0.25)', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
             <div style={{ padding: '14px 18px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 700, fontSize: '14px', letterSpacing: '0.2px' }}>{diffTitle}</div>
-              <button onClick={() => { setPendingNewText(''); setDiffMode('inspect'); setShowDiffModal(false); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#6b7280' }}>✕</button>
+              <button onClick={() => { setPendingCommitText(''); setShowDiffModal(false); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '18px', color: '#6b7280' }}>✕</button>
             </div>
             <div style={{ padding: '12px 18px' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', color: '#6b7280', fontSize: '12px' }}>
@@ -744,26 +724,23 @@ export default function BidirectionalEditor() {
               </div>
             </div>
             <div style={{ padding: '12px 18px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              {diffMode === 'apply' && (
-                <button
-                  onClick={() => {
-                    const syncedTree = syncTreeAfterTextConversion(tree);
-                    setTree(syncedTree);
-                    setTextAreaContent(pendingNewText);
-                    setPendingNewText('');
-                    setDiffMode('inspect');
-                    setShowDiffModal(false);
-                  }}
-                  style={{ padding: '8px 14px', backgroundColor: '#111827', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
-                >
-                  Apply Changes
-                </button>
-              )}
               <button
-                onClick={() => { setPendingNewText(''); setDiffMode('inspect'); setShowDiffModal(false); }}
+                onClick={() => { setPendingCommitText(''); setShowDiffModal(false); }}
                 style={{ padding: '8px 14px', backgroundColor: '#e5e7eb', color: '#111827', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
               >
-                {diffMode === 'apply' ? 'Cancel' : 'Close'}
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const textToCommit = pendingCommitText || textAreaContent;
+                  recordCommit(textToCommit, 'Text updated');
+                  setPendingCommitText('');
+                  setShowDiffModal(false);
+                  setDiffTokens([]);
+                }}
+                style={{ padding: '8px 14px', backgroundColor: '#111827', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer' }}
+              >
+                Commit changes
               </button>
             </div>
           </div>

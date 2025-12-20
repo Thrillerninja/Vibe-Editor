@@ -120,12 +120,12 @@ export function useReordering() {
       const nodes = getNodes();
       const nodesAtLevel = getNodesAtSameLevel(draggedId);
 
-      console.log(
+      /*console.log(
         `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(1)}, ${nodesAtLevel.length} nodes at same level`
-      );
+      );*/
 
       if (nodesAtLevel.length === 0) {
-        console.log(`${LOG_PREFIX.DRAG}   ❌ No nodes at same level found`);
+        //console.log(`${LOG_PREFIX.DRAG}   ❌ No nodes at same level found`);
         return null;
       }
 
@@ -138,9 +138,9 @@ export function useReordering() {
         if (!node) continue;
 
         const distance = Math.abs(node.position.y - currentY);
-        console.log(
+       /* console.log(
           `${LOG_PREFIX.DRAG}   Node ${nodeId}: Y=${node.position.y.toFixed(1)}, distance=${distance.toFixed(1)}px`
-        );
+        );*/
 
         if (distance < minDistance) {
           minDistance = distance;
@@ -150,15 +150,15 @@ export function useReordering() {
       }
 
       if (closestNode && minDistance < REORDER_THRESHOLD) {
-        console.log(
+        /*console.log(
           `${LOG_PREFIX.DRAG}   ✅ Found closest node at same level: ${closestNode.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
-        );
+        );*/
         return { node: closestNode, insertBefore };
       }
 
-      console.log(
+      /*console.log(
         `${LOG_PREFIX.DRAG}   ❌ Closest node too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
-      );
+      );*/
       return null;
     },
     [getNodes, getNodesAtSameLevel]
@@ -174,10 +174,9 @@ export function useReordering() {
 
       if (closest) {
         const parent = getParent(draggedId);
-        console.log(
+        /*console.log(
           `${LOG_PREFIX.DRAG} Reorder detected: ${draggedId} ${closest.insertBefore ? 'before' : 'after'
-          } ${closest.node.id}`
-        );
+          } ${closest.node.id}`*/
         return {
           targetSiblingId: closest.node.id,
           insertBefore: closest.insertBefore,

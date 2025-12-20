@@ -17,7 +17,7 @@ export default function TreeNode({ data }) {
   const [nodeText, setNodeText] = useState(data.content || "");
   const [editable, setEditable] = useState(data.isLeaf || true);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
-  const [nodeModified, setNodeModified] = useState(data.isModified || false);
+  const [nodeModified, setNodeModified] = useState(data.isModified);
 
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
 
@@ -57,12 +57,12 @@ export default function TreeNode({ data }) {
 
   // Sync visual modified state when data.isModified changes (e.g., after refresh)
   useEffect(() => {
-    setNodeModified(!!data.isModified);
+    setNodeModified(data.isModified);
   }, [data.isModified]);
 
   // Sync emotion when data.emotion changes (e.g., after Claude reevaluation)
   useEffect(() => {
-    //setNodeEmotion(data.emotion || "NEUTRAL");
+    setNodeEmotion(data.emotion);
   }, [data.emotion]);
 
 
