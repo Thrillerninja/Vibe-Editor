@@ -180,7 +180,7 @@ export default function BidirectionalEditor() {
   const handleRevertComplete = (revertedTextAreaContent) => {
     console.log(revertedTextAreaContent)
     setTextAreaContent(revertedTextAreaContent.text);
-    //setSentences(handleTextChange(revertedTextAreaContent.text))
+    convertTextToTree();
   };
 
   // ═══════════════════════════════════════════════════════════════
