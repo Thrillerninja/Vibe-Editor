@@ -222,7 +222,6 @@ export default function TreeNode({ data }) {
     return (
     <>
       <motion.div
-        layout
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
         style={{

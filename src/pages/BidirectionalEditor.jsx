@@ -107,6 +107,11 @@ export default function BidirectionalEditor() {
   const [hasCommitted, setHasCommitted] = useState(false);
   const lastSyncedTreeRef = useRef(null);
   const isSyncingToTextRef = useRef(false);
+  const [isTyping, setIsTyping] = useState(false);
+  const idleTimeoutRef = useRef(null);
+  const [countdown, setCountdown] = useState(0); // only for visual countdown
+
+
 
   const recordCommit = (commitText, title = "Text updated") => {
     historyGraphRef.current?.addCommit(
@@ -314,8 +319,9 @@ export default function BidirectionalEditor() {
 
   // AUTO APPLY TREE CHANGES TO TEXTAREA
   useEffect(() => {
-    // Skip if tree hasn't changed (same reference)
-    //if (!tree || tree === lastSyncedTreeRef.current) return;
+    if (isTyping) return;
+    //Skip if tree hasn't changed (same reference)
+    if (!tree || tree === lastSyncedTreeRef.current) return;
     // Check if tree has any leaf nodes
     const leaves = [];
     const collectLeaves = (node) => {
@@ -338,7 +344,7 @@ export default function BidirectionalEditor() {
     isSyncingToTextRef.current = true;
     lastSyncedTreeRef.current = tree;
     setTextAreaContent(newText);
-  }, [tree]);
+  }, [tree, isTyping]);
 
   useEffect(() => {
     if (hasCommitted) return;
@@ -346,63 +352,165 @@ export default function BidirectionalEditor() {
     recordCommit(textAreaContent, 'Initial commit');
   }, [textAreaContent, hasCommitted]);
 
-  // Auto-add new sentences as isModified leaf nodes when text changes
   useEffect(() => {
-    // Skip if this text change came from tree sync
-    if (isSyncingToTextRef.current) {
-      isSyncingToTextRef.current = false;
-      return;
+    if (!isTyping || countdown <= 0) return;
+
+    const interval = setInterval(() => {
+      setCountdown((c) => Math.max(0, c - 1));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [isTyping, countdown]);
+
+
+
+  // ═══════════════════════════════════════════════════
+  // AUTO ADD NEW SENTENCE LEAF NODES WHEN TEXT CHANGES
+  // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+
+  function similarity(a, b) {
+    const minLen = Math.min(a.length, b.length);
+    let samePrefix = 0;
+    for (let i = 0; i < minLen; i++) {
+      if (a[i] !== b[i]) break;
+      samePrefix++;
     }
-    
-    console.log('[BidirectionalEditor] Tree: detecting text changes for auto-leaf addition...', textAreaContent, tree);
+    return samePrefix / Math.max(a.length, b.length);
+  }
+
+
+  
+  function syncTextToTree() {
+
     if (!tree || !textAreaContent) return;
 
-    // Collect every originalContent across the tree (not just leaves)
-    const existingOriginals = [];
-    const collectOriginals = (node) => {
+    // 1) Split textarea into sentences (simple & deterministic)
+    const sentences = textAreaContent
+      .split(/(?<=[.!?])\s+/)
+      .filter(Boolean);
+
+    // 2) Collect all leaf nodes
+    const leafNodes = [];
+    const collectLeaves = (node) => {
       if (!node) return;
-      if (node.originalContent) existingOriginals.push(String(node.originalContent).trim());
-      if (node.children) node.children.forEach(collectOriginals);
+      if (node.level === LEAF_NODE_LEVEL) leafNodes.push(node);
+      if (node.children) node.children.forEach(collectLeaves);
     };
-    collectOriginals(tree);
-    console.log('[BidirectionalEditor] Existing originalContents:', existingOriginals);
+    collectLeaves(tree);
 
-    // Wait for a completed sentence (ending with punctuation)
-    const lastPunctMatch = textAreaContent.match(/[.!?]/g);
-    if (!lastPunctMatch) return;
-    const lastPunctPos = textAreaContent.lastIndexOf(lastPunctMatch[lastPunctMatch.length - 1]);
-    if (lastPunctPos <= lastPunctPosRef.current) return;
-    lastPunctPosRef.current = lastPunctPos;
+    // 3) Build sets
+    const treeSet = new Set(leafNodes.map(n => n.content));
+    const textSet = new Set(sentences);
 
-    // Split textarea into sentences
-    const sentences = textToSentences(textAreaContent).map((s) => s.trim()).filter(Boolean);
-    const existingSet = new Set(existingOriginals.filter(Boolean));
-    const newSentences = sentences.filter((s) => !existingSet.has(s));
-    if (newSentences.length === 0) return;
+    // 4) Partition into piles
+    const maybeModifiedNodes = leafNodes.filter(
+      n => !textSet.has(n.content)
+    );
 
-    console.log('[BidirectionalEditor] New sentences detected:', newSentences);
-    
-    setTree((prevTree) => {
-      if (!prevTree) return prevTree;
+    const maybeNewSentences = sentences.filter(
+      s => !treeSet.has(s)
+    );
 
-      const newLeafNodes = newSentences.map((s, i) => ({
-        id: `leaf-${Date.now()}-${i}`,
-        content: s,
-        label: s,
-        level: LEAF_NODE_LEVEL,
-        y_coord: i,
-        children: [],
-        isModified: true,
-        emotion: 'NEUTRAL',
-        originalContent: s
-      }));
+    // 5) Rough similarity (very simple, very stable)
+    const similarity = (a, b) => {
+      const minLen = Math.min(a.length, b.length);
+      let same = 0;
+      for (let i = 0; i < minLen; i++) {
+        if (a[i] !== b[i]) break;
+        same++;
+      }
+      return same / Math.max(a.length, b.length);
+    };
 
+    const updates = new Map(); // node -> new sentence
+    const usedNodes = new Set();
+    const usedSentences = new Set();
+
+    // 6) Try to match maybe-new sentences to maybe-modified nodes
+    for (const sentence of maybeNewSentences) {
+      let bestNode = null;
+      let bestScore = 0;
+
+      for (const node of maybeModifiedNodes) {
+        if (usedNodes.has(node)) continue;
+        const score = similarity(sentence, node.content);
+        if (score > bestScore) {
+          bestScore = score;
+          bestNode = node;
+        }
+      }
+
+      if (bestNode && bestScore >= 0.6) {
+        updates.set(bestNode, sentence);
+        usedNodes.add(bestNode);
+        usedSentences.add(sentence);
+      }
+    }
+
+    // 7) Remaining new sentences → additions
+    const additions = maybeNewSentences.filter(
+      s => !usedSentences.has(s)
+    );
+
+    // 8) Remaining old nodes → deletions
+    const deletions = new Set(
+      maybeModifiedNodes.filter(n => !usedNodes.has(n))
+    );
+
+    // 9) Apply everything immutably
+    const applyChanges = (node) => {
+      if (!node) return null;
+
+      // Delete
+      if (deletions.has(node)) return null;
+
+      // Update
+      if (updates.has(node)) {
+        const newText = updates.get(node);
+        return {
+          ...node,
+          content: newText,
+          label: newText,
+          originalContent: newText,
+          isModified: true
+        };
+      }
+
+      // Recurse
+      if (node.children) {
+        const children = node.children
+          .map(applyChanges)
+          .filter(Boolean);
+        return { ...node, children };
+      }
+
+      return node;
+    };
+
+    // 10) Create new leaf nodes
+    const newLeafNodes = additions.map((s, i) => ({
+      id: `leaf-${Date.now()}-${i}`,
+      content: s,
+      label: s,
+      originalContent: s,
+      level: LEAF_NODE_LEVEL,
+      y_coord: 0,
+      children: [],
+      isModified: true,
+      emotion: "NEUTRAL"
+    }));
+
+    // 11) Final tree update (single commit)
+    setTree(prev => {
+      const updated = applyChanges(prev);
       return {
-        ...prevTree,
-        children: [...(prevTree.children || []), ...newLeafNodes],
+        ...updated,
+        children: [...(updated.children || []), ...newLeafNodes]
       };
     });
-  }, [textAreaContent]);
+
+  }
+
 
   // ═════════════════════════════════════════════════════════════════
   // IMPORT HANDLER
@@ -450,6 +558,7 @@ export default function BidirectionalEditor() {
     <div style={{ display: 'flex', backgroundColor: "#ffffff", flexDirection: 'column', height: '100vh', gap: '8px', padding: '8px' }}>
       {/* Header */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', height: '40px' }}>
+
         <button
           onClick={() => {
             //setTree(createDummyRootNode());
@@ -582,7 +691,17 @@ export default function BidirectionalEditor() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <textarea
             value={textAreaContent}
-            onChange={(e) => setTextAreaContent(e.target.value)}
+            onChange={(e) => {
+              setTextAreaContent(e.target.value);
+              setIsTyping(true);
+              setCountdown(3); 
+              clearTimeout(idleTimeoutRef.current);
+              idleTimeoutRef.current = setTimeout(() => {
+                setIsTyping(false);
+                setCountdown(0); 
+                syncTextToTree();
+              }, 3000);
+            }}
             placeholder="Insert text here..."
             style={{
               flex: 1,
@@ -611,6 +730,27 @@ export default function BidirectionalEditor() {
           zIndex: 10,
           pointerEvents: 'auto'
         }}>
+        {isTyping && countdown > 0 && (
+          <div
+            onClick={() => {
+              clearTimeout(idleTimeoutRef.current);
+              setIsTyping(false);
+              setCountdown(0);
+              syncTextToTree();
+            }}
+            style={{
+              fontSize: '11px',
+              fontFamily: 'monospace',
+              color: '#6b7280',
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+          >
+            syncing in {countdown}s — click to apply
+          </div>
+        )}
+
+
         </div>
 
         {/* RIGHT: Tree Pane */}
