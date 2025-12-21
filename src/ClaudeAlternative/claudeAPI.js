@@ -71,8 +71,8 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
 5) TREE DEPTH
    - The number of layers requested (${layers}) determines the depth.
-    level = 0 → root
-    level = 1 → topic nodes
+    level = ${layers} → root
+    level =  ${layers - 1}- 1 → topic nodes
     level = ${LEAF_NODE_LEVEL} → leaf nodes
 
 6) OUTPUT FORMAT

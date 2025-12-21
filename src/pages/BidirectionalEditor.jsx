@@ -19,6 +19,7 @@ import { ReactFlowProvider } from 'reactflow';
 import { exportFile } from '../components/Import/Export/Export';
 import { importTxt } from '../components/Import/Export/Import';
 import { refreshEmotionsInModifiedSubtree } from '../utils/EmotionUpdate';
+import { tr } from 'framer-motion/client';
 
 const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 const RANDOM_TEXT = `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
@@ -73,7 +74,6 @@ function addYCoord(node) {
   const updated = {
     ...node,
     // Preserve isModified flag - don't clear it here
-    emotion: node.emotion ?? "NEUTRAL",
     y_coord: node.y_coord ?? 0   // default value
   };
 
@@ -243,8 +243,6 @@ export default function BidirectionalEditor() {
       }
     };
     collect(treeNode);
-
-    leaves.sort((a, b) => (a.y_coord || 0) - (b.y_coord || 0));
     console.log('[BidirectionalEditor] Extracted leaf nodes for text conversion:', leaves);
     return leaves.map((n) => String(n.content)).join(" ");
   };
@@ -275,7 +273,7 @@ export default function BidirectionalEditor() {
       console.log('Child node:', child);
     }
 
-    if (fullRerednerNeeded) {
+    if (fullRerednerNeeded ) {
       console.log('Starting tree refresh for modified subtrees...');
       convertTextToTree();
       return;
@@ -300,15 +298,24 @@ export default function BidirectionalEditor() {
 
   useEffect(() => {
     const dummyText = RANDOM_TEXT + "\n\n" + RANDOM_POETRY;
-    setTextAreaContent(dummyText);
     setTree(createDummyRootNode());
+
+    setTextAreaContent(dummyText);
   }, []);
 
-  // Auto-apply tree changes to text whenever tree is modified
+  useEffect(() => {
+    if (!tree) return;
+    const updatedTree = {
+      ...tree,
+      isModified: true
+    };
+    setTree(updatedTree);
+  }, [maxDepth]);
+
+  // AUTO APPLY TREE CHANGES TO TEXTAREA
   useEffect(() => {
     // Skip if tree hasn't changed (same reference)
-    if (!tree || tree === lastSyncedTreeRef.current) return;
-    
+    //if (!tree || tree === lastSyncedTreeRef.current) return;
     // Check if tree has any leaf nodes
     const leaves = [];
     const collectLeaves = (node) => {
@@ -320,12 +327,10 @@ export default function BidirectionalEditor() {
       if (node.children) node.children.forEach(collectLeaves);
     };
     collectLeaves(tree);
-    
     if (leaves.length === 0) {
       lastSyncedTreeRef.current = tree;
       return; // Skip if no leaves yet
     }
-
     console.log('[BidirectionalEditor] Tree changed, syncing to text...', leaves.length, 'leaves');
     const newText = extractTextFromTree(tree);
     
@@ -376,26 +381,16 @@ export default function BidirectionalEditor() {
     if (newSentences.length === 0) return;
 
     console.log('[BidirectionalEditor] New sentences detected:', newSentences);
-
+    
     setTree((prevTree) => {
       if (!prevTree) return prevTree;
-
-      let maxY = -1;
-      const findMax = (node) => {
-        if (!node) return;
-        if (node.level === LEAF_NODE_LEVEL && node.y_coord !== undefined) {
-          maxY = Math.max(maxY, node.y_coord);
-        }
-        if (node.children) node.children.forEach(findMax);
-      };
-      findMax(prevTree);
 
       const newLeafNodes = newSentences.map((s, i) => ({
         id: `leaf-${Date.now()}-${i}`,
         content: s,
         label: s,
         level: LEAF_NODE_LEVEL,
-        y_coord: maxY + i + 1,
+        y_coord: i,
         children: [],
         isModified: true,
         emotion: 'NEUTRAL',
