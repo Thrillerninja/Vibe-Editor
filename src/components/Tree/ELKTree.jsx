@@ -235,34 +235,8 @@ export default function ElkTree({ tree, setTree }) {
     layout();
   }, [tree]);
 
-  // Re-layout whenever the incoming tree changes (e.g., parent adds nodes)
-  useEffect(() => {
-    if (!tree || !rfRef.current) return;
 
-    async function layout() {
-      const laidOut = await runElk(treeNodes, treeEdges);
 
-      const reactFlowNodes = laidOut.map((n) => ({
-        ...n,
-        type: 'node',
-        sourcePosition: 'right',
-        targetPosition: 'left',
-        data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
-      }));
-
-      setNodes(reactFlowNodes);
-      setEdges(treeEdges);
-
-      // Ensure edges connect to the fresh positions
-      setTimeout(() => {
-        if (rfRef.current?.updateNodeInternals) {
-          reactFlowNodes.forEach((n) => rfRef.current.updateNodeInternals(n.id));
-        }
-      }, 0);
-    }
-
-    layout();
-  }, [tree]);
 
 
   //===============================================================
@@ -294,7 +268,25 @@ export default function ElkTree({ tree, setTree }) {
 
 
 
+  // Re-layout whenever the incoming tree changes (e.g., parent adds nodes)
+  useEffect(() => {
+    if (!tree || !rfRef.current) return;
+    if (draggedId) return; // 🔑 THIS LINE
 
+    async function layout() {
+      const laidOut = await runElk(treeNodes, treeEdges);
+      setNodes(laidOut.map(n => ({
+        ...n,
+        type: 'node',
+        sourcePosition: 'right',
+        targetPosition: 'left',
+        data: { ...n.data, setSentence: (txt, emo) => handleNodeEdit(n.id, txt, emo) },
+      })));
+      setEdges(treeEdges);
+    }
+
+    layout();
+  }, [tree, draggedId]);
 
 
 

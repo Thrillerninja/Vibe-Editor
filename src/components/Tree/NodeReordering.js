@@ -213,7 +213,7 @@ export function useNodeReordering(tree, setTree, rfRef, nodes, setNodes, setEdge
     
     // Update edges for the dragged node during drag
     if (rfRef.current?.updateNodeInternals) {
-      rfRef.current.updateNodeInternals(node.id);
+      //rfRef.current.updateNodeInternals(node.id);
     }
   }, [findClosestSibling, toScreenPoint, toScreenSize, draggedId]);
 
@@ -222,72 +222,19 @@ export function useNodeReordering(tree, setTree, rfRef, nodes, setNodes, setEdge
     setReorderIndicator(null);
     setDraggedId(null);
     
-    if (!reorder || !reorderActive) {
-      // Even if no reorder, update all edges after drag ends
-      if (rfRef.current?.updateNodeInternals) {
-        console.log('[NodeReordering] Drag ended, updating all edge internals');
-        nodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
-      }
-      // If indicator wasn't active, snap node(s) back to ELK-computed positions
-      setTimeout(async () => {
-        const newNodesArr = treeToElkNodes(tree);
-        const newEdgesArr = treeToElkEdges(tree);
-        const laidOut = await runElk(newNodesArr, newEdgesArr);
-        const reactFlowNodes = laidOut.map((n) => ({
-          ...n,
-          type: 'node',
-          sourcePosition: 'right',
-          targetPosition: 'left',
-          data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
-        }));
-        setNodes(reactFlowNodes);
-        setEdges(newEdgesArr);
-        // Ensure edges connect to the restored positions
-        setTimeout(() => {
-          if (rfRef.current?.updateNodeInternals) {
-            console.log('[NodeReordering] Updating edge internals after snap-back');
-            reactFlowNodes.forEach(n => rfRef.current.updateNodeInternals(n.id));
-          }
-        }, 0);
-      }, 0);
-      return;
+    // Only modify tree if there's an actual reorder and indicator was active
+    if (reorder && reorderActive) {
+      const newTree = reorderTreeChildren(
+        tree,
+        node.id,
+        reorder.targetSiblingId,
+        reorder.insertBefore
+      );
+      setTree(newTree);
     }
-
-    const newTree = reorderTreeChildren(
-      tree,
-      node.id,
-      reorder.targetSiblingId,
-      reorder.insertBefore
-    );
-
-    setTree(newTree);
-    // Single relayout after drop
-    setTimeout(async () => {
-      const newNodesArr = treeToElkNodes(newTree);
-      const newEdgesArr = treeToElkEdges(newTree);
-      const laidOut = await runElk(newNodesArr, newEdgesArr);
-      const reactFlowNodes = laidOut.map((n) => ({
-        ...n,
-        type: 'node',
-        sourcePosition: 'right',
-        targetPosition: 'left',
-        data: { ...n.data, setSentence: (txt) => handleNodeEdit(n.id, txt) },
-      }));
-      setNodes(reactFlowNodes);
-      setEdges(newEdgesArr);
-      
-      // Force ReactFlow to update edge positions after reordering
-      // This ensures edges reconnect properly to the new node positions
-      setTimeout(() => {
-        if (rfRef.current?.updateNodeInternals) {
-          console.log('[NodeReordering] Updating edge internals after reorder');
-          reactFlowNodes.forEach(n => {
-            rfRef.current.updateNodeInternals(n.id);
-          });
-        }
-      }, 0);
-    }, 0);
-  }, [checkReorderDrop, tree, setTree, handleNodeEdit, nodes, setNodes, setEdges, treeToElkNodes, treeToElkEdges, runElk, rfRef, reorderActive]);
+    
+    // That's it - no snapback, no animations, no timeouts
+  }, [checkReorderDrop, tree, setTree, reorderActive]);
 
   return {
     draggedId,

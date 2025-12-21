@@ -299,28 +299,13 @@ export default function BidirectionalEditor() {
     }
   }
 
-
-
-  const isInitializedRef = useRef(false);
-
   useEffect(() => {
     const dummyText = RANDOM_TEXT + "\n\n" + RANDOM_POETRY;
 
     setTree(createDummyRootNode());
     setTextAreaContent(dummyText);
-    isInitializedRef.current = true;
   }, []);
 
-  // Separate effect: Sync after state is initialized
-  useEffect(() => {
-    if (!isInitializedRef.current || !tree || !textAreaContent) return;
-    
-    const timeout = setTimeout(() => {
-      syncTextToTree();
-    }, 500); // Reduced delay since state is ready
-
-    return () => clearTimeout(timeout);
-  }, [tree, textAreaContent]);
 
 
   useEffect(() => {
@@ -365,6 +350,7 @@ export default function BidirectionalEditor() {
     if (hasCommitted) return;
     if (!textAreaContent || !textAreaContent.trim()) return;
     recordCommit(textAreaContent, 'Initial commit');
+    syncTextToTree();
   }, [textAreaContent, hasCommitted]);
 
   useEffect(() => {
