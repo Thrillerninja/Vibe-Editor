@@ -259,6 +259,8 @@ function parseIntoSentences(text) {
             id: uuidv4(),
             type: 'sentence',
             content: sentenceText,
+            emotion: 'NEUTRAL',
+            intensity: 0,
             startIdx: startIdx,
             endIdx: endIdx,
             punctuation: punctuation, // What punctuation mark to use

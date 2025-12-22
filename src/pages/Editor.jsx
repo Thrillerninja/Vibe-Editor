@@ -142,7 +142,7 @@ export default function Editor() {
             // At this point, placeholder hierarchy should already exist from slider change
             // (or from previous text edits). We just need to restructure dirty nodes.
             const sentencesToProcess = sentences;
-
+            console.log('Sentences to process for hierarchy generation:', sentencesToProcess);
             // Dirty update - restructure dirty portions only
             console.log('[App] Restructuring dirty portions of hierarchy');
 
@@ -167,6 +167,7 @@ export default function Editor() {
 
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
+            console.log('Sentences to updated for hierarchy generation:', updatedSentences);
             setSentences(updatedSentences);
             addCommit(updatedSentences, 'Hierarchy regenerated');
 
@@ -198,6 +199,7 @@ export default function Editor() {
         // Apply edit directly to sentence array
         const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
         setSentences(updatedSentences);
+        console.log('[App] Sentences updated from text edit, total sentences:', updatedSentences);
     };
 
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)

@@ -6,6 +6,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 import { rebuildSentenceOrderFromHierarchy } from './sentenceEditor';
+import { em } from 'framer-motion/client';
 
 /**
  * Sorts hierarchy nodes by document order
@@ -268,6 +269,8 @@ export function integrateHierarchy(sentences, hierarchy) {
             level: node.level,
             label: node.title,
             childIds: node.childIds,
+            emotion: "NEUTRAL",
+            intensity: 0,
         };
     });
 
@@ -311,6 +314,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             content: '',
             children: [],
             startIdx: 0,
+            emotion: "NEUTRAL",
+            intensity: 0,
         };
     }
 
@@ -368,6 +373,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             content: '', // Groups don't have direct content
             children: [],
             isDirty: isDirty,
+            emotion: "NEUTRAL",
+            intensity: 0,
         });
     });
 
@@ -397,6 +404,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         children: topLevelNodes,
         startIdx: 0,
         isDirty: dirtyNodeIds.has('root'),
+        emotion: "NEUTRAL",
+        intensity: 0,
     };
 
     console.log(`${LOG_PREFIX.PARSER} Tree built with hierarchy: root + ${nodeMap.size} nodes`);
@@ -425,8 +434,8 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
                 startIdx: sentence.startIdx,
                 endIdx: sentence.endIdx,
                 children: [],
-                emotion: sentence.emotion,
-                intensity: sentence.intensity,
+                emotion: "NEUTRAL",
+                intensity: 0,
             };
         }),
         startIdx: 0,
@@ -486,6 +495,8 @@ export function createPlaceholderHierarchy(sentences, maxDepth) {
             level: level,
             label: `Level ${level} - Awaiting AI generation...`,
             childIds: childIds,
+            emotion: "NEUTRAL",
+            intensity: 0,
         });
 
         dirtyNodeIds.push(placeholderId);

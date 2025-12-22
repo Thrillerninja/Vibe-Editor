@@ -14,6 +14,72 @@ import {
 } from '../../utils/constants';
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 
+// Initialize the Anthropic client
+const getClient = () => {
+    const apiKey = import.meta.env.VITE_CLAUDE_API_KEY;
+
+    if (!apiKey || apiKey === 'your_api_key_here') {
+        throw new Error(
+            'Claude API key not configured. Please set VITE_CLAUDE_API_KEY in your .env file.\n' +
+            'Get your API key from https://console.anthropic.com/'
+        );
+    }
+
+    return new Anthropic({
+        apiKey,
+        dangerouslyAllowBrowser: true // Note: In production, API calls should go through a backend
+    });
+};
+
+
+const ALLOWED_EMOTIONS = [
+  "POSITIVE",
+  "NEGATIVE",
+  "NEUTRAL",
+  "EMPHASIS",
+  "UNCERTAINTY",
+];
+
+export async function classifyEmotion(text) {
+  const prompt = `
+Choose EXACTLY ONE emotion from:
+POSITIVE, NEGATIVE, NEUTRAL, EMPHASIS, UNCERTAINTY
+
+Also assign an intensity from 0 to 100.
+
+Text:
+"${text}"
+
+Return JSON only:
+{ "emotion": "<ONE_OF_THE_LIST>", "intensity": <NUMBER> }
+`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 256,
+      messages: [{
+        role: 'user',
+        content: prompt
+      }]
+    });
+
+    const raw = message.content[0].text;
+    const parsed = JSON.parse(raw);
+
+    return {
+      emotion: ALLOWED_EMOTIONS.includes(parsed.emotion)
+        ? parsed.emotion
+        : "NEUTRAL",
+      intensity:
+        typeof parsed.intensity === "number"
+          ? Math.max(0, Math.min(100, parsed.intensity))
+          : 0,
+    };
+  } catch {
+    return { emotion: "NEUTRAL", intensity: 0 };
+  }
+}
 /**
  * Gets node background color based on emotion
  */
@@ -50,6 +116,8 @@ export function AnimatedNodeComponent({ id, data }) {
   const { flowToScreenPosition, getZoom } = useReactFlow();
   const size = measureLabel(data.label);
   const [isHovered, setIsHovered] = useState(false);
+  const [emotion, setEmotion] = useState(data.emotion || EMOTIONS.NEUTRAL);
+  const [intensity, setIntensity] = useState(data.intensity || 0);
 
   // Use state from parent
   const isEmotionModalOpen = data.isEmotionModalOpen || false;
@@ -82,6 +150,30 @@ export function AnimatedNodeComponent({ id, data }) {
     const timer = setTimeout(() => updateNodeInternals(id), 0);
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
+
+  // Request emotions on node mount
+  useEffect(() => {
+    alert(data.label)
+      if (!data?.label) return;
+      if (data.emotion && data.intensity !== undefined) return;
+
+      let cancelled = false;
+
+      (async () => {
+        const { emotion, intensity } = await classifyEmotion(data.label);
+
+        if (cancelled) return;
+
+        if (data.onEmotionChange) {
+          data.onEmotionChange(id, emotion, intensity);
+        }
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [data?.label]);
+
 
   const handleEmotionClick = (e) => {
     e.stopPropagation();
@@ -196,7 +288,9 @@ export function AnimatedNodeComponent({ id, data }) {
               overflowWrap: 'break-word',
             }}
           >
-            {data.label}
+            {data.label}{"\n"}
+            EMOTION:{data.emotion}{"\n"}
+            INTENSITY: {data.intensity}
           </div>
         </motion.div>
       </div>

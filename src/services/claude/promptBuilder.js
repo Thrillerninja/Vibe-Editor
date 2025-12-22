@@ -97,6 +97,73 @@ ${allSentenceIds.map(id => `  - ${id}`).join('\n')}
 Any other UUIDs in childIds at level 2 are WRONG.
 
 ═══════════════════════════════════════════════════════════════════
+EMOTION ANNOTATION (MANDATORY)
+═══════════════════════════════════════════════════════════════════
+
+Every sentence and every grouping node MUST be annotated with:
+- "emotion": a single label
+- "intensity": a number between 0.0 and 1.0
+
+❌ Missing emotion or intensity = INVALID RESPONSE
+
+───────────────────────────────────────────────────────────────────
+ALLOWED EMOTION LABELS
+───────────────────────────────────────────────────────────────────
+
+Use ONLY one of the following (uppercase):
+
+NEUTRAL  
+POSITIVE  
+NEGATIVE  
+EMPHASIS  
+UNCERTAIN  
+CONFLICT  
+ANALYTICAL  
+DESCRIPTIVE  
+REFLECTIVE  
+
+───────────────────────────────────────────────────────────────────
+INTENSITY SCALE
+───────────────────────────────────────────────────────────────────
+
+0.0–0.2  → very weak / factual / background  
+0.3–0.5  → mild or moderate  
+0.6–0.8  → strong, clear emotional signal  
+0.9–1.0  → extreme, dominant, or central emotional force  
+
+───────────────────────────────────────────────────────────────────
+SENTENCE-LEVEL RULES (LEVEL 1)
+───────────────────────────────────────────────────────────────────
+
+For EACH sentence:
+- Assign emotion based on semantic content
+- Assign intensity based on how strongly the emotion is expressed
+- Even neutral sentences MUST receive emotion="NEUTRAL" and an intensity
+
+You MUST NOT invent or modify sentence text.
+You MUST NOT reorder sentences.
+
+───────────────────────────────────────────────────────────────────
+GROUPING NODE RULES (LEVEL ≥2)
+───────────────────────────────────────────────────────────────────
+
+For EACH grouping node:
+- Derive emotion from its children
+- Emotion should represent the DOMINANT or AGGREGATED emotional tone
+- Intensity should reflect the overall strength across children
+
+Higher-level nodes (levels 3+) should be more abstract and typically
+have LOWER or SMOOTHER intensity than leaf-level groupings.
+
+───────────────────────────────────────────────────────────────────
+CONSISTENCY CONSTRAINT
+───────────────────────────────────────────────────────────────────
+
+- A parent node’s emotion MUST be explainable from its children
+- Do NOT assign random or decorative emotions
+- Titles, structure, and emotion must align semantically
+
+═══════════════════════════════════════════════════════════════════
 INPUT DATA
 ═══════════════════════════════════════════════════════════════════
 
@@ -105,7 +172,7 @@ ${JSON.stringify(dirtySubtrees, null, 2)}
 Each subtree contains:
 - **rootNodeId**: ID of the node you're replacing
 - **topLevel**: Highest level to create
-- **sentences**: Array of sentences with id, order, content, isDirty
+- **sentences**: Array of sentences with id, order, content, isDirty, emotion, intensity
 
 ═══════════════════════════════════════════════════════════════════
 EXAMPLES
@@ -115,10 +182,10 @@ EXAMPLES
 
 Given these input sentences:
 [
-  {"id": "a1b2c3d4-e5f6-7890-abcd-111111111111", "order": 0, "content": "Cats are popular pets."},
-  {"id": "b2c3d4e5-f6a7-8901-bcde-222222222222", "order": 1, "content": "They require feeding."},
-  {"id": "c3d4e5f6-a7b8-9012-cdef-333333333333", "order": 2, "content": "Dogs are loyal."},
-  {"id": "d4e5f6a7-b8c9-0123-def1-444444444444", "order": 3, "content": "Dogs need exercise."}
+  {"id": "a1b2c3d4-e5f6-7890-abcd-111111111111", "order": 0, "content": "Cats are popular pets.", "emotion":"NEUTRAL", "intensity":0},
+  {"id": "b2c3d4e5-f6a7-8901-bcde-222222222222", "order": 1, "content": "They require feeding.", "emotion":"NEUTRAL", "intensity":0},
+  {"id": "c3d4e5f6-a7b8-9012-cdef-333333333333", "order": 2, "content": "Dogs are loyal.", "emotion":"NEUTRAL", "intensity":0},
+  {"id": "d4e5f6a7-b8c9-0123-def1-444444444444", "order": 3, "content": "Dogs need exercise.", "emotion":"NEUTRAL", "intensity":0}
 ]
 
 Your response for topLevel=2:
@@ -127,12 +194,16 @@ Your response for topLevel=2:
     "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
     "level": 2,
     "title": "Cat Care",
-    "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
+    "emotion": "NEUTRAL",
+    "intensity": 0,
+    "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"] 
   },
   {
     "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
     "level": 2,
     "title": "Dog Care",
+    "emotion": "NEUTRAL",
+    "intensity": 0,
     "childIds": ["c3d4e5f6-a7b8-9012-cdef-333333333333", "d4e5f6a7-b8c9-0123-def1-444444444444"]
   }
 ]
@@ -141,27 +212,27 @@ Your response for topLevel=2:
 
 Given these input sentences:
 [
-  {"id": "s1", "order": 0, "content": "Cats are popular pets."},
-  {"id": "s2", "order": 1, "content": "They require feeding."},
-  {"id": "s3", "order": 2, "content": "Dogs are loyal."},
-  {"id": "s4", "order": 3, "content": "Dogs need exercise."},
-  {"id": "s5", "order": 4, "content": "Fish are low-maintenance pets."},
-  {"id": "s6", "order": 5, "content": "Birds can be trained."}
+  {"id": "s1", "order": 0, "emotion": "NEUTRAL", "intensity": 0, "content": "Cats are popular pets."},
+  {"id": "s2", "order": 1, "emotion": "NEUTRAL", "intensity": 0, "content": "They require feeding."},
+  {"id": "s3", "order": 2, "emotion": "NEUTRAL", "intensity": 0, "content": "Dogs are loyal."},
+  {"id": "s4", "order": 3, "emotion": "NEUTRAL", "intensity": 0, "content": "Dogs need exercise."},
+  {"id": "s5", "order": 4, "emotion": "NEUTRAL", "intensity": 0, "content": "Fish are low-maintenance pets."},
+  {"id": "s6", "order": 5, "emotion": "NEUTRAL", "intensity": 0, "content": "Birds can be trained."}
 ]
 
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
   // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
-  {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},        // Sentences 0-1
-  {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},        // Sentences 2-3
-  {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]},      // Sentences 4-5
+  {"id": "n1", "level": 2, "title": "Cat Care", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["s1", "s2"]},        // Sentences 0-1
+  {"id": "n2", "level": 2, "title": "Dog Care", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["s3", "s4"]},        // Sentences 2-3
+  {"id": "n3", "level": 2, "title": "Other Pets", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["s5", "s6"]},      // Sentences 4-5
 
   // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
-  {"id": "n4", "level": 3, "title": "Mammal Pets", "childIds": ["n1", "n2"]},     // Contains sentences 0-3
-  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "childIds": ["n3"]},       // Contains sentences 4-5
+  {"id": "n4", "level": 3, "title": "Mammal Pets", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["n1", "n2"]},     // Contains sentences 0-3
+  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["n3"]},       // Contains sentences 4-5
 
   // Level 4: Top level grouping all level 3 nodes
-  {"id": "n6", "level": 4, "title": "Pet Care Guide", "childIds": ["n4", "n5"]}
+  {"id": "n6", "level": 4, "title": "Pet Care Guide", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["n4", "n5"]}
 ]
 
 Notice in Example 2:
@@ -276,10 +347,10 @@ Return valid JSON only (no markdown):
         {"id": "NEW-UUID", "level": 2, "title": "Topic", "childIds": ["exact-sentence-ids"]},
         
         // For topLevel=4, ALL levels 2, 3, and 4:
-        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "childIds": ["sentence-ids"]},
-        {"id": "NEW-UUID-2", "level": 2, "title": "Subtopic B", "childIds": ["sentence-ids"]},
-        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
-        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "childIds": ["NEW-UUID-3"]},
+        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-2", "level": 2,  "title": "Subtopic B", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
+        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "emotion": "NEUTRAL", "intensity": 0, "childIds": ["NEW-UUID-3"]},
         ...
       ]
     }
