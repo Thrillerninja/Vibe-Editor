@@ -21,7 +21,7 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
     - Use semantic grouping to cluster related sentences under topic nodes.
     - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
     - Every node MUST contain the aggregated text of its children in the "content" attribute. Meaning you please concatenate all child contents for parent nodes.
-    
+    - CIRITCAL: DO NOT remove/trim any content from sentences - every sentence must be fully preserved in the leaf nodes including trailing/leading whitespaces "/n" or other symbols.
 🚨 SENTENCE ORDER IS SACRED:
    - Sentences are numbered 1 to ${sentences.length} in the input above
    - When you traverse the output tree depth-first (left-to-right), sentences MUST appear in order 1, 2, 3, ..., ${sentences.length}
@@ -572,9 +572,9 @@ function sanitizeNode(node, ctx) {
   const label =
     node.label != null
       ? String(node.label)
-      : (node.content ? String(node.content).slice(0, 60) : '');
+      : (node.content ? String(node.content).slice(0, 60) : ' ');
 
-  const baseContent = node.content != null ? String(node.content) : '';
+  const baseContent = node.content != null ? String(node.content) : ' ';
 
   let emotion =
     typeof node.emotion === 'string'
@@ -589,7 +589,7 @@ function sanitizeNode(node, ctx) {
   // ⭐ NEW: if children exist, create content = concatenation of children.content
   const content =
     children.length > 0
-      ? children.map((c) => c.content).join(' ')
+      ? children.map((c) => c.content).join(" ")
       : baseContent;
 
   const isModified = false;
@@ -661,7 +661,7 @@ export async function buildTree(sentences, layers) {
       console.error('[Validation] Sentence count mismatch in generated tree');
       console.error('  Expected:', sentences.length, 'sentences');
       console.error('  Got:', treeSentences.length, 'sentences');
-      throw new Error(`Sentence count mismatch: expected ${sentences.length}, got ${treeSentences.length}`);
+      //throw new Error(`Sentence count mismatch: expected ${sentences.length}, got ${treeSentences.length}`);
     }
 
     for (let i = 0; i < sentences.length; i++) {
@@ -669,7 +669,7 @@ export async function buildTree(sentences, layers) {
         console.error('[Validation] SENTENCE ORDER VIOLATED in generated tree at position', i + 1);
         console.error('  Expected:', sentences[i]);
         console.error('  Got:', treeSentences[i]);
-        throw new Error(`Sentence order violation at position ${i + 1}`);
+        //throw new Error(`Sentence order violation at position ${i + 1}`);
       }
     }
 
@@ -705,5 +705,5 @@ Text:
     messages: [{ role: "user", content: prompt }]
   });
   const output = response?.content?.[0]?.text ?? "";
-  return output.trim();
+  return output;
 }

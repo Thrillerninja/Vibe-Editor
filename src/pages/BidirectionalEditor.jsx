@@ -40,34 +40,11 @@ function createNode(id, label, children = [], level = 0, isModified = false, emo
 }
 
 function textToSentences(text) {
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .filter(s => s.length > 0)
+    // keep punctuation + whitespace exactly as-is
+    return text.split(/(?<=[.!?]\s+)/).filter(s => s.replace(/\s/g, "") !== "");
 }
 
-function treeSentencesToText(tree, currentTextareaContent) {
-  console.log('[TEST] Converting tree back to text...', tree);
-  if (!tree) {
-    return "";
-  }
-  // Collect all sentences from tree in order
-  const collectedNodes = [];
-  const collectedSentences = [];
-  const traverse = (node) => {
-    if (node.level === LEAF_NODE_LEVEL) {
-      // This is a sentence node
-      collectedNodes.push(node);
-      collectedSentences.push(node.content);
-    } else if (node.children) {
-      // Traverse children
-      node.children.forEach(child => traverse(child));
-    }
-  };
 
-  traverse(tree);
-  const newText = collectedSentences.map(s => s).join(' ');
-  return newText;
-}
 
 function addYCoord(node) {
   if (!node) return node;
@@ -233,6 +210,7 @@ export default function BidirectionalEditor() {
   // Recursively collects only leaf nodes (level === LEAF_NODE_LEVEL),
   // sorts them by y_coord, and concatenates their content.
   const extractTextFromTree = (treeNode) => {
+    ensureTrailingWhitespace(treeNode);
     if (!treeNode) return "";
 
     const leaves = [];
@@ -262,6 +240,30 @@ export default function BidirectionalEditor() {
   // REFRESH TREE: Regenerate subtrees with modified children using Claude (preserve ids/levels/contents)
   // ═══════════════════════════════════════════════════════════════
 
+
+    const ensureTrailingWhitespace = (node) => {
+    if (!node) return node;
+
+    if (node.level === LEAF_NODE_LEVEL && typeof node.content === "string") {
+      if (!/\s$/.test(node.content)) {
+        node = {
+          ...node,
+          content: node.content + " ",
+          label: node.content + " "
+        };
+      }
+    }
+
+    if (node.children) {
+      node = {
+        ...node,
+        children: node.children.map(ensureTrailingWhitespace)
+      };
+    }
+
+    return node;
+  };
+
   const handleRefreshTree = async () => {
     if (!tree) return;
     setisTreeRendering(true);
@@ -283,6 +285,10 @@ export default function BidirectionalEditor() {
 
     try {
       const { refreshedTree, dirtyCount, success } = await refreshEmotionsInModifiedSubtree(tree);
+
+
+      ensureTrailingWhitespace(refreshedTree);
+
       const withCoords = addYCoord(refreshedTree);
       setTree(withCoords);
 
@@ -294,6 +300,7 @@ export default function BidirectionalEditor() {
     } finally {
       setisTreeRendering(false);
     }
+    console.log(tree)
   }
 
   useEffect(() => {
@@ -301,6 +308,7 @@ export default function BidirectionalEditor() {
 
     setTree(createDummyRootNode());
     setTextAreaContent(dummyText);
+    syncTextToTree(dummyText);
   }, []);
 
 
@@ -313,9 +321,6 @@ export default function BidirectionalEditor() {
     };
     setTree(updatedTree);
   }, [maxDepth]);
-
-  // Add state for sentences (add near textAreaContent state around line 100)
-  const [sentences, setSentences] = useState([]);
 
   // AUTO APPLY TREE CHANGES TO TEXTAREA
   useEffect(() => {
@@ -380,14 +385,12 @@ export default function BidirectionalEditor() {
 
   
   function syncTextToTree(currentText) {
-    if (!tree || !currentText) return;
+    if (!currentText) return;
 
-    const sentences = currentText
-      .split(/(?<=[.!?])(?=\s)/);
-
-
-
-    // 2) Collect leaf nodes (in order)
+    // keep punctuation + whitespace exactly as-is
+    const sentences = textToSentences(currentText);
+    
+    // 1) Collect existing leaf nodes (in order)
     const leaves = [];
     const collect = (node) => {
       if (!node) return;
@@ -396,21 +399,31 @@ export default function BidirectionalEditor() {
     };
     collect(tree);
 
-    // 3) Apply edits + additions
+    // 2) Apply edits + additions
     setTree(prev => {
       const newLeaves = sentences.map((text, i) => {
         const old = leaves[i];
 
+        // ─────────────────────────────
+        // EXISTING NODE
+        // ─────────────────────────────
         if (old) {
+          const changed = text !== old.originalContent;
+          
           return {
             ...old,
             content: text,
             label: text,
-            originalContent: text,
-            isModified: true
+            // only mark modified if text changed
+            isModified: changed,
+            // preserve originalContent forever
+            originalContent: old.originalContent
           };
         }
 
+        // ─────────────────────────────
+        // NEW NODE
+        // ─────────────────────────────
         return {
           id: `leaf-${Date.now()}-${i}`,
           content: text,
@@ -429,6 +442,7 @@ export default function BidirectionalEditor() {
       };
     });
   }
+
 
 
   // ═════════════════════════════════════════════════════════════════
