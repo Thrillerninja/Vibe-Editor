@@ -352,7 +352,7 @@ function parseIntoSentences(text) {
         }
 
         const startIdx = currentIndex;
-        const endIdx = startIdx + part.length; // Use original length for tracking
+        const partLength = part.length; // Store original part length before processing
 
         // Look ahead to find the delimiter that comes AFTER this sentence
         let trailingDelimiter = '';
@@ -368,8 +368,10 @@ function parseIntoSentences(text) {
         // Process sentence content based on whether it has a trailing delimiter
         let sentenceText;
         if (trailingDelimiter) {
-            // Has delimiter after: safe to trim since spacing is handled by delimiter
-            sentenceText = part.trim();
+            // Has delimiter after: only trim leading whitespace
+            // We should NOT trim trailing spaces that the user may have intentionally typed
+            // The delimiter (newline/paragraph) will be added separately
+            sentenceText = part.trimStart();
         } else {
             // No delimiter (last sentence): only trim leading space, preserve trailing
             sentenceText = part.trimStart();
@@ -377,9 +379,11 @@ function parseIntoSentences(text) {
 
         // Skip if empty after trimming
         if (!sentenceText) {
-            currentIndex += part.length;
+            currentIndex += partLength;
             continue;
         }
+
+        const endIdx = startIdx + partLength; // Use original part length for tracking
 
         // Determine delimiter type for this sentence's END
         let delimiterType = 'none'; // Last sentence has no trailing delimiter
