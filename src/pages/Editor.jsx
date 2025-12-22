@@ -1,14 +1,14 @@
-import {useEffect, useRef, useState, useMemo} from 'react';
-import {TreeVisualization, HistoryGraph} from '../components';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { TreeVisualization, HistoryGraph } from '../components';
 import React from 'react';
 import posthog from '../utils/posthog';
-import {useNavigate} from 'react-router-dom';
-import {buildTextFromSentences} from '../utils/treeParser';
-import {applySentenceEdit} from '../utils/sentenceEditor';
-import {updateDirtyNodes} from '../services/claude';
-import {useUserIdentification} from '../hooks/useUserIdentification';
-import {applyDirtySubtreeRestructure, createPlaceholderHierarchy} from '../utils/hierarchyIntegration';
-import {hasDirtyNodes, clearDirtyFlags} from '../utils/dirtyTracking';
+import { useNavigate } from 'react-router-dom';
+import { buildTextFromSentences } from '../utils/treeParser';
+import { applySentenceEdit } from '../utils/sentenceEditor';
+import { updateDirtyNodes } from '../services/claude';
+import { useUserIdentification } from '../hooks/useUserIdentification';
+import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
+import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -76,7 +76,7 @@ export default function Editor() {
             setSentences(updated);
             setHierarchyState('has-dirty-nodes');
         }
-    }, [sentences.length]); // Only trigger when sentence count changes
+    }, [sentences.length, maxDepth]); // Only depend on length and maxDepth, not _hierarchyMeta
 
     // Update hierarchy state based on current sentences
     useEffect(() => {
@@ -109,10 +109,10 @@ export default function Editor() {
     const draggingVerticalRef = useRef(false);
 
 
-    function addCommit(newSentences, title) {
+    const addCommit = useCallback((newSentences, title) => {
         historyGraphRef.current?.addCommit(newSentences, title);
         prevTextRef.current = text;
-    }
+    }, [text]);
 
     const insertExample = () => {
         // Parse example text into sentences
@@ -154,7 +154,7 @@ export default function Editor() {
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
             // Ask Claude to restructure dirty subtrees
-            const {dirtyRootNodes, restructuredSubtrees, newRootTitle} = await updateDirtyNodes(
+            const { dirtyRootNodes, restructuredSubtrees, newRootTitle } = await updateDirtyNodes(
                 sentencesToProcess,
                 hierarchyMeta,
                 dirtyNodeIds,
@@ -201,7 +201,7 @@ export default function Editor() {
     };
 
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)
-    function handleTreeUpdate(updatedSentences) {
+    const handleTreeUpdate = useCallback((updatedSentences) => {
         console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
         posthog.capture('tree_updated', {
             sentence_count: updatedSentences.length,
@@ -209,7 +209,7 @@ export default function Editor() {
 
         setSentences(updatedSentences);
         addCommit(updatedSentences, 'Tree updated');
-    }
+    }, [addCommit]);
 
     const handleRevertComplete = (revertedData) => {
         setSentences(revertedData);
@@ -277,7 +277,7 @@ export default function Editor() {
 
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', endDrag);
-        window.addEventListener('touchmove', handleTouchMove, {passive: false});
+        window.addEventListener('touchmove', handleTouchMove, { passive: false });
         window.addEventListener('touchend', endDrag);
 
         return () => {
@@ -298,7 +298,7 @@ export default function Editor() {
         <div className="flex flex-col h-screen bg-gray-50">
             {/* Main Header - Full Width */}
             <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
-                 style={{zIndex: 100001}}>
+                style={{ zIndex: 100001 }}>
                 <h1 className="text-xl font-bold text-gray-900">Vibe Editor</h1>
                 <div className="flex items-center gap-4">
                     {/* Depth Slider */}
@@ -326,11 +326,11 @@ export default function Editor() {
                         {isGenerating ? (
                             <>
                                 <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none"
-                                     viewBox="0 0 24 24">
+                                    viewBox="0 0 24 24">
                                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                            strokeWidth="4"></circle>
+                                        strokeWidth="4"></circle>
                                     <path className="opacity-75" fill="currentColor"
-                                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                 </svg>
                                 {hierarchyState === 'has-dirty-nodes' ? 'Updating...' : 'Generating...'}
                             </>
@@ -338,7 +338,7 @@ export default function Editor() {
                             <>
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                          d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                        d="M13 10V3L4 14h7v7l9-11h-7z" />
                                 </svg>
                                 {hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
                             </>
@@ -371,12 +371,12 @@ export default function Editor() {
             <div
                 ref={horizontalContainerRef}
                 className="flex flex-col h-screen select-none"
-                style={{userSelect: draggingHorizontalRef.current || draggingVerticalRef.current ? 'none' : undefined}}
+                style={{ userSelect: draggingHorizontalRef.current || draggingVerticalRef.current ? 'none' : undefined }}
             >
                 <div
                     ref={topPanelRef}
                     className="flex-1 flex"
-                    style={{flexBasis: `${100 - bottomPct}%`, minHeight: 0}}
+                    style={{ flexBasis: `${100 - bottomPct}%`, minHeight: 0 }}
                 >
                     {/* Left Pane (Text Editor) */}
                     <div
@@ -386,18 +386,18 @@ export default function Editor() {
                             minWidth: 0,
                         }}
                     >
-                    <textarea
-                        ref={textareaRef}
-                        value={text}
-                        onChange={handleTextChange}
-                        onBlur={handleTextOnBlur}
-                        className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
-                        placeholder="Enter your text here..."
-                        style={{
-                            fontFamily:
-                                '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
-                        }}
-                    />
+                        <textarea
+                            ref={textareaRef}
+                            value={text}
+                            onChange={handleTextChange}
+                            onBlur={handleTextOnBlur}
+                            className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
+                            placeholder="Enter your text here..."
+                            style={{
+                                fontFamily:
+                                    '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+                            }}
+                        />
                     </div>
 
                     {/* Draggable Divider */}
@@ -409,7 +409,7 @@ export default function Editor() {
                     {/* Right Pane (Canvas) */}
                     <div
                         className="flex flex-col"
-                        style={{flexBasis: `${100 - leftPct}%`, minWidth: 0}}
+                        style={{ flexBasis: `${100 - leftPct}%`, minWidth: 0 }}
                     >
                         <div
                             id="graph-pane"
@@ -429,10 +429,10 @@ export default function Editor() {
                 <div
                     ref={verticalContainerRef}
                     className="bg-white bottom-pane"
-                    style={{flexBasis: `${bottomPct}%`, minHeight: 0}}
+                    style={{ flexBasis: `${bottomPct}%`, minHeight: 0 }}
                 >
                     <div className="p-3 h-full">
-                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete}/>
+                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete} />
                     </div>
                 </div>
 
@@ -444,9 +444,9 @@ export default function Editor() {
 
 // A11y-friendly divider with mouse, touch, and keyboard support
 function VerticalDividerHandle({
-                                   onMouseDown,
-                                   onTouchStart,
-                               }) {
+    onMouseDown,
+    onTouchStart,
+}) {
     return (
         <button
             aria-label="Resize panels"
@@ -467,16 +467,16 @@ function VerticalDividerHandle({
             <span
                 aria-hidden
                 className="block h-full bg-gray-300 group-hover:bg-gray-400"
-                style={{width: '2px', margin: '0 auto'}}
+                style={{ width: '2px', margin: '0 auto' }}
             />
         </button>
     );
 }
 
 function HorizontalDividerHandle({
-                                     onMouseDown,
-                                     onTouchStart,
-                                 }) {
+    onMouseDown,
+    onTouchStart,
+}) {
     return (
         <button
             aria-label="Resize panels"
@@ -496,7 +496,7 @@ function HorizontalDividerHandle({
             <span
                 aria-hidden
                 className="block w-full bg-gray-300 group-hover:bg-gray-400"
-                style={{height: '2px', margin: 'auto 0'}}
+                style={{ height: '2px', margin: 'auto 0' }}
             />
         </button>
     );

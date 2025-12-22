@@ -33,7 +33,7 @@ import {
  */
 export function useLocalPhysics() {
   const { getNodes, setNodes } = useReactFlow();
-  
+
   // Simulation state
   const simRef = useRef(null);
   const rafRef = useRef(null);
@@ -46,7 +46,7 @@ export function useLocalPhysics() {
    */
   const stop = useCallback(() => {
     console.log(`${LOG_PREFIX.PHYSICS} Stopping simulation`);
-    
+
     isRunningRef.current = false;
 
     if (simRef.current) {
@@ -70,7 +70,7 @@ export function useLocalPhysics() {
   const start = useCallback(
     (draggedId) => {
       console.log(`${LOG_PREFIX.PHYSICS} Starting simulation for ${draggedId}`);
-      
+
       stop();
       isRunningRef.current = true;
       draggedIdRef.current = draggedId;
@@ -94,7 +94,7 @@ export function useLocalPhysics() {
         const layer = layerByX(n.position.x);
         const isClose = distanceSquared < PHYSICS_RADIUS * PHYSICS_RADIUS;
         const isInLayerRange = Math.abs(layer - centerLayer) <= 1;
-        
+
         return isInLayerRange && isClose;
       });
 
@@ -108,8 +108,9 @@ export function useLocalPhysics() {
         id: n.id,
         x: n.position.x,
         y: n.position.y,
-        fx: n.id === draggedId ? n.position.x : null,
-        fy: n.id === draggedId ? n.position.y : null,
+        // Fix ALL nodes during drag - only the dragged node moves via ReactFlow
+        fx: n.position.x,
+        fy: n.position.y,
         r: Math.max(28, measureLabel(n.data.label).height / 2),
         type: n.data.type,
       }));
@@ -118,85 +119,17 @@ export function useLocalPhysics() {
       const originalX = new Map(neighborhood.map((n) => [n.id, n.position.x]));
 
       // Configure force simulation
+      // NOTE: Forces are disabled by fixing all nodes - simulation runs but nodes don't move
+      // This keeps the infrastructure in place if we want to re-enable physics later
       const sim = forceSimulation(simNodes)
-        .alpha(PHYSICS_CONFIG.alpha)
-        .alphaDecay(PHYSICS_CONFIG.alphaDecay)
-        .velocityDecay(PHYSICS_CONFIG.velocityDecay)
-        .force(
-          'charge',
-          forceManyBody()
-            .strength((d) =>
-              d.id === draggedId
-                ? PHYSICS_CONFIG.repulsion * PHYSICS_CONFIG.repulsionMultiplier
-                : PHYSICS_CONFIG.repulsion
-            )
-            .distanceMax(PHYSICS_RADIUS)
-        )
-        .force(
-          'collide',
-          forceCollide()
-            .radius((d) => d.r + PHYSICS_CONFIG.collide)
-            .iterations(PHYSICS_CONFIG.collideIterations)
-        )
-        .force(
-          'x',
-          forceX((d) =>
-            d.id === draggedId ? d.fx ?? d.x : originalX.get(d.id) ?? d.x
-          ).strength((d) => (d.id === draggedId ? 1 : PHYSICS_CONFIG.forceX))
-        )
-        .force(
-          'y',
-          forceY((d) => (d.id === draggedId ? d.fy ?? d.y : d.y)).strength(
-            (d) => (d.id === draggedId ? 1 : PHYSICS_CONFIG.forceY)
-          )
-        );
+        .alpha(0) // Set to 0 - no simulation needed when all nodes are fixed
+        .stop(); // Stop immediately since all nodes are fixed
 
       simRef.current = sim;
 
-      // Animation loop
-      let tickCount = 0;
-      const tick = () => {
-        // Guard: ensure simulation is still valid
-        if (!simRef.current || !isRunningRef.current) {
-          console.log(`${LOG_PREFIX.PHYSICS} Tick stopped (sim invalid)`);
-          if (rafRef.current) {
-            cancelAnimationFrame(rafRef.current);
-            rafRef.current = null;
-          }
-          return;
-        }
-
-        tickCount++;
-        if (tickCount % 10 === 0 && LOGGING_ENABLED) {
-          console.log(
-            `${LOG_PREFIX.PHYSICS} Tick ${tickCount}, alpha: ${sim.alpha().toFixed(3)}`
-          );
-        }
-
-        // Get updated positions from simulation
-        const positionMap = new Map(sim.nodes().map((n) => [n.id, n]));
-
-        // Apply positions to React Flow nodes
-        setNodes((nodes) =>
-          nodes.map((n) => {
-            const simNode = positionMap.get(n.id);
-            if (!simNode) return n;
-            if (!neighborhoodIdsRef.current.has(n.id)) return n;
-            
-            // Don't update dragged node - React Flow handles it
-            if (n.id === draggedIdRef.current) return n;
-
-            return {
-              ...n,
-              position: { x: simNode.x, y: simNode.y },
-            };
-          })
-        );
-
-        rafRef.current = requestAnimationFrame(tick);
-      };
-
-      rafRef.current = requestAnimationFrame(tick);
+      // No animation loop needed - all nodes are fixed during drag
+      // The dragged node position is updated via updateDraggedPosition if needed
+      console.log(`${LOG_PREFIX.PHYSICS} Simulation initialized (nodes fixed during drag)`);
     },
     [getNodes, setNodes, stop]
   );
@@ -207,26 +140,8 @@ export function useLocalPhysics() {
    * @param {number} y - New Y position
    */
   const updateDraggedPosition = useCallback((x, y) => {
-    if (!simRef.current || !draggedIdRef.current || !isRunningRef.current) {
-      return;
-    }
-
-    const draggedId = draggedIdRef.current;
-    const node = simRef.current.nodes().find((d) => d.id === draggedId);
-
-    if (!node) {
-      console.warn(`${LOG_PREFIX.PHYSICS} Dragged node not found in simulation: ${draggedId}`);
-      return;
-    }
-
-    // Lock dragged node to cursor position
-    node.fx = x;
-    node.fy = y;
-    node.vx = 0;
-    node.vy = 0;
-
-    // Restart simulation with moderate alpha
-    simRef.current.alpha(0.35).restart();
+    // No-op: All nodes are fixed during drag, so no simulation updates needed
+    // ReactFlow handles the dragged node position directly
   }, []);
 
   return { start, stop, updateDraggedPosition };

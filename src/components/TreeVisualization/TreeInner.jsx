@@ -29,6 +29,8 @@ const nodeTypes = { animatedNode: AnimatedNodeComponent };
  * Now works with sentences array as SSOT
  */
 export function TreeInner({ sentences = [], onTreeUpdate }) {
+  console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
+
   // ReactFlow state
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
@@ -39,6 +41,20 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
   const rfRef = useRef(null);
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
+  const sentencesRef = useRef(sentences);
+
+  // Keep sentences ref updated
+  useEffect(() => {
+    sentencesRef.current = sentences;
+  }, [sentences]);
+
+  // Log component mount/unmount for debugging
+  useEffect(() => {
+    console.log('[TreeInner] Component MOUNTED');
+    return () => {
+      console.log('[TreeInner] Component UNMOUNTED');
+    };
+  }, []);
 
   // Custom hooks
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
@@ -114,15 +130,18 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
     return flattenTree(tree);
   }, [sentences]);
 
-  // Cleanup physics on unmount
+  // Cleanup physics on unmount only - no dependencies to avoid loops
   useEffect(() => {
     return () => {
       console.log(`${LOG_PREFIX.PHYSICS} Component unmounting, cleaning up`);
       physics.stop();
     };
-  }, [physics]);
+  }, []); // Empty deps - cleanup only on unmount
 
-  // Apply ELK layout when sentences change
+  // Track previous sentences to prevent unnecessary layout updates
+  const prevSentencesRef = useRef(null);
+
+  // Apply ELK layout when sentences actually change
   useEffect(() => {
     // Don't update layout while dragging
     if (isDraggingRef.current) {
@@ -130,15 +149,44 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
       return;
     }
 
-    let cancelled = false;
+    // Check if sentences actually changed (avoid re-layout on re-renders)
+    // Include hierarchy metadata since that affects the tree structure
+    const sentencesKey = JSON.stringify({
+      sentences: sentences.map(s => ({
+        id: s.id,
+        content: s.content,
+        parentId: s.parentId,
+        emotion: s.emotion,
+        intensity: s.intensity
+      })),
+      hierarchyMeta: sentences._hierarchyMeta ? {
+        maxLevel: sentences._hierarchyMeta.maxLevel,
+        nodeCount: sentences._hierarchyMeta.nodes?.length || 0,
+        dirtyCount: sentences._hierarchyMeta.dirtyNodeIds?.length || 0,
+        rootTitle: sentences._hierarchyMeta.rootTitle
+      } : null
+    });
+
+    if (prevSentencesRef.current === sentencesKey) {
+      console.log(`${LOG_PREFIX.LAYOUT} Sentences unchanged, skipping layout`);
+      return;
+    }
+
+    prevSentencesRef.current = sentencesKey;
 
     const applyLayout = async () => {
-      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for ${flat.nodes.length} nodes`);
+      // Rebuild tree inside effect to avoid stale closure
+      const tree = buildTreeFromSentences(sentences);
+      const flatStructure = flattenTree(tree);
+
+      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for ${flatStructure.nodes.length} nodes`);
 
       // Preserve ONLY metadata (emotion, intensity) from existing nodes
-      // Always use NEW label/content from flat.nodes
-      const withData = flat.nodes.map((n) => {
-        const existing = nodes.find((x) => x.id === n.id);
+      // Always use NEW label/content from flatStructure.nodes
+      // Use getNodes() to get current nodes without adding to dependencies
+      const currentNodes = rfRef.current?.getNodes() || [];
+      const withData = flatStructure.nodes.map((n) => {
+        const existing = currentNodes.find((x) => x.id === n.id);
         if (existing && existing.data) {
           return {
             ...n,
@@ -153,23 +201,44 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         return n;
       });
 
-      const laidOut = await runElk(withData, flat.edges);
+      const laidOut = await runElk(withData, flatStructure.edges);
 
-      if (!cancelled && !isDraggingRef.current) {
+      // Check if we should apply the layout
+      // Apply if: not dragging AND sentences are still the same
+      // Don't use cancelled flag - React Strict Mode unmount/remount would block it
+      const currentSentencesKey = JSON.stringify({
+        sentences: sentencesRef.current.map(s => ({
+          id: s.id,
+          content: s.content,
+          parentId: s.parentId,
+          emotion: s.emotion,
+          intensity: s.intensity
+        })),
+        hierarchyMeta: sentencesRef.current._hierarchyMeta ? {
+          maxLevel: sentencesRef.current._hierarchyMeta.maxLevel,
+          nodeCount: sentencesRef.current._hierarchyMeta.nodes?.length || 0,
+          dirtyCount: sentencesRef.current._hierarchyMeta.dirtyNodeIds?.length || 0,
+          rootTitle: sentencesRef.current._hierarchyMeta.rootTitle
+        } : null
+      });
+
+      const sentencesStillSame = currentSentencesKey === sentencesKey;
+      const shouldApply = !isDraggingRef.current && sentencesStillSame;
+
+      if (shouldApply) {
         console.log(`${LOG_PREFIX.LAYOUT} Setting ${laidOut.length} nodes`);
         setNodes(laidOut);
-        setEdges(flat.edges);
+        setEdges(flatStructure.edges);
       } else {
-        console.log(`${LOG_PREFIX.LAYOUT} Layout cancelled`);
+        console.log(`${LOG_PREFIX.LAYOUT} Layout not applied (dragging: ${isDraggingRef.current}, sentencesChanged: ${!sentencesStillSame})`);
       }
     };
 
     applyLayout();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [sentences, flat.nodes.length, flat.edges]);
+    // Cleanup function doesn't need to do anything
+    // Layout will only apply if sentences are still valid
+  }, [sentences, setNodes, setEdges]);
 
   /**
    * ReactFlow initialization callback
@@ -281,9 +350,9 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         // This is a reorder operation
         console.log(`${LOG_PREFIX.DRAG} Reorder detected: applying to sentences`);
 
-        // Apply reordering to sentences array
+        // Apply reordering to sentences array using ref
         const updatedSentences = applyReordering(
-          sentences,
+          sentencesRef.current,
           node.id,
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
@@ -319,7 +388,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         }, 50);
       }
     },
-    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, sentences, onTreeUpdate]
+    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, onTreeUpdate]
   );
 
   /**
@@ -365,8 +434,8 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
 
       // Update the sentences array with emotion data
       if (onTreeUpdate) {
-        // Find and update the sentence
-        const updatedSentences = sentences.map(s =>
+        // Use ref to get current sentences without adding to dependencies
+        const updatedSentences = sentencesRef.current.map(s =>
           s.id === nodeId
             ? { ...s, emotion, intensity }
             : s
@@ -374,7 +443,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         onTreeUpdate(updatedSentences);
       }
     },
-    [nodes, sentences, onTreeUpdate, setNodes]
+    [onTreeUpdate, setNodes]
   );
 
   // Pass emotion handler and position to nodes via data

@@ -138,9 +138,6 @@ export function useReordering() {
         if (!node) continue;
 
         const distance = Math.abs(node.position.y - currentY);
-        console.log(
-          `${LOG_PREFIX.DRAG}   Node ${nodeId}: Y=${node.position.y.toFixed(1)}, distance=${distance.toFixed(1)}px`
-        );
 
         if (distance < minDistance) {
           minDistance = distance;
