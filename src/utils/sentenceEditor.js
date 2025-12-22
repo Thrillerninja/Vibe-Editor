@@ -5,7 +5,8 @@
 
 import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
-import { markSentenceAsDirty, markSentencesAsDirty, markReorderAsDirty } from './dirtyTracking';
+import { markSentenceAsDirty, markSentencesAsDirty, markReorderAsDirty, addSentenceToHierarchy, removeSentenceFromHierarchy } from './dirtyTracking';
+import { sortNodesByDocumentOrder } from './hierarchyIntegration';
 
 /**
  * Finds which sentence contains a given text position
@@ -140,8 +141,161 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
 
             console.log(`${LOG_PREFIX.PARSER} Preserved hierarchy metadata (no content changes)`);
         } else {
-            // Sentences added/removed - clear hierarchy completely
-            console.log(`${LOG_PREFIX.PARSER} Structure changed (${sentences.length} → ${updatedSentences.length}), clearing hierarchy`);
+            // Sentences added/removed - preserve hierarchy and handle add/remove properly
+            console.log(`${LOG_PREFIX.PARSER} Structure changed (${sentences.length} → ${updatedSentences.length}), updating hierarchy`);
+
+            // Find added sentences (those with new IDs not in usedSentences)
+            const addedSentences = updatedSentences.filter(s => !usedSentences.has(s.id));
+
+            // Find removed sentences (old IDs not in new sentences)
+            const newSentenceIds = new Set(updatedSentences.map(s => s.id));
+            const removedSentenceIds = sentences.filter(s => !newSentenceIds.has(s.id)).map(s => s.id);
+
+            // Work with a copy of the hierarchy metadata
+            let updatedMeta = { ...hierarchyMeta };
+            let nodes = updatedMeta.nodes.map(n => ({ ...n }));
+            let dirtyNodeIds = new Set(updatedMeta.dirtyNodeIds || []);
+            let dirtySentenceIds = new Set(updatedMeta.dirtySentenceIds || []);
+
+            // Apply removals first
+            for (const removedId of removedSentenceIds) {
+                console.log(`${LOG_PREFIX.PARSER} Removing sentence ${removedId} from hierarchy`);
+                dirtySentenceIds.delete(removedId);
+
+                // Find parent and remove sentence
+                const parentNode = nodes.find(n => n.childIds.includes(removedId));
+                if (parentNode) {
+                    parentNode.childIds = parentNode.childIds.filter(id => id !== removedId);
+
+                    if (parentNode.childIds.length === 0) {
+                        // Remove empty parent chain
+                        let currentId = parentNode.id;
+                        nodes = nodes.filter(n => n.id !== currentId);
+                        dirtyNodeIds.delete(currentId);
+
+                        let continueRemoving = true;
+                        while (continueRemoving) {
+                            const grandparent = nodes.find(n => n.childIds.includes(currentId));
+                            if (grandparent) {
+                                grandparent.childIds = grandparent.childIds.filter(id => id !== currentId);
+                                if (grandparent.childIds.length === 0) {
+                                    nodes = nodes.filter(n => n.id !== grandparent.id);
+                                    dirtyNodeIds.delete(grandparent.id);
+                                    currentId = grandparent.id;
+                                } else {
+                                    dirtyNodeIds.add(grandparent.id);
+                                    continueRemoving = false;
+                                }
+                            } else {
+                                dirtyNodeIds.add('root');
+                                continueRemoving = false;
+                            }
+                        }
+                    } else {
+                        dirtyNodeIds.add(parentNode.id);
+                    }
+                }
+            }
+
+            // Then apply additions
+            for (const addedSentence of addedSentences) {
+                console.log(`${LOG_PREFIX.PARSER} Adding sentence ${addedSentence.id} to hierarchy`);
+                dirtySentenceIds.add(addedSentence.id);
+
+                // Find the insertion position in updatedSentences
+                const insertIndex = updatedSentences.indexOf(addedSentence);
+                let parentNode = null;
+                let siblingId = null;
+
+                // Try to find a sibling sentence to determine the parent context
+                if (insertIndex > 0) {
+                    // Look for the sentence before
+                    siblingId = updatedSentences[insertIndex - 1]?.id;
+                } else if (insertIndex === 0 && updatedSentences.length > 1) {
+                    // Look for the sentence after
+                    siblingId = updatedSentences[insertIndex + 1]?.id;
+                }
+
+                // Find which parent node contains the sibling
+                if (siblingId) {
+                    parentNode = nodes.find(n => n.childIds.includes(siblingId));
+                }
+
+                if (parentNode) {
+                    // Add the new sentence to the same parent as its sibling
+                    console.log(`${LOG_PREFIX.PARSER} Adding sentence to existing parent ${parentNode.id}`);
+
+                    // Find the correct position to insert within parent's childIds based on document order
+                    const sentencePositions = new Map();
+                    updatedSentences.forEach((s, idx) => {
+                        sentencePositions.set(s.id, idx);
+                    });
+
+                    // Find where to insert in the parent's childIds
+                    let insertPosition = parentNode.childIds.length;
+                    for (let i = 0; i < parentNode.childIds.length; i++) {
+                        const childId = parentNode.childIds[i];
+                        const childPos = sentencePositions.get(childId);
+                        if (childPos !== undefined && childPos > insertIndex) {
+                            insertPosition = i;
+                            break;
+                        }
+                    }
+
+                    parentNode.childIds.splice(insertPosition, 0, addedSentence.id);
+                    console.log(`${LOG_PREFIX.PARSER} Inserted sentence at position ${insertPosition} in parent's children`);
+
+                    // Mark the parent and all ancestors as dirty
+                    dirtyNodeIds.add(parentNode.id);
+                    let currentId = parentNode.id;
+                    let foundParent = true;
+
+                    while (foundParent) {
+                        foundParent = false;
+                        for (const node of nodes) {
+                            if (node.childIds.includes(currentId)) {
+                                dirtyNodeIds.add(node.id);
+                                currentId = node.id;
+                                foundParent = true;
+                                break;
+                            }
+                        }
+                    }
+                    dirtyNodeIds.add('root');
+                } else {
+                    // No sibling found - create placeholder parent chain for new sentence
+                    console.log(`${LOG_PREFIX.PARSER} Creating placeholder parent chain for new sentence (no siblings)`);
+                    const maxLevel = updatedMeta.maxLevel || 2;
+                    let currentChildId = addedSentence.id;
+
+                    for (let level = 2; level <= maxLevel; level++) {
+                        const placeholderId = uuidv4();
+                        nodes.push({
+                            id: placeholderId,
+                            type: 'group',
+                            level: level,
+                            label: `Level ${level} - New content (pending AI)`,
+                            childIds: [currentChildId],
+                        });
+                        dirtyNodeIds.add(placeholderId);
+                        currentChildId = placeholderId;
+                    }
+                    dirtyNodeIds.add('root');
+                }
+            }
+
+            // Sort nodes by document order to ensure correct positioning
+            nodes = sortNodesByDocumentOrder(nodes, updatedSentences);
+            console.log(`${LOG_PREFIX.PARSER} Sorted ${nodes.length} nodes by document order`);
+
+            // Update the metadata
+            updatedMeta.nodes = nodes;
+            updatedMeta.dirtyNodeIds = Array.from(dirtyNodeIds);
+            updatedMeta.dirtySentenceIds = Array.from(dirtySentenceIds);
+            updatedSentences._hierarchyMeta = updatedMeta;
+
+            console.log(`${LOG_PREFIX.PARSER} Hierarchy updated: ${removedSentenceIds.length} removed, ${addedSentences.length} added`);
+            return updatedSentences;
         }
     }
 

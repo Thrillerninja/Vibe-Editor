@@ -15,7 +15,7 @@ import { rebuildSentenceOrderFromHierarchy } from './sentenceEditor';
  * @param {Array} sentences - Sentences array
  * @returns {Array} Sorted nodes array
  */
-function sortNodesByDocumentOrder(nodes, sentences) {
+export function sortNodesByDocumentOrder(nodes, sentences) {
     // Create a map for quick sentence lookup
     const sentencePositions = new Map();
     sentences.forEach((s, idx) => {
