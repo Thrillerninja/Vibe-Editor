@@ -13,7 +13,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import DiffMatchPatch from 'diff-match-patch';
 import { useNavigate } from 'react-router-dom';
 import ElkTree from '../components/Tree/ELKTree';
-import { buildTree } from '../ClaudeAlternative/claudeAPI';
+import { buildTree, sanitizeTreeDepth } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
@@ -21,6 +21,15 @@ import { exportFile } from '../components/Import/Export/Export';
 import { importTxt } from '../components/Import/Export/Import';
 import { refreshEmotionsInModifiedSubtree } from '../utils/EmotionUpdate';
 import { tr } from 'framer-motion/client';
+import {   refreshNode,
+  reattachTrailingToLeaves,
+  addYCoord,
+  collectLeavesInOrder,
+  diffSentences,
+  applyDiffToTree,
+  hasModified,
+  rebuildSubtree,
+  extractSentencesFromSubtree} from '../pages/EditorUtils.js';
 
 const RANDOM_POETRY = `The world shifts between wonder and despair. Some mornings I rise with a flame burning through my thoughts. Other days I feel the cold gravity of a thousand unspoken fears. Yet a quiet voice reminds me that chaos has its own hidden rhythm. And even in the fracture of the heart, something stubborn and beautiful refuses to disappear.`;
 const RANDOM_TEXT = `The day began with a gentle sense of positivity, as if something good waited quietly beneath the surface. Still, a negative undertone drifted in now and then, reminding me that not everything sits as steadily as I wish. Most moments passed in a neutral haze — footsteps on pavement, distant voices, the ordinary rhythm of moving forward. But at one point, a realization struck with sharp emphasis, cutting through everything else and demanding attention. And as evening settled, an uncertain question lingered in the air, leaving me wondering what tomorrow might shape from all of this.`
@@ -87,36 +96,13 @@ function removeEmptyBranches(node, isRoot = false) {
   return { tree: result ?? node, removedSomething };
 }
 
-
-
-function reattachTrailingToLeaves(tree, tokens) {
-  let i = 0;
-
-  const attach = (node) => {
-    if (!node) return node;
-
-    if (node.level === LEAF_NODE_LEVEL) {
-      const tok = tokens[i++];
-      return {
-        ...node,
-        content: tok?.content ?? node.content,
-        label: tok?.content ?? node.label,
-        trailing: tok?.trailing ?? ""
-      };
-    }
-
-    if (node.children) {
-      return {
-        ...node,
-        children: node.children.map(attach)
-      };
-    }
-
-    return node;
-  };
-
-  return attach(tree);
+function sentenceKey(sentence) {
+  // Separator must be impossible in normal text
+  return sentence.content + "\u0000" + sentence.trailing;
 }
+
+
+
 
 function sanitizeTreeOnce(root) {
   let changed = false;
@@ -180,22 +166,7 @@ function textToSentences(text) {
 }
 
 
-function addYCoord(node) {
-  if (!node) return node;
 
-  const updated = {
-    ...node,
-    // Preserve isModified flag - don't clear it here
-    y_coord: node.y_coord ?? 0   // default value
-  };
-
-  if (!node.children) return updated;
-
-  return {
-    ...updated,
-    children: node.children.map(addYCoord)
-  };
-}
 
 
 function splitWithSeparators(text) {
@@ -245,7 +216,7 @@ function markTreeModified(node) {
 export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(undefined);
-  const [maxDepth, setMaxDepth] = useState(3);
+  const [maxDepth, setMaxDepth] = useState(2);
   const [isTreeRendering, setisTreeRendering] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [diffTokens, setDiffTokens] = useState([]);
@@ -262,9 +233,11 @@ export default function BidirectionalEditor() {
   const lastSyncedTreeRef = useRef(null);
   const isSyncingToTextRef = useRef(false);
   const initialTreeMarkedRef = useRef(false);
+  const prevTreeTextRef = useRef("")
+
 
   const handleInsertExample = () => {
-    const exampleText = POETRY;
+    const exampleText = RANDOM_TEXT + "\n\n" + RANDOM_POETRY;
 
     // 1) put text in textarea
     setTextAreaContent(exampleText);
@@ -358,14 +331,14 @@ export default function BidirectionalEditor() {
   const handleRevertComplete = (revertedTextAreaContent) => {
     console.log(revertedTextAreaContent)
     setTextAreaContent(revertedTextAreaContent.text);
-    convertTextToTree();
+    renderFullTree();
   };
 
   // ═══════════════════════════════════════════════════════════════
   // BUTTON 1: TEXT → TREE
   // ═══════════════════════════════════════════════════════════════
 
-  const convertTextToTree = async () => {
+  const renderFullTree = async () => {
     console.log('[BidirectionalEditor] Converting text to tree...', textAreaContent);
     //setTree(undefined)
     setisTreeRendering(true);
@@ -381,6 +354,7 @@ export default function BidirectionalEditor() {
 
       const withTrailing = reattachTrailingToLeaves(aiRoot, tokens);
       const withCoords = addYCoord(withTrailing);
+      //const sanitized = sanitizeTreeDepth(withCoords, maxDepth-1);
       setTree(withCoords);
 
     } catch (err) {
@@ -397,7 +371,7 @@ export default function BidirectionalEditor() {
         isModified: false,
         emotion: "NEUTRAL"
       }));
-      const rootNode = createNode('Document', "Root", [], maxDepth);
+      const rootNode = createNode('Document', "Root", [], maxDepth-1);
       //setTree(rootNode);
     }
     setisTreeRendering(false);
@@ -458,43 +432,28 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
 
 
-
   const handleRefreshTree = async () => {
     if (!tree) return;
+
     setisTreeRendering(true);
 
-    var fullRerednerNeeded = tree.isModified ;
-    for (const child of tree.children) {
-      if (child.isModified ) {
-        fullRerednerNeeded = true;
-        console.log('Modified child node detected for refresh:', child);
-      }
-      console.log('Child node:', child);
-    }
-    //alert('Refreshing modified subtrees. Full rerender needed: ' + fullRerednerNeeded);
-    if (fullRerednerNeeded ) {
-      console.log('Starting tree refresh for modified subtrees...');
-      convertTextToTree();
-      return;
-    }
-    //alert('Refreshing emotions in modified subtrees...');
     try {
-      const { refreshedTree, dirtyCount, success } = await refreshEmotionsInModifiedSubtree(tree);
-
-      const withCoords = addYCoord(refreshedTree);
-      setTree(withCoords);
-
-      if (!success) {
-        alert(`Tree refresh partially completed. ${dirtyCount} node(s) failed and remain dirty for retry.`);
-      }
-    } catch (error) {
-      alert('Failed to refresh tree: ' + error.message + '\n\nThe tree state has been preserved. You can try again.');
+      const refreshed = await refreshNode(tree, maxDepth);
+      const clearModified = (n) => ({
+        ...n,
+        isModified: false,
+        children: n.children?.map(clearModified) ?? []
+      });
+      //alert("Success0")
+      setTree(clearModified(refreshed));
+      console.log('[BidirectionalEditor] Refreshed modified subtrees in tree.', refreshed);
+      console.log('[BidirectionalEditor] Refreshed modified subtrees in tree.', clearModified(refreshed));
+      alert(refreshed)
     } finally {
       setisTreeRendering(false);
     }
-    console.log(tree)
-  }
-  
+  };
+
 
   useEffect(() => {
 
@@ -505,11 +464,8 @@ export default function BidirectionalEditor() {
 
   useEffect(() => {
     if (!tree) return;
-    const updatedTree = {
-      ...tree,
-      isModified: true
-    };
-    setTree(updatedTree);
+    if (!textAreaContent) return;
+    renderFullTree();
   }, [maxDepth]);
 
   // AUTO APPLY TREE CHANGES TO TEXTAREA
@@ -576,51 +532,25 @@ export default function BidirectionalEditor() {
   };
   
   function syncTextToTree(currentText) {
-    if (!currentText || !tree) return;
+    if (!tree || isTreeRendering) return;
 
-    const tokens = textToSentences(currentText)
-      .filter(t => t.content.trim().length > 0);
+    const newSentences = textToSentences(currentText);
 
+    const leaves = collectLeavesInOrder(tree);
+    const oldSentences = leaves.map(leaf => ({
+      content: leaf.content,
+      trailing: leaf.trailing,
+      leaf
+    }));
 
-    // collect existing leaves (ORDER ONLY)
-    const leaves = [];
-    const collect = (node) => {
-      if (!node) return;
-      if (node.level === LEAF_NODE_LEVEL) {
-        leaves.push(node);
-        return;
-      }
-      node.children?.forEach(collect);
-    };
-    collect(tree);
+    const diffOps = diffSentences(oldSentences, newSentences);
 
-    // 1) modify existing leaves
-    const min = Math.min(leaves.length, tokens.length);
-    for (let i = 0; i < min; i++) {
-      leaves[i].content  = tokens[i].content;
-      leaves[i].label    = tokens[i].content;
-      leaves[i].trailing = tokens[i].trailing;
-      leaves[i].isModified = true;
-    }
+    const updatedTree = applyDiffToTree(tree, diffOps);
 
-    // 2) append new leaves to ROOT if text is longer
-    if (tokens.length > leaves.length) {
-      for (let i = leaves.length; i < tokens.length; i++) {
-        tree.children.push({
-          id: `leaf-${Date.now()}-${i}`,
-          level: LEAF_NODE_LEVEL,
-          content: tokens[i].content,
-          label: tokens[i].content,
-          trailing: tokens[i].trailing,
-          children: [],
-          emotion: "NEUTRAL",
-          isModified: true
-        });
-      }
-    }
-    // 3) force React update ONCE
-    setTree({ ...tree });
+    setTree(updatedTree);
   }
+
+
 
 
 

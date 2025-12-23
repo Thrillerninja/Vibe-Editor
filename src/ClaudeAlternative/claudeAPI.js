@@ -5,56 +5,59 @@ import { LEAF_NODE_LEVEL, EMOTIONS } from '../utils/constants';
 const ALLOWED_EMOTIONS = Object.keys(EMOTIONS).map(k => k.toUpperCase());
 
 function buildPrompt(sentences, layers) {
-  return `
-You will receive an array of sentences and must build a hierarchical tree according to the following rules:
+    return `
+  You will receive an array of sentences and must build a hierarchical tree according to the following rules:
 
-INPUT SENTENCES:
-${sentences.map((sentence, i) => `${i + 1}. ${sentence}`).join("\n")}
+  INPUT SENTENCES:
+  ${sentences.map((sentence, i) => `${i + 1}. ${sentence}`).join("\n")}
 
-REQUESTED NUMBER OF LAYERS: ${layers}
-REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
+  REQUESTED NUMBER OF LAYERS: ${layers}
+  REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
------------------- TREE CREATION RULES ------------------
-0) OVERVIEW
-    - 🚨 CRITICAL: Keep the sentence order in the tree at ALL COSTS - this is the #1 rule.
-    - Build a hierarchical tree with the specified number of layers.
-    - Use semantic grouping to cluster related sentences under topic nodes.
-    - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
-    - Every node MUST contain the aggregated text of its children in the "content" attribute. Meaning you please concatenate all child contents for parent nodes.
-    - CIRITCAL: DO NOT remove/trim any content from sentences - every sentence must be fully preserved in the leaf nodes including trailing/leading whitespaces "/n" or other symbols.
-🚨 SENTENCE ORDER IS SACRED:
-   - Sentences are numbered 1 to ${sentences.length} in the input above
-   - When you traverse the output tree depth-first (left-to-right), sentences MUST appear in order 1, 2, 3, ..., ${sentences.length}
-   - Groups organize sentences but NEVER reorder them
-   - If Group A has sentences 1-3 and Group B has 4-6, Group A MUST be listed before Group B in the tree
-   - Within each group, sentences must maintain their original order
+  ------------------ TREE CREATION RULES ------------------
+  0) OVERVIEW
+     - 🚨 CRITICAL: Keep the sentence order in the tree at ALL COSTS - this is the #1 rule.
+     - Build a hierarchical tree with the specified number of layers.
+     - Use semantic grouping to cluster related sentences under topic nodes.
+     - The deepest layer (${LEAF_NODE_LEVEL}) MUST contain the original sentences as leaf nodes.
+     - Every node MUST contain the aggregated text of its children in the "content" attribute. Concatenate all child contents for parent nodes.
+     - CRITICAL: DO NOT remove/trim any content from sentences - every sentence must be fully preserved in the leaf nodes including trailing/leading whitespaces, "\n" or other symbols.
+     - 🚨 ALL LEAF NODES MUST BE AT THE SAME DEPTH (${LEAF_NODE_LEVEL}).
+     🚨 SENTENCE ORDER IS SACRED:
+    - Sentences are numbered 1 to ${sentences.length} in the input above
+    - When you traverse the output tree depth-first (left-to-right), sentences MUST appear in order 1, 2, 3, ..., ${sentences.length}
+    - Groups organize sentences but NEVER reorder them
+    - If Group A has sentences 1-3 and Group B has 4-6, Group A MUST be listed before Group B in the tree
+    - Within each group, sentences must maintain their original order
 
-1) SENTENCES → LEAF NODES
-   - Every sentence from the input array MUST become exactly one leaf node.
-   - Each leaf node MUST include these attributes:
-     id, level, type, label, content, emotion, children.
-   - Leaf nodes must use level = ${LEAF_NODE_LEVEL}.
+  1) SENTENCES → LEAF NODES
+    - Every sentence from the input array MUST become exactly one leaf node.
+    - Each leaf node MUST include these attributes:
+      id, level, type, label, content, emotion, children.
+    - Leaf nodes must use level = ${LEAF_NODE_LEVEL}.
 
-   Leaf node example:
-   {
-     "id": 1,
-     "level": ${LEAF_NODE_LEVEL},
-     "type": "leaf",
-     "label": "Short label",
-     "content": "Full sentence text here.",
-     "emotion": "NEUTRAL",
-     "children": []
-   }
+    Leaf node example:
+    {
+      "id": 1,
+      "level": ${LEAF_NODE_LEVEL},
+      "type": "leaf",
+      "label": "Short label",
+      "content": "Full sentence text here.",
+      "emotion": "NEUTRAL",
+      "children": []
+    }
 
-2) TOPIC NODES (regular internal nodes)
-   - Group semantically related sentences into topic nodes.
-   - Each topic node must include the same attributes (id, level, type, label, content, emotion, children).
-   - Topic node children are the leaf nodes (or other topic nodes depending on depth).
+  2) TOPIC NODES (regular internal nodes)
+    - Group semantically related sentences into topic nodes.
+    - Each topic node must include the same attributes (id, level, type, label, content, emotion, children).
+    - Topic node children are the leaf nodes (or other topic nodes depending on depth).
+    - If a topic node does not reach the required depth, pad with topic nodes as needed (see above).
+    - YOU MUST NEVER PUT LEAF NODES ON A LEVEL HIGHER THAN ${LEAF_NODE_LEVEL}!!!
 
-3) ROOT NODE
-   - Root must contain all top-level topic nodes as its children.
-   - Root must be:
-     {
+  3) ROOT NODE
+    - Root must contain all top-level topic nodes as its children.
+    - Root must be:
+      {
        "id": "root",
        "level": 0,
        "type": "root",
@@ -62,25 +65,26 @@ REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
        "content": "",
        "emotion": "NEUTRAL",
        "children": [ ...topic nodes... ]
-     }
+      }
 
-4) ATTRIBUTE REQUIREMENTS
-   - EVERY node must have: id, level, type, label, content, emotion, children.
-   - Node ids should be integers (unique), but your response will be re-mapped to "s-<n>" ids by the client.
-  - Choose emotion for each node from: [${ALLOWED_EMOTIONS.join(', ')}].
+  4) ATTRIBUTE REQUIREMENTS
+    - EVERY node must have: id, level, type, label, content, emotion, children.
+    - Node ids should be integers (unique), but your response will be re-mapped to "s-<n>" ids by the client.
+    - Choose emotion for each node from: [${ALLOWED_EMOTIONS.join(', ')}].
 
-5) TREE DEPTH
-   - The number of layers requested (${layers}) determines the depth.
-    level = ${layers} → root
-    level =  ${layers - 1}- 1 → topic nodes
-    level = ${LEAF_NODE_LEVEL} → leaf nodes
+  5) TREE DEPTH
+    - The number of layers requested (${layers}) determines the depth.
+     level = ${layers-1} → root
+     level =  ${layers - 2}- 1 → topic nodes
+     level = ${LEAF_NODE_LEVEL} → leaf nodes
 
-6) OUTPUT FORMAT
-   - Output a SINGLE JSON object representing the ROOT node.
-   - Do NOT output any explanation or extra text. Only valid JSON.
+  6) OUTPUT FORMAT
+    - Output a SINGLE JSON object representing the ROOT node.
+    - Do NOT output any explanation or extra text. Only valid JSON.
 
------------------- BEGIN OUTPUT NOW ------------------
-`;
+  ------------------ BEGIN OUTPUT NOW ------------------
+  `;
+
 }
 
 const getClient = () => {
@@ -645,7 +649,7 @@ export async function buildTree(sentences, layers) {
     const extractSentenceContent = (node, contents = []) => {
       if (!node) return contents;
       if (node.level === LEAF_NODE_LEVEL) {
-        contents.push(node.content);
+        contents.push(node.content+node.trailing);
         return contents;
       }
       if (node.children) {
@@ -657,18 +661,18 @@ export async function buildTree(sentences, layers) {
     const treeSentences = extractSentenceContent(sanitized);
 
     // Check if all input sentences are present in order
-    if (treeSentences.length !== sentences.length) {
-      console.error('[Validation] Sentence count mismatch in generated tree');
-      console.error('  Expected:', sentences.length, 'sentences');
-      console.error('  Got:', treeSentences.length, 'sentences');
+    //if (treeSentences.length !== sentences.length) {
+      //console.error('[Validation] Sentence count mismatch in generated tree');
+      //console.error('  Expected:', sentences.length, 'sentences');
+      //console.error('  Got:', treeSentences.length, 'sentences');
       //throw new Error(`Sentence count mismatch: expected ${sentences.length}, got ${treeSentences.length}`);
-    }
+    //}
 
     for (let i = 0; i < sentences.length; i++) {
       if (treeSentences[i] !== sentences[i]) {
-        console.error('[Validation] SENTENCE ORDER VIOLATED in generated tree at position', i + 1);
-        console.error('  Expected:', sentences[i]);
-        console.error('  Got:', treeSentences[i]);
+        //console.error('[Validation] SENTENCE ORDER VIOLATED in generated tree at position', i + 1);
+        //console.error('  Expected:', sentences[i]);
+        //console.error('  Got:', treeSentences[i]);
         //throw new Error(`Sentence order violation at position ${i + 1}`);
       }
     }
@@ -707,3 +711,39 @@ Text:
   const output = response?.content?.[0]?.text ?? "";
   return output;
 }
+
+function sanitizeTreeDepth(root, maxDepth) {
+  function getMaxDepth(node, depth = 0) {
+    if (!node.children || node.children.length === 0) return depth;
+    return Math.max(...node.children.map(child => getMaxDepth(child, depth + 1)));
+  }
+
+  function padToDepth(node, currentDepth = 0) {
+    if (!node.children || node.children.length === 0) {
+      // If this is a leaf but not at maxDepth, pad
+      let padded = node;
+      for (let d = currentDepth; d < maxDepth; d++) {
+        padded = {
+          id: `auto-pad-${Math.random().toString(36).slice(2)}`,
+          level: node.level + (d - currentDepth) + 1,
+          type: 'topic',
+          label: '(auto-padding)',
+          content: padded.content,
+          emotion: 'NEUTRAL',
+          children: x[padded],
+          isModified: true,
+          originalContent: padded.content
+        };
+      }
+      return padded;
+    }
+    // Otherwise, recurse
+    return {
+      ...node,
+      children: node.children.map(child => padToDepth(child, currentDepth + 1))
+    };
+  }
+  return padToDepth(root);
+}
+// Export at the very end of the file
+export { sanitizeTreeDepth };
