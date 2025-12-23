@@ -221,6 +221,7 @@ export function extractSentencesFromSubtree(node) {
   return leaves.map(l => l.content);
 }
 export async function rebuildSubtree(node, maxDepth) {
+    
   const sentences = extractSentencesFromSubtree(node);
   var originalNode = node;
   var rebuilt = await buildTree(sentences, maxDepth);
@@ -240,10 +241,29 @@ export async function rebuildSubtree(node, maxDepth) {
 export async function refreshNode(node, maxDepth) {
   if (!node) return node;
 
+  // Collect trailing info from leaves before processing
+  const collectTrailing = (n) => {
+    const trailingArr = [];
+    const walk = (node) => {
+      if (!node) return;
+      if (node.level === LEAF_NODE_LEVEL) {
+        trailingArr.push({ content: node.content, trailing: node.trailing });
+      } else {
+        node.children?.forEach(walk);
+      }
+    };
+    walk(n);
+    return trailingArr;
+  };
+
   // Leaf case
   if (node.level === LEAF_NODE_LEVEL) {
     if (node.isModified) {
-      return await rebuildSubtree(node, 1);
+      // Preserve trailing for single leaf
+      const tokens = [{ content: node.content, trailing: node.trailing }];
+      let rebuilt = await rebuildSubtree(node, 1);
+      rebuilt = reattachTrailingToLeaves(rebuilt, tokens);
+      return rebuilt;
     }
     return node;
   }
@@ -258,6 +278,8 @@ export async function refreshNode(node, maxDepth) {
   // Exactly one modified child → recurse
   if (modifiedChildren.length === 1) {
     const target = modifiedChildren[0];
+    // Collect trailing before recursion
+    const trailingTokens = collectTrailing(node);
 
     const newChildren = await Promise.all(
       node.children.map(async ch =>
@@ -265,11 +287,18 @@ export async function refreshNode(node, maxDepth) {
       )
     );
 
-    return { ...node, children: newChildren };
+    // Reapply trailing after children are processed
+    let newNode = { ...node, children: newChildren };
+    newNode = reattachTrailingToLeaves(newNode, trailingTokens);
+    return newNode;
   }
 
   // ≥ 2 modified children → regenerate here (LCA)
-  return await rebuildSubtree(node, maxDepth);
+  // Collect trailing before regeneration
+  const trailingTokens = collectTrailing(node);
+  let rebuilt = await rebuildSubtree(node, maxDepth);
+  rebuilt = reattachTrailingToLeaves(rebuilt, trailingTokens);
+  return rebuilt;
 }
 export function addYCoord(node) {
   if (!node) return node;
