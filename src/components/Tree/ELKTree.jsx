@@ -66,7 +66,7 @@ const nodeTypes = { node: TreeNode };
  */
 function treeToElkNodes(node, nodes = [], parentId = null) {
   // Determine if this node is a leaf (no children OR type is "leaf")
-  const isLeaf = (!node.children || node.children.length === 0) || node.type === "leaf";
+  const isLeaf = node.level === LEAF_NODE_LEVEL;
   
   // For display: leaf nodes use content, non-leaf nodes use label
   const displayLabel = isLeaf 
