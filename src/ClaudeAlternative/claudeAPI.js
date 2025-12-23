@@ -11,7 +11,7 @@ function buildPrompt(sentences, layers) {
   INPUT SENTENCES:
   ${sentences.map((sentence, i) => `${i + 1}. ${sentence}`).join("\n")}
 
-  REQUESTED NUMBER OF LAYERS: ${layers}
+  NUMBER OF LAYERS: ${layers}
   REPO_LEAF_NODE_LEVEL: ${LEAF_NODE_LEVEL}
 
   ------------------ TREE CREATION RULES ------------------
@@ -23,12 +23,35 @@ function buildPrompt(sentences, layers) {
      - Every node MUST contain the aggregated text of its children in the "content" attribute. Concatenate all child contents for parent nodes.
      - CRITICAL: DO NOT remove/trim any content from sentences - every sentence must be fully preserved in the leaf nodes including trailing/leading whitespaces, "\n" or other symbols.
      - 🚨 ALL LEAF NODES MUST BE AT THE SAME DEPTH (${LEAF_NODE_LEVEL}).
+     - IMPORTANT: CREATE EXACTLY ${layers} LAYERS IN THE TREE: IF ${layers} = 1, THEN: RETURN A SINGLE LEAF NODE. IF ${layers} = 2, THEN: RETURN TOPIC NODES WITH LEAF CHILDREN. IF ${layers} = 3, THEN: RETURN ROOT → TOPIC NODES → LEAF NODES, ETC.  
+
      🚨 SENTENCE ORDER IS SACRED:
     - Sentences are numbered 1 to ${sentences.length} in the input above
     - When you traverse the output tree depth-first (left-to-right), sentences MUST appear in order 1, 2, 3, ..., ${sentences.length}
     - Groups organize sentences but NEVER reorder them
     - If Group A has sentences 1-3 and Group B has 4-6, Group A MUST be listed before Group B in the tree
     - Within each group, sentences must maintain their original order
+    
+    LAYER DEFINITION (CRITICAL):
+      A "layer" in the tree is a horizontal stack of nodes at the same depth.
+      The number of layers determines the number of vertical levels ("stacks") in the tree from root to leaves.
+      Each layer corresponds to a specific level in the hierarchy:
+      1 layer: Only one stack of nodes (all are leaf nodes, no parents).
+      2 layers: Two stacks—top stack is parent nodes, bottom stack is leaf nodes (children).
+      3 layers: Three stacks—root node at the top, topic/parent nodes in the middle, leaf nodes at the bottom.
+      N layers: N stacks, with each stack representing a level in the tree from root (top) to leaves (bottom).
+      Think of the tree as a building with N floors (layers). Each floor contains nodes at that level. The top floor is the root, the bottom floor is the leaves, and any floors in between are topic/parent nodes.
+      Every path from the root to a leaf must pass through exactly one node per layer, in order, from top to bottom.
+      All leaf nodes must be at the deepest layer (the bottom stack).
+      EXAMPLES:
+
+      If layers = 1: Only leaf nodes, no parent or root node.
+      If layers = 2: Parent nodes (top stack) → leaf nodes (bottom stack).
+      If layers = 3: Root node (top stack) → topic nodes (middle stack) → leaf nodes (bottom stack).
+      ABSOLUTE RULE:
+      The number of layers is the number of vertical stacks from root to leaves. Each stack is a set of nodes at the same depth. Do not skip or merge layers. Every node must be assigned to the correct layer/stack.
+
+
 
   1) SENTENCES → LEAF NODES
     - Every sentence from the input array MUST become exactly one leaf node.
@@ -74,15 +97,147 @@ function buildPrompt(sentences, layers) {
 
   5) TREE DEPTH
     - The number of layers requested (${layers}) determines the depth.
-     level = ${layers-1} → root
-     level =  ${layers - 2}- 1 → topic nodes
+    - A single layer means the array of siblings in the tree. 2 layers would mean one parent with several children.
+    - This menas IF 0 LAYERS ARE REQUESTED, THE TREE WILL ONLY CONTAIN THE given sentences as nodes.
+     level = ${layers} → root
+     level =  ${layers - 1} → topic nodes
      level = ${LEAF_NODE_LEVEL} → leaf nodes
 
   6) OUTPUT FORMAT
     - Output a SINGLE JSON object representing the ROOT node.
     - Do NOT output any explanation or extra text. Only valid JSON.
 
-  ------------------ BEGIN OUTPUT NOW ------------------
+
+  7) EXAMPLE "1-Layer":
+   INPUT SENTENCES:
+   1. The sun was setting over the hills.
+   NUMBER OF LAYERS: 1
+   Output:
+          {
+            "id": 1,
+            "level": 0,
+            "type": "leaf",
+            "label": "Positive Undertone",
+            "content": "The sun was setting over the hills.",
+            "emotion": "POSITIVE",
+            "children": []
+          }
+  8) EXAMPLE "2-Layer":
+  INPUT SENTENCES:
+  1. I woke up feeling calm and unusually grounded, as though the day had already forgiven me for small mistakes.
+  2. By midday, uncertainty crept in, soft but persistent, making even simple decisions feel heavier than expected.
+  3. In the evening, everything settled into emotional neutrality — not good, not bad, just present.
+  NUMBER OF LAYERS: 2
+  Output:
+  {
+  "id": 42,
+  "level": 1,
+  "type": "topic",
+  "label": "Quiet Internal Shifts",
+  "content": "I woke up feeling calm and unusually grounded, as though the day had already forgiven me for small mistakes. By midday, uncertainty crept in, soft but persistent, making even simple decisions feel heavier than expected. In the evening, everything settled into emotional neutrality — not good, not bad, just present.",
+  "emotion": "NEUTRAL",
+  "children":
+          {
+                "id": 43,
+                "level": 0,
+                "type": "leaf",
+                "label": "Morning Stability",
+                "content": "I woke up feeling calm and unusually grounded, as though the day had already forgiven me for small mistakes.",
+                "emotion": "POSITIVE",
+                "children": []
+              },
+              {
+                "id": 44,
+                "level": 0,
+                "type": "leaf",
+                "label": "Midday Doubt",
+                "content": "By midday, uncertainty crept in, soft but persistent, making even simple decisions feel heavier than expected.",
+                "emotion": "UNCERTAIN",
+                "children": []
+              },
+              {
+                "id": 45,
+                "level": 0,
+                "type": "leaf",
+                "label": "Evening Equilibrium",
+                "content": "In the evening, everything settled into emotional neutrality — not good, not bad, just present.",
+                "emotion": "NEUTRAL",
+                "children": []
+              }
+            ]
+          }
+
+
+
+  ------------------ COUNTER-EXAMPLES (DO NOT DO THIS) ------------------
+  COUNTEREXAMPLE (INCORRECT for layers=2):
+    INPUT SENTENCES:
+    1. I woke up feeling calm and unusually grounded, as though the day had already forgiven me for small mistakes.
+    2. By midday, uncertainty crept in, soft but persistent, making even simple decisions feel heavier than expected.
+    3. In the evening, everything settled into emotional neutrality — not good, not bad, just present.
+    NUMBER OF LAYERS: 2
+
+    INCORRECT OUTPUT (has 3 layers!):
+    {
+      "id": "root",
+      "level": 2,
+      "type": "root",
+      "label": "My Day",
+      "content": "...",
+      "emotion": "NEUTRAL",
+      "children": [
+        {
+          "id": 101,
+          "level": 1,
+          "type": "topic",
+          "label": "Morning and Midday",
+          "content": "...",
+          "emotion": "UNCERTAIN",
+          "children": [
+            {
+              "id": 102,
+              "level": 0,
+              "type": "leaf",
+              "label": "Morning Stability",
+              "content": "I woke up feeling calm and unusually grounded, as though the day had already forgiven me for small mistakes.",
+              "emotion": "POSITIVE",
+              "children": []
+            },
+            {
+              "id": 103,
+              "level": 0,
+              "type": "leaf",
+              "label": "Midday Doubt",
+              "content": "By midday, uncertainty crept in, soft but persistent, making even simple decisions feel heavier than expected.",
+              "emotion": "UNCERTAIN",
+              "children": []
+            }
+          ]
+        },
+        {
+          "id": 104,
+          "level": 1,
+          "type": "topic",
+          "label": "Evening",
+          "content": "...",
+          "emotion": "NEUTRAL",
+          "children": [
+            {
+              "id": 105,
+              "level": 0,
+              "type": "leaf",
+              "label": "Evening Equilibrium",
+              "content": "In the evening, everything settled into emotional neutrality — not good, not bad, just present.",
+              "emotion": "NEUTRAL",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+    This is WRONG for layers=2, because it has 3 layers: root (level 2), topic nodes (level 1), and leaf nodes (level 0). For layers=2, there should be only topic nodes and leaf nodes, with no root node.
+  -------------------- END OF INSTRUCTIONS ---------------------------------
+    ------------------ BEGIN OUTPUT NOW ------------------
   `;
 
 }

@@ -96,10 +96,7 @@ function removeEmptyBranches(node, isRoot = false) {
   return { tree: result ?? node, removedSomething };
 }
 
-function sentenceKey(sentence) {
-  // Separator must be impossible in normal text
-  return sentence.content + "\u0000" + sentence.trailing;
-}
+
 
 
 
@@ -319,7 +316,7 @@ export default function BidirectionalEditor() {
     id: 'root',
     label: 'Document Root',
     content: 'Document Root',
-    level: maxDepth - 1,
+    level: maxDepth,
     children: [],
     isModified: false,
     emotion: "NEUTRAL",
@@ -354,7 +351,7 @@ export default function BidirectionalEditor() {
 
       const withTrailing = reattachTrailingToLeaves(aiRoot, tokens);
       const withCoords = addYCoord(withTrailing);
-      //const sanitized = sanitizeTreeDepth(withCoords, maxDepth-1);
+      //const sanitized = sanitizeTreeDepth(withCoords, maxDepth);
       setTree(withCoords);
 
     } catch (err) {
@@ -371,7 +368,7 @@ export default function BidirectionalEditor() {
         isModified: false,
         emotion: "NEUTRAL"
       }));
-      const rootNode = createNode('Document', "Root", [], maxDepth-1);
+      const rootNode = createNode('Document', "Root", [], maxDepth);
       //setTree(rootNode);
     }
     setisTreeRendering(false);
@@ -430,9 +427,25 @@ export default function BidirectionalEditor() {
   // ═══════════════════════════════════════════════════════════════
   // REFRESH TREE: Regenerate subtrees with modified children using Claude (preserve ids/levels/contents)
   // ═══════════════════════════════════════════════════════════════
-
+  // Clear all isModified flags in the tree
+  const handleClearModified = () => {
+        if (!tree) return;
+        const clearModifiedFlags = (node) => {
+          if (!node) return node;
+          const cleaned = {
+            ...node,
+            isModified: false
+          };
+          if (node.children) {
+            cleaned.children = node.children.map(clearModifiedFlags);
+          }
+          return cleaned;
+        };
+        setTree(clearModifiedFlags(tree));
+  };
 
   const handleRefreshTree = async () => {
+
     if (!tree) return;
 
     setisTreeRendering(true);
@@ -444,13 +457,12 @@ export default function BidirectionalEditor() {
         isModified: false,
         children: n.children?.map(clearModified) ?? []
       });
-      //alert("Success0")
       setTree(clearModified(refreshed));
       console.log('[BidirectionalEditor] Refreshed modified subtrees in tree.', refreshed);
-      console.log('[BidirectionalEditor] Refreshed modified subtrees in tree.', clearModified(refreshed));
-      alert(refreshed)
+      console.log('[BidirectionalEditor] New tree:', tree);
     } finally {
       setisTreeRendering(false);
+      convertTreeToText()
     }
   };
 
@@ -533,7 +545,6 @@ export default function BidirectionalEditor() {
   
   function syncTextToTree(currentText) {
     if (!tree || isTreeRendering) return;
-
     const newSentences = textToSentences(currentText);
 
     const leaves = collectLeavesInOrder(tree);
@@ -544,7 +555,7 @@ export default function BidirectionalEditor() {
     }));
 
     const diffOps = diffSentences(oldSentences, newSentences);
-
+    console.log('[OPS] Detected sentence diffs:', diffOps);
     const updatedTree = applyDiffToTree(tree, diffOps);
 
     setTree(updatedTree);
@@ -738,9 +749,10 @@ export default function BidirectionalEditor() {
               outline: 'none',
             }}
           >
+            <option value={2}>2</option>
             <option value={3}>3</option>
             <option value={4}>4</option>
-            <option value={5}>5</option>
+
           </select>
         </div>
       </div>
@@ -830,6 +842,36 @@ export default function BidirectionalEditor() {
                   <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2" />
                 </svg>
               )}
+            </button>
+            <button
+              onClick={handleClearModified}
+              disabled={!tree}
+              title="Clear all modified flags"
+              style={{
+                position: 'absolute',
+                top: '12px',
+                left: '64px',
+                zIndex: 100,
+                width: '44px',
+                height: '44px',
+                padding: '0',
+                backgroundColor: !tree ? '#555' : '#888',
+                color: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                cursor: !tree ? 'not-allowed' : 'pointer',
+                opacity: !tree ? 0.6 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+              }}
+            >
+              {/* Eraser SVG icon */}
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="17" width="13" height="4" rx="2" />
+                <path d="M21 3a2.828 2.828 0 0 0-4 0L3 17l4 4 14-14a2.828 2.828 0 0 0 0-4z" />
+              </svg>
             </button>
 
             {tree ? (

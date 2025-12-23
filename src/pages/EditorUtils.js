@@ -243,7 +243,7 @@ export async function refreshNode(node, maxDepth) {
   // Leaf case
   if (node.level === LEAF_NODE_LEVEL) {
     if (node.isModified) {
-      return await rebuildSubtree(node, 0);
+      return await rebuildSubtree(node, 1);
     }
     return node;
   }
@@ -261,7 +261,7 @@ export async function refreshNode(node, maxDepth) {
 
     const newChildren = await Promise.all(
       node.children.map(async ch =>
-        ch === target ? await refreshNode(ch, ch.level-1) : ch
+        ch === target ? await refreshNode(ch, ch.level+1) : ch
       )
     );
 
