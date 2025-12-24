@@ -133,33 +133,6 @@ export const VerticalDivider = ({
               zIndex: 99991
              }}
           >
-            <div
-              onClick={() => transferChangesToSide(direction)}
-              style={{
-                height: '30px',
-                flex: 1,
-                flexDirection: 'row',
-                cursor: 'default',
-              }}>
-              {opacities.map((opacity, index) => (
-                <span
-                  key={index}
-                  className={
-                    isHovered
-                      ? direction === 1
-                        ? 'bounce-arrow-right'
-                        : 'bounce-arrow-left'
-                      : ''
-                  }
-                  style={{
-                    ...arrowStyles.base,
-                    ...(direction === -1 ? arrowStyles.left : {}),
-                    opacity,
-                    animationDelay: isHovered ? `${index * 0.1}s` : '0s',
-                  }}
-                />
-              ))}
-            </div>
           </div>
         )}
       </button>

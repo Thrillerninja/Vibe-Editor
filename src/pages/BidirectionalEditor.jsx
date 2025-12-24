@@ -17,6 +17,7 @@ import { buildTree, sanitizeTreeDepth } from '../ClaudeAlternative/claudeAPI';
 import { LEAF_NODE_LEVEL } from "../utils/constants";
 import HistoryGraph from "../components/HistoryGraph/HistoryGraph";
 import { ReactFlowProvider } from 'reactflow';
+import { VerticalDivider } from '../components/VerticalDivider';
 import { exportFile } from '../components/Import/Export/Export';
 import { importTxt } from '../components/Import/Export/Import';
 import { refreshEmotionsInModifiedSubtree } from '../utils/EmotionUpdate';
@@ -231,6 +232,55 @@ export default function BidirectionalEditor() {
   const isSyncingToTextRef = useRef(false);
   const initialTreeMarkedRef = useRef(false);
   const prevTreeTextRef = useRef("")
+  const [leftPct, setLeftPct] = useState(50); // vertical divider
+  const horizontalContainerRef = useRef(null);
+  const draggingVerticalRef = useRef(false);
+
+
+  // ---------------------------------------------------------------
+  // Add drag logic for vertical divider (between left/right panes)
+  // ---------------------------------------------------------------
+  useEffect(() => {
+    const onMove = (clientX) => {
+      if (draggingVerticalRef.current && horizontalContainerRef.current) {
+        const rect = horizontalContainerRef.current.getBoundingClientRect();
+        const x = Math.min(Math.max(clientX, rect.left), rect.right);
+        const pct = ((x - rect.left) / rect.width) * 100;
+        const clamped = Math.min(80, Math.max(20, pct));
+        setLeftPct(clamped);
+      }
+    };
+
+    const handleMouseMove = (e) => onMove(e.clientX);
+    const handleTouchMove = (e) => {
+      if (e.touches && e.touches[0]) onMove(e.touches[0].clientX);
+    };
+    const endDrag = () => {
+      draggingVerticalRef.current = false;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', endDrag);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', endDrag);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', endDrag);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', endDrag);
+    };
+  }, []);
+
+  // Handler for vertical drag start
+  const onVerticalHandleMouseDown = (e) => {
+    e.preventDefault();
+    draggingVerticalRef.current = true;
+  };
+  // ---------------------------------------------------------------
+
+  
+
 
 
   const handleInsertExample = () => {
@@ -619,6 +669,7 @@ export default function BidirectionalEditor() {
     setIsExportDialogOpen(false);
   };
 
+
   // ═══════════════════════════════════════════════════════════════
   // RENDER
   // ═══════════════════════════════════════════════════════════════
@@ -774,9 +825,12 @@ export default function BidirectionalEditor() {
 
 
       {/* Main content */}
-      <div style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}>
+      <div
+        ref={horizontalContainerRef}
+        style={{ display: 'flex', gap: '0', flex: 1, minHeight: 0 }}
+      >
         {/* LEFT: Text Pane */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
+        <div style={{flexBasis: `${leftPct}%`, minWidth: 0, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
           <textarea
             value={textAreaContent}
             onChange={handleTextChange}
@@ -795,22 +849,13 @@ export default function BidirectionalEditor() {
 
         </div>
 
-        {/* CENTER */}
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          gap: '12px',
-          width: '5px',
-          alignItems: 'center',
-          overflow: 'visible',
-          position: 'relative',
-          zIndex: 10,
-          pointerEvents: 'auto'
-        }}>
 
-
-        </div>
+        {/* Draggable Divider */}
+        <VerticalDivider
+          direction={1}
+          onMouseDown={onVerticalHandleMouseDown}
+          onTouchStart={onVerticalHandleMouseDown}
+        />
 
         {/* RIGHT: Tree Pane */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', backgroundColor: 'white', color: "#000", borderRadius: '6px', border: '1px solid #e5e7eb', overflow: 'hidden' }}>
