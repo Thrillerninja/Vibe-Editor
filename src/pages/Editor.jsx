@@ -5,10 +5,11 @@ import posthog from '../utils/posthog';
 import { useNavigate } from 'react-router-dom';
 import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
-import { updateDirtyNodes } from '../services/claude';
+import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
+import { s } from 'framer-motion/client';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -153,7 +154,7 @@ export default function Editor() {
             console.log('[App] Dirty nodes to restructure:', dirtyNodeIds.length);
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
-            // Ask Claude to restructure dirty subtrees
+            // Ask Claude to restructure dirty subtrees. this contains emotion stuff for hierarchy nodes
             const { dirtyRootNodes, restructuredSubtrees, newRootTitle } = await updateDirtyNodes(
                 sentencesToProcess,
                 hierarchyMeta,
@@ -167,8 +168,16 @@ export default function Editor() {
 
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
-            setSentences(updatedSentences);
-            addCommit(updatedSentences, 'Hierarchy regenerated');
+            console.log('[IMPORTANT] Cleared dirty flags after successful restructure', updatedSentences);
+
+            // TODO: Now also request sentence emotions with API Call
+            const sentencesWithEmotions = await evaluateSentenceEmotions(updatedSentences);
+            
+            console.log('[App] Updated sentences with emotions:', sentencesWithEmotions);
+            console.log('[App] OLD sentences before emotion update:', updatedSentences);
+
+            setSentences(sentencesWithEmotions);
+            addCommit(sentencesWithEmotions, 'Hierarchy regenerated');
 
             console.log('[App] Dirty subtrees restructured, clean portions preserved');
             setHierarchyState('generated');

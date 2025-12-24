@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { findDirtyRootNodes, buildDirtySubtrees } from './dirtyNodeFinder.js';
 import { buildDirtyRestructurePrompt } from './promptBuilder.js';
 import { parseDirtyRestructureResponse } from './responseValidator.js';
+import { EMOTIONS } from '../../utils/constants.js';
 
 // Initialize the Anthropic client
 const getClient = () => {
@@ -88,4 +89,60 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         console.error('[Claude Service] Error stack:', error.stack);
         throw new Error(`Failed to restructure dirty nodes: ${error.message}`);
     }
+}
+
+
+export async function evaluateSentenceEmotions(sentences) {
+    const client = getClient();
+    
+    console.log('[Claude Service] Evaluating emotions for sentences');
+    const prompt = `For each of the following input sentences i give you, please assign an Emotion and Intensity level from 0 to 100 based on the emotional tone of the sentence.
+    For the emotions YOU MUST ONLY choose one out of this list: ${JSON.stringify(EMOTIONS)}.
+    Respond in JSON format as an array of objects with "id", "emotion", and "intensity" fields. Only respond in plain json format.
+Sentences:
+${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}
+`;
+    console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
+    try {
+        const message = await client.messages.create({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 4096,
+            messages: [{
+                role: 'user',
+                content: prompt
+            }]
+        });
+
+        const responseText = message.content[0].text;
+        console.log('[Claude Service] Received emotion evaluation:', responseText);
+
+        // Parse the JSON response
+        const emotionData = JSON.parse(responseText);
+        console.log('[Claude Service] Parsed emotion data:', emotionData);
+
+        return applyEmotionsToSentences(sentences, emotionData); // Array of { id, emotion, intensity }
+    } catch (error) {
+        console.error('[Claude Service] Error evaluating sentence emotions:', error);
+        console.error('[Claude Service] Error stack:', error.stack);
+        throw new Error(`Failed to evaluate sentence emotions: ${error.message}`);
+    }
+}
+
+
+function applyEmotionsToSentences(sentences, emotionData) {
+    const hierarchy = sentences._hierarchyMeta;
+    const emotionMap = new Map();
+    for (const item of emotionData) {
+        emotionMap.set(item.id, { emotion: item.emotion, intensity: item.intensity });
+    }
+
+    const newSentences = sentences.map(s => {
+        if (emotionMap.has(s.id)) {
+            const { emotion, intensity } = emotionMap.get(s.id);
+            return { ...s, emotion, intensity };
+        }
+        return s;
+    });
+    newSentences._hierarchyMeta = hierarchy; // Preserve hierarchy meta
+    return newSentences;
 }

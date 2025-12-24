@@ -24,10 +24,12 @@ function getEmotionColor(emotion, intensity, type) {
 
   const colors = EMOTION_COLORS[emotion];
   if (!colors) return NODE_STYLES[type]?.background;
-
-  if (intensity < 33) return colors.light;
-  if (intensity < 66) return colors.medium;
-  return colors.strong;
+  let out = undefined;
+  if (intensity < 33){ out = colors.light;}
+  else if (intensity < 66){out=  colors.medium;} else {
+    out = colors.strong;
+  }
+  console.log('[AnimatedNodeComponent] getEmotionColor for', emotion, 'intensity', intensity, '=>', out);
 }
 
 /**
@@ -50,7 +52,7 @@ export function AnimatedNodeComponent({ id, data }) {
   const { flowToScreenPosition, getZoom } = useReactFlow();
   const size = measureLabel(data.label);
   const [isHovered, setIsHovered] = useState(false);
-
+  const [nodeColor, setNodeColor] = useState(getEmotionColor(data.emotion, data.intensity, data.type));
   // Use state from parent
   const isEmotionModalOpen = data.isEmotionModalOpen || false;
   const setIsEmotionModalOpen = data.setIsEmotionModalOpen || (() => { });
@@ -83,6 +85,11 @@ export function AnimatedNodeComponent({ id, data }) {
     return () => clearTimeout(timer);
   }, [id, data.label, updateNodeInternals]);
 
+  useEffect(() => {
+    const newColor = getEmotionColor(data.emotion, data.intensity, data.type);
+    setNodeColor(newColor);
+  }, []);
+  
   const handleEmotionClick = (e) => {
     e.stopPropagation();
     console.log(`[Node] Opening emotion selector for ${id}`);
@@ -98,14 +105,10 @@ export function AnimatedNodeComponent({ id, data }) {
     }
   };
 
-  const bg = getEmotionColor(data.emotion, data.intensity || 0, data.type);
-  const border = getBorderColor(data.emotion, data.intensity || 0, data.type);
+  const bg = getEmotionColor(data.emotion, data.intensity, data.type);
+  console.log('[AnimatedNodeComponent] Rendering node', id, 'with emotion', data.emotion, 'and background', bg);
+  const border = getBorderColor(data.emotion, data.intensity, data.type);
   const color = data.type === 'root' ? 'white' : '#1f2937';
-
-  // Visual indicator for dirty nodes
-  const isDirty = data.isDirty || false;
-  const dirtyBorder = isDirty ? '2px dashed #f59e0b' : `1px solid ${border}`;
-  const dirtyBg = isDirty ? `repeating-linear-gradient(45deg, ${bg}, ${bg} 10px, rgba(245, 158, 11, 0.1) 10px, rgba(245, 158, 11, 0.1) 20px)` : bg;
 
   return (
     <>
@@ -123,8 +126,8 @@ export function AnimatedNodeComponent({ id, data }) {
           style={{
             width: NODE_WIDTH,
             height: size.height,
-            background: dirtyBg,
-            border: dirtyBorder,
+            background: nodeColor,
+            color: '#000',
             borderRadius: 8,
             boxShadow: isHovered
               ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
@@ -150,7 +153,7 @@ export function AnimatedNodeComponent({ id, data }) {
               height: 24,
               borderRadius: 6,
               border: `1px solid ${border}`,
-              backgroundColor: 'rgba(255, 255, 255, 0.9)',
+              backgroundColor: '#fff',
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
@@ -190,13 +193,16 @@ export function AnimatedNodeComponent({ id, data }) {
               textAlign: 'center',
               fontSize: 13,
               fontWeight: data.type === 'root' ? 600 : 500,
-              color,
+              color: '#000',
               lineHeight: 1.45,
               wordWrap: 'break-word',
               overflowWrap: 'break-word',
             }}
           >
-            {data.label}
+            {data.label}{"\n"}
+            {data.emotion}{"\n"}
+            {data.intensity}{"\n"}
+            {data.type}
           </div>
         </motion.div>
       </div>

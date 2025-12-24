@@ -1,12 +1,12 @@
 /**
  * Prompt Builder
  * Functions for constructing prompts to send to Claude
- * 
+ *
  * SYSTEM ARCHITECTURE:
  * - Sentences use UUIDs and have an 'order' property for position tracking
  * - Grouping nodes also use UUIDs
  * - Sentences are ALWAYS at level 1 (the leaves of the tree)
- * - Grouping nodes are at levels 2 to (maxDepth-1)
+ * - Grouping nodes are at levels 2 to (maxDepth)
  * - Root is conceptually at level maxDepth but is just a title, not a node
  * - When a node at level N is dirty, we REPLACE it and everything under it
  * - Claude creates a COMPLETE hierarchy from level 2 up to level N
@@ -86,11 +86,17 @@ RULES
    - Level 3 groups level 2 nodes
    - Continue until topLevel
 
-5. **USE CORRECT IDs**
+5. **USE CORRECT IDS**
    - Generate NEW UUIDs for grouping nodes you create
    - Use EXACT sentence IDs from input (don't generate new ones)
    - Copy sentence IDs exactly when referencing them in childIds
 
+6. **ADD EMOTION PROPERTY (NEW)**
+   - For every node you create, you MUST include an **"emotion"** property.
+   - The value of "emotion" must be one of: **"POSITIVE"**, **"NEGATIVE"**, or **"NEUTRAL"**.
+   - The emotion should reflect the overall sentiment of the text contained within the node's scope (sentences for level 2, or sub-topics for higher levels).
+   - Also assign an **"intensity"** property (0-100) indicating the strength of the emotion.
+   - EVERY node MUST have these two properties. 
 **THESE ARE THE ONLY VALID SENTENCE IDs (copy these exactly):**
 ${allSentenceIds.map(id => `  - ${id}`).join('\n')}
 
@@ -111,14 +117,14 @@ Each subtree contains:
 EXAMPLES
 ═══════════════════════════════════════════════════════════════════
 
-**Example 1: topLevel=2 (simplest case - only one grouping level)**
+**Example 1: topLevel=2 (simplest case - only one grouping level) with Emotion**
 
 Given these input sentences:
 [
-  {"id": "a1b2c3d4-e5f6-7890-abcd-111111111111", "order": 0, "content": "Cats are popular pets."},
-  {"id": "b2c3d4e5-f6a7-8901-bcde-222222222222", "order": 1, "content": "They require feeding."},
-  {"id": "c3d4e5f6-a7b8-9012-cdef-333333333333", "order": 2, "content": "Dogs are loyal."},
-  {"id": "d4e5f6a7-b8c9-0123-def1-444444444444", "order": 3, "content": "Dogs need exercise."}
+  {"id": "a1b2c3d4-e5f6-7890-abcd-111111111111", "order": 0, "content": "Cats are popular pets. This is a joy."},
+  {"id": "b2c3d4e5-f6a7-8901-bcde-222222222222", "order": 1, "content": "They require feeding, which is a mild inconvenience."},
+  {"id": "c3d4e5f6-a7b8-9012-cdef-333333333333", "order": 2, "content": "Dogs are loyal and never leave your side."},
+  {"id": "d4e5f6a7-b8c9-0123-def1-444444444444", "order": 3, "content": "Dogs need a lot of exercise, which can be exhausting."}
 ]
 
 Your response for topLevel=2:
@@ -126,95 +132,68 @@ Your response for topLevel=2:
   {
     "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
     "level": 2,
-    "title": "Cat Care",
+    "title": "Positive Aspects of Cat Ownership",
+    "emotion": "POSITIVE", // Overall positive sentiment (joy, popular)
+    "intensity": 67,
     "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
   },
   {
     "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
     "level": 2,
-    "title": "Dog Care",
+    "title": "Dog Loyalty and Effort",
+    "emotion": "NEUTRAL", // Mix of positive (loyal) and negative (exhausting) sentiment
+    "intensity": 33,
     "childIds": ["c3d4e5f6-a7b8-9012-cdef-333333333333", "d4e5f6a7-b8c9-0123-def1-444444444444"]
   }
 ]
 
-**Example 2: topLevel=4 (MUST create levels 2, 3, AND 4)**
+**Example 2: topLevel=4 with Emotion (MUST create levels 2, 3, AND 4)**
 
 Given these input sentences:
 [
-  {"id": "s1", "order": 0, "content": "Cats are popular pets."},
-  {"id": "s2", "order": 1, "content": "They require feeding."},
-  {"id": "s3", "order": 2, "content": "Dogs are loyal."},
-  {"id": "s4", "order": 3, "content": "Dogs need exercise."},
-  {"id": "s5", "order": 4, "content": "Fish are low-maintenance pets."},
-  {"id": "s6", "order": 5, "content": "Birds can be trained."}
+  {"id": "s1", "order": 0, "content": "The market surged to an all-time high."},
+  {"id": "s2", "order": 1, "content": "Investors celebrated record profits."},
+  {"id": "s3", "order": 2, "content": "However, the unemployment rate spiked suddenly."},
+  {"id": "s4", "order": 3, "content": "Many companies announced layoffs."},
+  {"id": "s5", "order": 4, "content": "The central bank issued a cautious, balanced statement."},
+  {"id": "s6", "order": 5, "content": "Experts are divided on the long-term outlook."}
 ]
 
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
   // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
-  {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},        // Sentences 0-1
-  {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},        // Sentences 2-3
-  {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]},      // Sentences 4-5
+  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotion": "POSITIVE", intensity: 67, "childIds": ["s1", "s2"]},        // Sentences 0-1
+  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotion": "NEGATIVE", intensity: 40, "childIds": ["s3", "s4"]},        // Sentences 2-3
+  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotion": "NEUTRAL", intensity: 0, "childIds": ["s5", "s6"]},      // Sentences 4-5
 
   // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
-  {"id": "n4", "level": 3, "title": "Mammal Pets", "childIds": ["n1", "n2"]},     // Contains sentences 0-3
-  {"id": "n5", "level": 3, "title": "Non-Mammal Pets", "childIds": ["n3"]},       // Contains sentences 4-5
+  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n1", "n2"]},     // Contains sentences 0-3 (mixed sentiment)
+  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n3"]},       // Contains sentences 4-5 (cautious, divided)
 
   // Level 4: Top level grouping all level 3 nodes
-  {"id": "n6", "level": 4, "title": "Pet Care Guide", "childIds": ["n4", "n5"]}
+  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n4", "n5"]}
 ]
 
 Notice in Example 2:
-- ALL levels from 2 to 4 are created (no missing levels!)
-- Level 2 nodes reference sentence IDs (s1, s2, etc.)
-- Level 3 nodes reference level 2 node IDs (n1, n2, n3)
-- Level 4 nodes reference level 3 node IDs (n4, n5)
-- Every node at level N references ONLY nodes at level N-1
-- ⚠️ **CRITICAL**: Nodes at each level are in document order (n1 before n2 before n3, n4 before n5)
+- ALL grouping nodes (n1 through n6) include the **"emotion"** property.
+- The emotion reflects the sentiment of the grouped content.
 
-**WRONG Example 1: Nodes out of order within subtree (DO NOT DO THIS):**
+**WRONG Example: Missing Emotion Property (DO NOT DO THIS):**
 
 {
   "restructuredSubtrees": [
     {
       "rootNodeId": "subtree-1",
       "newNodes": [
-        // ❌ WRONG: Level 2 nodes out of order within the subtree!
-        {"id": "n2", "level": 2, "title": "Dog Care", "childIds": ["s3", "s4"]},        // Sentences 2-3 (but listed FIRST!)
-        {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]},        // Sentences 0-1 (but listed SECOND!)
-        {"id": "n3", "level": 2, "title": "Other Pets", "childIds": ["s5", "s6"]}
+        // ❌ WRONG: Missing "emotion" property!
+        {"id": "n1", "level": 2, "title": "Cat Care", "childIds": ["s1", "s2"]}
       ]
     }
   ]
 }
 
-This is WRONG because n2 (starting at sentence 2) appears before n1 (starting at sentence 0).
-
-**WRONG Example 2: Subtrees out of order (DO NOT DO THIS):**
-
-{
-  "restructuredSubtrees": [
-    // ❌ WRONG: Subtrees out of order!
-    {
-      "rootNodeId": "subtree-B",
-      "newNodes": [{"id": "n2", "level": 2, "title": "Topic B", "childIds": ["s3", "s4"]}]  // Sentences 3-4 (but listed FIRST!)
-    },
-    {
-      "rootNodeId": "subtree-A",
-      "newNodes": [{"id": "n1", "level": 2, "title": "Topic A", "childIds": ["s1", "s2"]}]  // Sentences 1-2 (but listed SECOND!)
-    }
-  ]
-}
-
-This is WRONG because subtree-B (starting at sentence 3) appears before subtree-A (starting at sentence 1).
-The restructuredSubtrees array MUST be sorted by document order!
-
 **Key takeaway**:
-- When topLevel=2, create ONLY level 2
-- When topLevel=3, create levels 2 AND 3
-- When topLevel=4, create levels 2, 3, AND 4
-- When topLevel=5, create levels 2, 3, 4, AND 5
-- And so on...
+- **YOU MUST ADD AN "emotion" PROPERTY with the value "POSITIVE", "NEGATIVE", or "NEUTRAL" to ALL nodes**
 - **ALWAYS order nodes in the array by document position (earliest sentence first)!**
 
 ═══════════════════════════════════════════════════════════════════
@@ -232,6 +211,7 @@ For EACH subtree in your response, verify:
 ✓ Generated new UUIDs for all grouping nodes
 ✓ Sentences appear in order when reading tree left-to-right
 ✓ **newNodes array is sorted by document order (within each level, nodes ordered by their first sentence's position)**
+✓ **ALL grouping nodes (level 2+) have an "emotion" property with value "POSITIVE", "NEGATIVE", or "NEUTRAL"**
 
 ${isRootDirty ? `
 ═══════════════════════════════════════════════════════════════════
@@ -273,13 +253,13 @@ Return valid JSON only (no markdown):
       "rootNodeId": "id-from-input",
       "newNodes": [
         // For topLevel=2, just level 2:
-        {"id": "NEW-UUID", "level": 2, "title": "Topic", "childIds": ["exact-sentence-ids"]},
-        
+        {"id": "NEW-UUID", "level": 2, "title": "Topic", "emotion": "EMOTION_TYPE", "childIds": ["exact-sentence-ids"]},
+
         // For topLevel=4, ALL levels 2, 3, and 4:
-        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "childIds": ["sentence-ids"]},
-        {"id": "NEW-UUID-2", "level": 2, "title": "Subtopic B", "childIds": ["sentence-ids"]},
-        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
-        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "childIds": ["NEW-UUID-3"]},
+        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "emotion": "EMOTION_TYPE", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-2", "level": 2, "title": "Subtopic B", "emotion": "EMOTION_TYPE", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "emotion": "EMOTION_TYPE", "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
+        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "emotion": "EMOTION_TYPE", "childIds": ["NEW-UUID-3"]},
         ...
       ]
     }
