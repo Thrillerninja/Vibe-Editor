@@ -3,23 +3,27 @@ import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion } from 'framer-motion';
 import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
-import { em, s } from "framer-motion/client";
+import { col, em, s } from "framer-motion/client";
 import { rewriteTextWithEmotion } from "../../ClaudeAlternative/claudeAPI";
 import "./TreeNode.css";
 
 
 function getEmotionColor(emotion) {
   // Try to get color from ALTERNATIVE_EMOTION_COLORS, fallback to EMOTION_COLORS, then to a default
-  return (
+  var color = (
     ALTERNATIVE_EMOTION_COLORS[emotion] ||'#ffffff' // Default fallback color (light gray)
   );
+  if (color === '#ffffff') {
+    console.log('[TreeNode] Emotion color not found for', emotion, ', using default #ffffff');
+  }
+  return color;
 }
 
 export default function TreeNode({ data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.content || "");
-  const [editable, setEditable] = useState(data.isLeaf || true);
-  const [nodeEmotion, setNodeEmotion] = useState(data.emotion || "NEUTRAL");
+  const [editable, setEditable] = useState(data.isLeaf);
+  const [nodeEmotion, setNodeEmotion] = useState(data.emotion);
   const [nodeModified, setNodeModified] = useState(data.isModified);
 
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
@@ -31,18 +35,24 @@ export default function TreeNode({ data }) {
     data.setSentence(nodeText, nodeEmotion);
     setNodeModified(true);
     setIsDialogOpen(false);
+    console.log('[TreeNode] Saved changes to node', data.emotion);
+    console.log('[TreeNode] New content:', nodeEmotion);
   }
 
   function applyEmotion(emotion){
+    console.log('[TreeNode] applyEmotion called with', nodeEmotion);
     if (data.isLeaf=== false)
     { return;}
     console.log('[TreeNode] Applying emotion', emotion, 'to node', data);
+    //alert(nodeEmotion)
     setIsNodeRewriting(true);
     setNodeEmotion(`${emotion}`);
+
     (async () => {
         const rewritten = await rewriteTextWithEmotion(nodeText, emotion);
         setNodeText(rewritten);
       })().finally(() => {
+
         setIsNodeRewriting(false);
       });
 
@@ -62,11 +72,6 @@ export default function TreeNode({ data }) {
   useEffect(() => {
     setNodeModified(data.isModified);
   }, [data.isModified]);
-
-  // Sync emotion when data.emotion changes (e.g., after Claude reevaluation)
-  useEffect(() => {
-    setNodeEmotion(data.emotion);
-  }, [data.emotion]);
 
 
   const dialog = isDialogOpen ? createPortal(
