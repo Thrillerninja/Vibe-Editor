@@ -23,8 +23,8 @@ export const PHYSICS_RADIUS = 260;
 export const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
-  'elk.layered.spacing.nodeNodeBetweenLayers': 180,
-  'elk.spacing.nodeNode': 69,
+  'elk.layered.spacing.nodeNodeBetweenLayers': 150,
+  'elk.spacing.nodeNode': 60,
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 };
 

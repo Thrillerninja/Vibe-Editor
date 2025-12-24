@@ -213,7 +213,7 @@ function markTreeModified(node) {
 export default function BidirectionalEditor() {
   const [textAreaContent, setTextAreaContent] = useState('');
   const [tree, setTree] = useState(undefined);
-  const [maxDepth, setMaxDepth] = useState(2);
+  const [maxDepth, setMaxDepth] = useState(4);
   const [isTreeRendering, setisTreeRendering] = useState(false);
   const [showDiffModal, setShowDiffModal] = useState(false);
   const [diffTokens, setDiffTokens] = useState([]);
@@ -450,6 +450,20 @@ export default function BidirectionalEditor() {
 
     setisTreeRendering(true);
 
+    // FIRST see if any subtrees are modified. If not: Full rerender
+    const modified = hasModified(tree);
+    if (!modified) {
+      //alert("FULL RERENDER: No modified subtrees detected.");
+      console.log('[BidirectionalEditor] No modified subtrees detected, performing full tree render instead.');
+      renderFullTree().finally(() => {
+        setisTreeRendering(false);
+      });
+      return;
+    }
+
+    console.log('[BidirectionalEditor] Refreshing modified subtrees in tree...', tree);
+
+
     try {
       const refreshed = await refreshNode(tree, maxDepth);
       const clearModified = (n) => ({
@@ -556,6 +570,7 @@ export default function BidirectionalEditor() {
 
     const diffOps = diffSentences(oldSentences, newSentences);
     console.log('[OPS] Detected sentence diffs:', diffOps);
+    // BUG: TODO: When editing inline, once i type a delimiter, the actual old stuff gets added as a new sentence, and the new sentence repalces the old stuff.
     const updatedTree = applyDiffToTree(tree, diffOps);
 
     setTree(updatedTree);
@@ -803,7 +818,7 @@ export default function BidirectionalEditor() {
             <button
               onClick={handleRefreshTree}
               disabled={isTreeRendering || !tree}
-              title="Update emotions in modified subtrees"
+              title="Update Tree Visual with AI"
               style={{
                 position: 'absolute',
                 top: '12px',
@@ -855,7 +870,7 @@ export default function BidirectionalEditor() {
                 width: '44px',
                 height: '44px',
                 padding: '0',
-                backgroundColor: !tree ? '#555' : '#888',
+                backgroundColor:'#000',
                 color: 'white',
                 border: 'none',
                 borderRadius: '50%',

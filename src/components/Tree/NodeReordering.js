@@ -83,33 +83,16 @@ function insertIntoTargetParent(curr, targetParentId, targetId, insertBefore, dr
 }
 
 /**
- * Mark ancestors of given nodes as modified
- * Recursively traverses up the tree marking all ancestors
+ * Mark the current node and all its descendants as modified
  */
-function markAncestorsModified(curr, targetIds) {
-  if (!curr?.children?.length) return curr;
-  
-  // Check if any child matches target IDs or if this node is a target
-  const hasTargetChild = curr.children.some(c => 
-    targetIds.includes(c.id) || c.isModified
-  );
-  
-  if (hasTargetChild || targetIds.includes(curr.id)) {
-    const newChildren = curr.children.map(c => markAncestorsModified(c, targetIds));
-    console.log('[NodeReordering] Marking ancestor', curr.id, 'as modified');
+function markNodeAndDescendantsModified(curr, targetIds) {
+  if (!curr) return curr;
+  const newChildren = curr.children?.map(c => markNodeAndDescendantsModified(c, targetIds)) || [];
+  if (targetIds.includes(curr.id)) {
+    console.log('[NodeReordering] Marking node', curr.id, 'and all descendants as modified');
     return { ...curr, children: newChildren, isModified: true };
   }
-  
-  const newChildren = curr.children.map(c => markAncestorsModified(c, targetIds));
-  let changed = false;
-  for (let i = 0; i < newChildren.length; i++) {
-    if (newChildren[i] !== curr.children[i]) {
-      changed = true;
-      break;
-    }
-  }
-  
-  return changed ? { ...curr, children: newChildren } : curr;
+  return { ...curr, children: newChildren, isModified: curr.isModified };
 }
 
 /**
@@ -145,16 +128,27 @@ export function reorderTreeChildren(tree, draggedId, targetId, insertBefore) {
     insertBefore,
     draggedNode
   );
-  
-  // Mark ancestors of both parents as modified
-  const parentsToMark = [draggedParent.id];
-  if (draggedParent.id !== targetParent.id) {
-    parentsToMark.push(targetParent.id);
+
+  // Mark the dragged node and all its descendants as modified
+  function markById(curr, id) {
+    if (!curr) return curr;
+    if (curr.id === id) {
+      // Mark this node and all descendants
+      const markAll = node => ({
+        ...node,
+        isModified: true,
+        children: node.children ? node.children.map(markAll) : []
+      });
+      return markAll(curr);
+    }
+    return {
+      ...curr,
+      children: curr.children ? curr.children.map(child => markById(child, id)) : []
+    };
   }
-  
-  const finalTree = markAncestorsModified(reorderedTree, parentsToMark);
-  
-  console.log('[NodeReordering] Reorder complete, marked nodes as modified');
+
+  const finalTree = markById(reorderedTree, draggedId);
+  console.log('[NodeReordering] Reorder complete, marked dragged node and descendants as modified');
   return finalTree;
 }
 

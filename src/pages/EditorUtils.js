@@ -79,6 +79,29 @@ export function diffSentences(oldList, newList) {
   return ops;
 }
 
+function findParentAndIndex(root, leafId) {
+  let result = null;
+
+  function walk(node) {
+    if (!node?.children) return;
+
+    const idx = node.children.findIndex(c => c.id === leafId);
+    if (idx !== -1) {
+      result = { parent: node, index: idx };
+      return;
+    }
+
+    for (const ch of node.children) {
+      walk(ch);
+      if (result) return;
+    }
+  }
+
+  walk(root);
+  return result;
+}
+
+
 export function applyDiffToTree(tree, diffOps) {
   // 1) clone tree shallowly
   const newTree = structuredClone(tree);

@@ -5,11 +5,14 @@ import { motion } from 'framer-motion';
 import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
 import { em, s } from "framer-motion/client";
 import { rewriteTextWithEmotion } from "../../ClaudeAlternative/claudeAPI";
+import "./TreeNode.css";
 
 
 function getEmotionColor(emotion) {
-  const colors = EMOTION_COLORS[emotion];
-  return ALTERNATIVE_EMOTION_COLORS[emotion];
+  // Try to get color from ALTERNATIVE_EMOTION_COLORS, fallback to EMOTION_COLORS, then to a default
+  return (
+    ALTERNATIVE_EMOTION_COLORS[emotion] ||'#ffffff' // Default fallback color (light gray)
+  );
 }
 
 export default function TreeNode({ data }) {
@@ -219,40 +222,42 @@ export default function TreeNode({ data }) {
       document.body
     ) : null;
 
+    // Determine if the color is missing (i.e., using fallback)
+    const emotionColor = getEmotionColor(nodeEmotion);
+    const isDefaultColor =
+      (!ALTERNATIVE_EMOTION_COLORS[nodeEmotion] && !EMOTION_COLORS[nodeEmotion]);
+
     return (
-    <>
-      <motion.div
-        transition={{ type: 'spring', stiffness: 520, damping: 44 }}
-        onDoubleClick={() => setIsDialogOpen(true)}
-        style={{
-          padding: 12,
-          borderRadius: 8,
-          //background: getEmotionColor(nodeEmotion),
-          color: "black",
-          textAlign: "center",
-          cursor: "pointer",
-          width: 200,
-          background: nodeModified 
-            ? `repeating-linear-gradient(
-                45deg,
-                ${getEmotionColor(nodeEmotion)},
-                ${getEmotionColor(nodeEmotion)} 10px,
-                rgba(255, 200, 0, 0.4) 10px,
-                rgba(255, 200, 0, 0.4) 20px
-              )`
-            : getEmotionColor(nodeEmotion),
-        }}
-      >
-        <Handle type="target" position={Position.Left} />
-        {
-          // Display label (for non-leaf nodes) or content (for leaf nodes)
-          (data.label || "").length > 50
-            ? (data.label || "").substring(0, 50) + '...'
-            : (data.label || "")
-        }
-        <Handle type="source" position={Position.Right} />
-      </motion.div>
-      {dialog}
-    </>
-  );
+      <>
+        <motion.div
+          className={nodeModified ? "animated-border" : ""}
+          transition={{ type: 'spring', stiffness: 520, damping: 44 }}
+          onDoubleClick={() => setIsDialogOpen(true)}
+          style={{
+            padding: 12,
+            borderRadius: 8,
+            color: "black",
+            textAlign: "center",
+            cursor: "pointer",
+            width: 200,
+            background: emotionColor,
+          }}
+        >
+          <Handle type="target" position={Position.Left} />
+          {
+            // Display label (for non-leaf nodes) or content (for leaf nodes)
+            (data.label || "").length > 50
+              ? (data.label || "").substring(0, 50) + '...'
+              : (data.label || "")
+          }
+          <Handle type="source" position={Position.Right} />
+          {nodeModified && (
+            <div className="modified-indicator" title="This node has been modified.">
+              !
+            </div>
+          )}
+        </motion.div>
+        {dialog}
+      </>
+    );
 }
