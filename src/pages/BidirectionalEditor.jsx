@@ -377,6 +377,7 @@ export default function BidirectionalEditor() {
 
   const handleRevertComplete = (revertedTextAreaContent) => {
     console.log(revertedTextAreaContent)
+    setTree(createDummyRootNode());
     setTextAreaContent(revertedTextAreaContent.text);
     renderFullTree();
   };
@@ -797,7 +798,7 @@ export default function BidirectionalEditor() {
         {/* Max Depth Selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: 'auto' }}>
           <label htmlFor="maxDepth" style={{ fontSize: '12px', color: '#374151', fontWeight: '500' }}>
-            Max Depth:
+            Tree Depth:
           </label>
           <select
             id="maxDepth"
@@ -818,7 +819,7 @@ export default function BidirectionalEditor() {
             <option value={2}>2</option>
             <option value={3}>3</option>
             <option value={4}>4</option>
-
+            <option value={5}>5</option>
           </select>
         </div>
       </div>
@@ -835,6 +836,7 @@ export default function BidirectionalEditor() {
             value={textAreaContent}
             onChange={handleTextChange}
             placeholder="Insert text here..."
+            disabled={isTreeRendering}
             style={{
               flex: 1,
               padding: '12px',
