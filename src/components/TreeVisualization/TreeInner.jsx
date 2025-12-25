@@ -61,7 +61,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
   const { checkReorderDrop, reorderNodes, findClosestSibling } = useReordering();
-  const { flowToScreenPosition, setCenter, getZoom } = useReactFlow();
+  const { flowToScreenPosition, setCenter, getZoom, zoomIn, zoomOut, fitView } = useReactFlow();
 
   // Toggle debug mode with 'D' key
   useEffect(() => {
@@ -463,6 +463,20 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
     [nodes, handleEmotionChange, openEmotionNodeId]
   );
 
+  const controlButtonStyle = {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    border: 'none',
+    cursor: 'pointer',
+    backgroundColor: 'white',
+    color: '#374151',
+  };
+
   return (
     <div
       ref={containerRef}
@@ -493,8 +507,54 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
-        <MiniMap pannable zoomable />
-        <Controls />
+        <MiniMap
+          pannable
+          zoomable
+          style={{
+            bottom: 12,
+            right: 12,
+            borderRadius: '12px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+            border: '1px solid #e5e7eb',
+          }}
+          maskColor="rgba(243, 244, 246, 0.7)"
+          nodeColor="#d1d5db"
+        />
+
+        {/* Custom Controls */}
+        <div style={{ position: 'absolute', bottom: '12px', left: '12px', display: 'flex', flexDirection: 'column', gap: '8px', zIndex: 5 }}>
+          <button
+            onClick={() => zoomIn()}
+            title="Zoom In"
+            style={controlButtonStyle}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button
+            onClick={() => zoomOut()}
+            title="Zoom Out"
+            style={controlButtonStyle}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+          <button
+            onClick={() => fitView({ padding: 0.2 })}
+            title="Fit View"
+            style={controlButtonStyle}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15 3 21 3 21 9"></polyline>
+              <polyline points="9 21 3 21 3 15"></polyline>
+              <line x1="21" y1="3" x2="14" y2="10"></line>
+              <line x1="3" y1="21" x2="10" y2="14"></line>
+            </svg>
+          </button>
+        </div>
       </ReactFlow>
 
       {/* Reorder indicator - blue line between siblings */}
