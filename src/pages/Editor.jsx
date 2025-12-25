@@ -116,7 +116,11 @@ export default function Editor() {
 
     const insertExample = () => {
         // Parse example text into sentences
-        const newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
+        let newSentences = applySentenceEdit([], EXAMPLE_TEXT, 0);
+
+        // Create placeholder hierarchy immediately before committing
+        newSentences = createPlaceholderHierarchy(newSentences, maxDepth);
+        setHierarchyState('has-dirty-nodes');
 
         // Log event
         posthog.capture('example_inserted', {
@@ -213,6 +217,13 @@ export default function Editor() {
 
     const handleRevertComplete = (revertedData) => {
         setSentences(revertedData);
+
+        // Restore maxDepth from the hierarchy metadata
+        if (revertedData._hierarchyMeta && revertedData._hierarchyMeta.maxLevel != null) {
+            const restoredDepth = revertedData._hierarchyMeta.maxLevel + 1;
+            console.log('[App] Restoring maxDepth from history:', restoredDepth);
+            setMaxDepth(restoredDepth);
+        }
     };
 
     // Handle horizontal drag start
@@ -291,7 +302,16 @@ export default function Editor() {
     function handleTextOnBlur(e) {
         const value = e.target.value;
         if (value === prevTextRef.current) return; // No change
-        addCommit(sentences, "Text edited");
+
+        // Ensure hierarchy exists before committing
+        let sentencesToCommit = sentences;
+        if (sentences.length > 0 && !sentences._hierarchyMeta) {
+            sentencesToCommit = createPlaceholderHierarchy(sentences, maxDepth);
+            setSentences(sentencesToCommit);
+            setHierarchyState('has-dirty-nodes');
+        }
+
+        addCommit(sentencesToCommit, "Text edited");
     }
 
     return (

@@ -1,14 +1,15 @@
-import React, {useRef, useState, useMemo, useImperativeHandle, forwardRef} from 'react';
+import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import { deepCloneSentences } from '../../utils/deepClone';
 
 // Responsive git-style history graph.
 // Props:
 // - className: optional container class
 // - onRevertComplete(data): function(data) called when a revert is confirmed
 const HistoryGraph = forwardRef(({
-                                   className = 'history-graph',
-                                   onRevertComplete = () => {
-                                   },
-                                 }, ref) => {
+  className = 'history-graph',
+  onRevertComplete = () => {
+  },
+}, ref) => {
   const [history, setHistory] = useState([]);
   const [headIndex, setHeadIndex] = useState(null);
   const [pendingRevert, setPendingRevert] = useState(null);
@@ -18,13 +19,16 @@ const HistoryGraph = forwardRef(({
     const id = history.length;
     const ts = Date.now();
 
+    // Deep clone the data to ensure each commit is an independent snapshot
+    const clonedData = deepCloneSentences(data);
+
     setHistory((h) => {
       let parentId = null;
       let branchId = 0;
 
       if (h.length === 0) {
         // no history yet -> first commit
-        const newCommit = [{id, ts, data, title, parentId, branchId}];
+        const newCommit = [{ id, ts, data: clonedData, title, parentId, branchId }];
         setHeadIndex(0);
         return newCommit;
       }
@@ -40,7 +44,7 @@ const HistoryGraph = forwardRef(({
       }
 
       const newHistory = h.slice(0, h.length);
-      newHistory.push({id, ts, data, title, parentId, branchId});
+      newHistory.push({ id, ts, data: clonedData, title, parentId, branchId });
       setHeadIndex(newHistory.length - 1);
       return newHistory;
     });
@@ -65,7 +69,10 @@ const HistoryGraph = forwardRef(({
     if (typeof index !== 'number') return setPendingRevert(null);
     const entry = history[index];
     if (!entry) return setPendingRevert(null);
-    onRevertComplete(entry.data);
+
+    // Deep clone the data when reverting to ensure the reverted state is independent
+    const clonedData = deepCloneSentences(entry.data);
+    onRevertComplete(clonedData);
     //setHierarchyState('needs-full-regen');
     setHeadIndex(index);
     setPendingRevert(null);
@@ -98,7 +105,7 @@ const HistoryGraph = forwardRef(({
     '#fb7185', // rose
   ], []);
   // Compute nodes, edges, and SVG dimensions for rendering
-  const {nodes, edges, laneYs, contentWidth, svgHeight} = useMemo(() => {
+  const { nodes, edges, laneYs, contentWidth, svgHeight } = useMemo(() => {
     const nodes = [];
     const edges = [];
     let maxLane = 0;
@@ -112,7 +119,7 @@ const HistoryGraph = forwardRef(({
 
       if (commit.parentId == null) {
         x = xOffset;
-        nodes.push({i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title});
+        nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title });
       } else {
         const parentIndex = history.findIndex((c) => c.id === commit.parentId);
         if (parentIndex !== -1) {
@@ -124,15 +131,15 @@ const HistoryGraph = forwardRef(({
             const parentY = parentNode.y;
             x = parentX + xStep;
 
-            nodes.push({i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title});
+            nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title });
 
             const color = laneColors[lane % laneColors.length];
             if (Math.abs(parentLane - lane) === 0) {
-              edges.push({d: `M ${parentX} ${parentY} L ${x} ${y}`, color});
+              edges.push({ d: `M ${parentX} ${parentY} L ${x} ${y}`, color });
             } else {
               const cx = (parentX + x) / 2;
               const dStr = `M ${parentX} ${parentY} C ${cx + 5} ${parentY} ${cx - 5} ${y} ${x} ${y}`;
-              edges.push({d: dStr, color});
+              edges.push({ d: dStr, color });
             }
           }
         }
@@ -146,14 +153,14 @@ const HistoryGraph = forwardRef(({
     const calculatedContentWidth = maxX + xOffset * 2;
     const contentHeight = maxLane * yStep + yOffset * 2;
 
-    return {nodes, edges, laneYs, contentWidth: calculatedContentWidth, svgHeight: contentHeight};
+    return { nodes, edges, laneYs, contentWidth: calculatedContentWidth, svgHeight: contentHeight };
   }, [history, laneColors, xStep, yStep, yOffset]);
 
   // Refs, state, and effects for responsive SVG
   const svgRef = useRef(null);
   const scrollContainerRef = useRef(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [tooltip, setTooltip] = useState({visible: false, x: 0, y: 0, node: null});
+  const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, node: null });
 
   React.useEffect(() => {
     const container = scrollContainerRef.current;
@@ -210,11 +217,11 @@ const HistoryGraph = forwardRef(({
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    setTooltip({visible: true, x, y, node});
+    setTooltip({ visible: true, x, y, node });
   }
 
   function hideTooltip() {
-    setTooltip((t) => ({...t, visible: false, node: null}));
+    setTooltip((t) => ({ ...t, visible: false, node: null }));
   }
 
   // If there is no data (n === 0) show placeholder before performing rendering below
@@ -230,14 +237,14 @@ const HistoryGraph = forwardRef(({
 
   return (
     // make container relative so tooltip can be absolutely positioned
-    <div className={`w-full ${className}`} style={{position: 'relative', boxSizing: 'border-box'}}>
+    <div className={`w-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box' }}>
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
         <div className="text-xs text-gray-500">Edits: {history.length}</div>
       </div>
 
       <div ref={scrollContainerRef} className="flex items-start gap-3 overflow-auto">
-        <div style={{width: finalSvgWidth, height: svgHeight, position: 'relative'}}>
+        <div style={{ width: finalSvgWidth, height: svgHeight, position: 'relative' }}>
           <svg
             ref={svgRef}
             width={finalSvgWidth}
@@ -246,13 +253,13 @@ const HistoryGraph = forwardRef(({
           >
             {/* background horizontal lane lines */}
             {laneYs.map((y, li) => (
-              <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6}/>
+              <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
             ))}
 
             {/* edges */}
             {edges.map((e, idx) => (
               <path key={idx} d={e.d} fill="none" stroke={e.color} strokeWidth={2.6}
-                    strokeLinecap="round" strokeLinejoin="round" opacity={0.9}/>
+                strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
             ))}
 
             {/* nodes */}
@@ -266,10 +273,10 @@ const HistoryGraph = forwardRef(({
                   onMouseEnter={(e) => showTooltipAtMouse(e, node)}
                   onMouseMove={(e) => showTooltipAtMouse(e, node)}
                   onMouseLeave={hideTooltip}
-                  style={{cursor: 'pointer'}}
+                  style={{ cursor: 'pointer' }}
                 >
-                  <circle cx={0} cy={0} r={7.0} fill="transparent"/>
-                  <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95}/>
+                  <circle cx={0} cy={0} r={7.0} fill="transparent" />
+                  <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
                   <circle
                     cx={0}
                     cy={0}
@@ -278,7 +285,7 @@ const HistoryGraph = forwardRef(({
                     onMouseDown={(e) => {
                       e.preventDefault();
                     }}
-                    style={{outline: 'none'}}
+                    style={{ outline: 'none' }}
                     onClick={() => handleRevert(node.i)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') handleRevert(node.i);
@@ -289,7 +296,7 @@ const HistoryGraph = forwardRef(({
                     aria-label={`Revert to commit ${node.i + 1}`}
                   />
                   {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827"
-                                     strokeWidth={2} opacity={0.9}/>}
+                    strokeWidth={2} opacity={0.9} />}
                 </g>
               );
             })}
@@ -301,19 +308,19 @@ const HistoryGraph = forwardRef(({
       {tooltip.visible && tooltip.node && (
         <div
           className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow max-w-xs"
-          style={{left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -60%)', whiteSpace: 'normal'}}
+          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -60%)', whiteSpace: 'normal' }}
           role="status"
           aria-hidden={false}
         >
           <div className="flex items-start gap-2">
-                        <span style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 6,
-                          background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
-                          display: 'inline-block',
-                          marginTop: 3
-                        }} aria-hidden/>
+            <span style={{
+              width: 10,
+              height: 10,
+              borderRadius: 6,
+              background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
+              display: 'inline-block',
+              marginTop: 3
+            }} aria-hidden />
             <div>
               <div
                 className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
@@ -331,7 +338,7 @@ const HistoryGraph = forwardRef(({
         return (
           <div className="fixed inset-0 z-60 flex items-center justify-center">
             {/* backdrop */}
-            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert}/>
+            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert} />
             <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full p-4 mx-4">
               <div className="flex items-start gap-3">
                 <div className="flex-1">
@@ -344,10 +351,10 @@ const HistoryGraph = forwardRef(({
               </div>
               <div className="mt-4 flex justify-end gap-2">
                 <button onClick={cancelRevert}
-                        className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel
+                  className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel
                 </button>
                 <button onClick={confirmRevert}
-                        className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Revert
+                  className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Revert
                 </button>
               </div>
             </div>
