@@ -8,6 +8,7 @@ import { findDirtyRootNodes, buildDirtySubtrees } from './dirtyNodeFinder.js';
 import { buildDirtyRestructurePrompt } from './promptBuilder.js';
 import { parseDirtyRestructureResponse } from './responseValidator.js';
 import { EMOTIONS } from '../../utils/constants.js';
+import { a } from 'framer-motion/client';
 
 // Initialize the Anthropic client
 const getClient = () => {
@@ -93,15 +94,16 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
 
 
 export async function evaluateSentenceEmotions(sentences) {
+
     const client = getClient();
     
     console.log('[Claude Service] Evaluating emotions for sentences');
     const prompt = `For each of the following input sentences i give you, please assign an Emotion and Intensity level from 0 to 100 based on the emotional tone of the sentence.
     For the emotions YOU MUST ONLY choose one out of this list: ${JSON.stringify(EMOTIONS)}.
     Respond in JSON format as an array of objects with "id", "emotion", and "intensity" fields. Only respond in plain json format.
-Sentences:
-${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}
-`;
+    Sentences:
+    ${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}
+    `;
     console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
     try {
         const message = await client.messages.create({

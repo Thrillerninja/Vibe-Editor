@@ -493,8 +493,8 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         proOptions={{ hideAttribution: true }}
       >
         <Background variant="dots" color="#e0e3e7ff" gap={40} size={4} />
-        <MiniMap pannable zoomable />
-        <Controls />
+        {/*<MiniMap pannable zoomable />*/}
+        <Controls  showInteractive={false} />
       </ReactFlow>
 
       {/* Reorder indicator - blue line between siblings */}

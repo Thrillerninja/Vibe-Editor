@@ -165,20 +165,23 @@ export default function Editor() {
 
             // Apply the restructured subtrees to the existing hierarchy
             let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle);
-
+            console.log('[TEST1] Updated sentences after applying dirty subtree restructure:', updatedSentences);
+            await evaluateSentenceEmotions(updatedSentences).then(result => {
+                updatedSentences = result;
+            });
+            console.log('[TEST1] Updated sentences after applying dirty subtree restructure:', updatedSentences);
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
             console.log('[IMPORTANT] Cleared dirty flags after successful restructure', updatedSentences);
 
             // TODO: Now also request sentence emotions with API Call
-            const sentencesWithEmotions = await evaluateSentenceEmotions(updatedSentences);
+            //const sentencesWithEmotions = await evaluateSentenceEmotions(updatedSentences);
             
-            console.log('[App] Updated sentences with emotions:', sentencesWithEmotions);
+            //console.log('[App] Updated sentences with emotions:', sentencesWithEmotions);
             console.log('[App] OLD sentences before emotion update:', updatedSentences);
 
-            setSentences(sentencesWithEmotions);
-            addCommit(sentencesWithEmotions, 'Hierarchy regenerated');
-
+            setSentences(updatedSentences);
+            addCommit(updatedSentences, 'Hierarchy regenerated');
             console.log('[App] Dirty subtrees restructured, clean portions preserved');
             setHierarchyState('generated');
         } catch (error) {

@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 import { rebuildSentenceOrderFromHierarchy } from './sentenceEditor';
 import { em } from 'framer-motion/client';
-
+import { evaluateSentenceEmotions } from '../services/claude/claudeApi.js';
 /**
  * Sorts hierarchy nodes by document order
  * Ensures that nodes appear in the order of their first sentence in the document
@@ -205,6 +205,14 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
 
     console.log(`${LOG_PREFIX.PARSER} Hierarchy restructured: now ${nodes.length} nodes`);
 
+    console.log("[TEST] Reordered sentences after applying dirty subtree restructure:", reorderedSentences);
+
+    // Ensure evaluation is fully completed before assignment
+    let sentencesWithEmotions;
+    evaluateSentenceEmotions(reorderedSentences).then(result => {
+        sentencesWithEmotions = result;
+    });
+    console.log("[TEST] Sentences with emotions after applying dirty subtree restructure:", sentencesWithEmotions);
     return reorderedSentences;
 }
 
