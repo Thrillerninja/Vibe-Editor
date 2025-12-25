@@ -116,7 +116,7 @@ const HistoryGraph = forwardRef(({
   const xStep = 25;
   const xOffset = 20;
   const yStep = 20;
-  const yOffset = 10;
+  const yOffset = 20;
 
   const laneColors = useMemo(() => [
     '#6366f1', // indigo
@@ -294,38 +294,60 @@ const HistoryGraph = forwardRef(({
 
   const finalSvgWidth = Math.max(contentWidth, containerWidth);
 
+  const floatingButtonStyle = {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    border: 'none',
+    cursor: 'pointer',
+    zIndex: 50,
+    backgroundColor: 'white',
+    color: '#374151', // gray-700
+  };
+
   return (
     // make container relative so tooltip can be absolutely positioned
     <div className={`w-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box' }}>
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-8">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-            <button
-              onClick={handleUndo}
-              disabled={!canUndo}
-              className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
-              title="Undo (go to previous edit)"
-              aria-label="Undo"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-              </svg>
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={!canRedo}
-              className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
-              title="Redo (go to next edit)"
-              aria-label="Redo"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-              </svg>
-            </button>
-          </div>
-          <div className="text-xs text-gray-500">Edits: {history.length}</div>
-        </div>
+      </div>
+
+      {/* Floating Undo/Redo Buttons */}
+      <div style={{ position: 'absolute', top: '0', right: '0', display: 'flex', gap: '8px', zIndex: 50 }}>
+        <button
+          onClick={handleUndo}
+          disabled={!canUndo}
+          title="Undo (go to previous edit)"
+          aria-label="Undo"
+          style={{
+            ...floatingButtonStyle,
+            opacity: !canUndo ? 0.5 : 1,
+            cursor: !canUndo ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+        </button>
+        <button
+          onClick={handleRedo}
+          disabled={!canRedo}
+          title="Redo (go to next edit)"
+          aria-label="Redo"
+          style={{
+            ...floatingButtonStyle,
+            opacity: !canRedo ? 0.5 : 1,
+            cursor: !canRedo ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+          </svg>
+        </button>
       </div>
 
       <div ref={scrollContainerRef} className="flex items-start gap-3 overflow-auto">
@@ -457,7 +479,7 @@ const HistoryGraph = forwardRef(({
                   Cancel
                 </button>
                 <button onClick={confirmRevert}
-                  className="px-3 py-1.5 rounded-md text-sm bg-indigo-600 text-white hover:bg-indigo-700">
+                  className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">
                   Restore
                 </button>
               </div>

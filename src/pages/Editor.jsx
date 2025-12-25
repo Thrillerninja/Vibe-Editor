@@ -323,79 +323,21 @@ export default function Editor() {
         addCommit(sentencesToCommit, "Text edited");
     }
 
+    const floatingButtonStyle = {
+        width: '44px',
+        height: '44px',
+        borderRadius: '50%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+        border: 'none',
+        cursor: 'pointer',
+        zIndex: 50,
+    };
+
     return (
         <div className="flex flex-col h-screen bg-gray-50">
-            {/* Main Header - Full Width */}
-            <div className="px-6 py-4 bg-white border-b border-gray-200 flex items-center justify-between"
-                style={{ zIndex: 100001 }}>
-                <h1 className="text-xl font-bold text-gray-900">Vibe Editor</h1>
-                <div className="flex items-center gap-4">
-                    {/* Depth Slider */}
-                    <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 rounded-lg border border-gray-200">
-                        <label htmlFor="depth-slider" className="text-sm font-medium text-gray-700 whitespace-nowrap">
-                            Depth: {maxDepth}
-                        </label>
-                        <input
-                            id="depth-slider"
-                            type="range"
-                            min="3"
-                            max="6"
-                            value={maxDepth}
-                            onChange={(e) => setMaxDepth(parseInt(e.target.value))}
-                            className="w-24 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                        />
-                    </div>
-
-                    {/* Generate Hierarchy Button */}
-                    <button
-                        onClick={handleGenerateHierarchy}
-                        disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
-                        className="px-4 py-2 text-sm font-medium rounded-md bg-purple-600 text-white hover:bg-purple-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                        {isGenerating ? (
-                            <>
-                                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none"
-                                    viewBox="0 0 24 24">
-                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                        strokeWidth="4"></circle>
-                                    <path className="opacity-75" fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                {hierarchyState === 'has-dirty-nodes' ? 'Updating...' : 'Generating...'}
-                            </>
-                        ) : (
-                            <>
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                                        d="M13 10V3L4 14h7v7l9-11h-7z" />
-                                </svg>
-                                {hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
-                            </>
-                        )}
-                    </button>
-
-                    <button
-                        onClick={insertExample}
-                        className="px-3 py-1.5 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700"
-                    >
-                        Insert example
-                    </button>
-                    <button
-                        onClick={clearText}
-                        className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
-                    >
-                        Clear
-                    </button>
-                    <button
-                        onClick={() => navigate('/stats')}
-                        className="px-3 py-1.5 text-sm rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
-                        title="View analytics"
-                    >
-                        📊 Stats
-                    </button>
-                </div>
-            </div>
-
             {/* Main Content Area */}
             <div
                 ref={horizontalContainerRef}
@@ -409,18 +351,53 @@ export default function Editor() {
                 >
                     {/* Left Pane (Text Editor) */}
                     <div
-                        className="flex flex-col"
+                        className="flex flex-col relative"
                         style={{
                             flexBasis: `${leftPct}%`,
                             minWidth: 0,
                         }}
                     >
+                        {/* Floating Buttons for Left Pane */}
+                        <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
+                            <button
+                                onClick={insertExample}
+                                title="Insert example"
+                                style={{
+                                    ...floatingButtonStyle,
+                                    position: 'relative',
+                                    backgroundColor: '#2563eb',
+                                    color: 'white',
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                    <line x1="12" y1="18" x2="12" y2="12" />
+                                    <line x1="9" y1="15" x2="15" y2="15" />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={clearText}
+                                title="Clear text"
+                                style={{
+                                    ...floatingButtonStyle,
+                                    position: 'relative',
+                                    backgroundColor: '#ef4444',
+                                    color: 'white',
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                            </button>
+                        </div>
+
                         <textarea
                             ref={textareaRef}
                             value={text}
                             onChange={handleTextChange}
                             onBlur={handleTextOnBlur}
-                            className="flex-1 p-6 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
+                            className="flex-1 p-6 pt-20 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
                             placeholder="Enter your text here..."
                             style={{
                                 fontFamily:
@@ -444,6 +421,74 @@ export default function Editor() {
                             id="graph-pane"
                             className="flex-1 relative overflow-hidden"
                         >
+                            {/* Floating Buttons for Right Pane */}
+                            <button
+                                onClick={handleGenerateHierarchy}
+                                disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
+                                title={hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
+                                style={{
+                                    ...floatingButtonStyle,
+                                    position: 'absolute',
+                                    top: '12px',
+                                    left: '12px',
+                                    backgroundColor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? '#555' : '#000',
+                                    color: 'white',
+                                    cursor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? 'not-allowed' : 'pointer',
+                                }}
+                            >
+                                {isGenerating ? (
+                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                ) : (
+                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                    </svg>
+                                )}
+                            </button>
+
+                            {/* Depth Slider and Stats */}
+                            <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
+                                <div
+                                    style={{
+                                        height: '44px',
+                                        padding: '0 16px',
+                                        backgroundColor: 'white',
+                                        borderRadius: '24px',
+                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '8px',
+                                        border: '1px solid #e5e7eb'
+                                    }}
+                                >
+                                    <label htmlFor="depth-slider" className="text-xs font-medium text-gray-700 whitespace-nowrap">
+                                        Depth: {maxDepth}
+                                    </label>
+                                    <input
+                                        id="depth-slider"
+                                        type="range"
+                                        min="3"
+                                        max="6"
+                                        value={maxDepth}
+                                        onChange={(e) => setMaxDepth(parseInt(e.target.value))}
+                                        className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => navigate('/stats')}
+                                    title="View analytics"
+                                    style={{
+                                        ...floatingButtonStyle,
+                                        backgroundColor: 'white',
+                                        color: '#374151',
+                                    }}
+                                >
+                                    📊
+                                </button>
+                            </div>
+
                             <TreeVisualization
                                 sentences={sentences}
                                 onTreeUpdate={handleTreeUpdate}
