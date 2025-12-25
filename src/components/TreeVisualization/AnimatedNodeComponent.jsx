@@ -1,7 +1,7 @@
 // In AnimatedNodeComponent.jsx
 
-import React, { useEffect, useState } from 'react';
-import { Handle, Position, useUpdateNodeInternals, useReactFlow } from 'reactflow';
+import React, { use, useEffect, useState } from 'react';
+import { Handle, Position, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { measureLabel } from '../../utils/measurements';
@@ -15,7 +15,7 @@ import '../../components/TreeVisualization/TreeNode.css';
 function getEmotionColor(emotion, intensity, type) {
   // Try to get color from EMOTION_COLORS, fallback to a default
   const colors = EMOTION_COLORS[emotion?.toLowerCase?.()];
-  console.log('[AnimatedNodeComponent] getEmotionColor for', emotion, 'intensity', intensity, 'type', type, '=>', colors);
+  //console.log('[AnimatedNodeComponent] getEmotionColor for', emotion, 'intensity', intensity, 'type', type, '=>', colors);
   if (!colors) return '#ffffff';
   if (typeof intensity === 'number') {
     if (intensity < 33) return colors.light;
@@ -37,7 +37,6 @@ function getBorderColor(emotion, intensity, type) {
  * AnimatedNodeComponent - Renders a single node in the tree
  */
 export function AnimatedNodeComponent({ id, data }) {
-  const updateNodeInternals = useUpdateNodeInternals();
   const [isHovered, setIsHovered] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeEmotion, setNodeEmotion] = useState(data.emotion);
@@ -53,30 +52,17 @@ export function AnimatedNodeComponent({ id, data }) {
     setNodeModified(data.isDirty);
   }, [data.emotion, data.content, data.label, data.isDirty]);
 
-  // Update node internals on label/content change
+
   useEffect(() => {
-    const timer = setTimeout(() => updateNodeInternals(id), 0);
-    return () => clearTimeout(timer);
-  }, [id, nodeText, updateNodeInternals]);
+    console.log("[AnimatedNodeComponent] Node data changed:", data, "ID:", id);
+  }, []);
 
   function handleSave() {
-    if ((data.content || data.label) === nodeText && data.emotion === nodeEmotion) {
-      setIsDialogOpen(false);
-      return;
-    }
-    if (data.onEmotionChange) {
-      data.onEmotionChange(id, nodeEmotion, data.intensity);
-    }
-    if (data.onContentChange) {
-      data.onContentChange(id, nodeText);
-    }
-    setNodeModified(true);
+    data.applyNodeSentenceEdit(id, nodeText);
     setIsDialogOpen(false);
   }
 
   function handleCancel() {
-    setNodeText(data.content || data.label || "");
-    setNodeEmotion(data.emotion);
     setIsDialogOpen(false);
   }
 

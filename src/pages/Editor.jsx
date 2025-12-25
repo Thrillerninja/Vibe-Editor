@@ -430,6 +430,7 @@ export default function Editor() {
                             <TreeVisualization
                                 sentences={sentences}
                                 onTreeUpdate={handleTreeUpdate}
+                                setSentences={setSentences}
                             />
                         </div>
                     </div>

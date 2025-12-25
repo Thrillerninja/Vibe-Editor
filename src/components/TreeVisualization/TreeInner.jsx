@@ -20,7 +20,7 @@ import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
-
+import { editSentence } from '../../utils/sentenceEditor';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -28,7 +28,7 @@ const nodeTypes = { animatedNode: AnimatedNodeComponent };
  * TreeInner - Main tree visualization logic
  * Now works with sentences array as SSOT
  */
-export function TreeInner({ sentences = [], onTreeUpdate }) {
+export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
   console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
 
   // ReactFlow state
@@ -46,6 +46,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
   // Keep sentences ref updated
   useEffect(() => {
     sentencesRef.current = sentences;
+    console.log('[TreeInner] sentencesRef updated', sentences);
   }, [sentences]);
 
   // Log component mount/unmount for debugging
@@ -446,6 +447,18 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
     [onTreeUpdate, setNodes]
   );
 
+
+  const applyNodeSentenceEdit = useCallback(
+    (nodeId, newContent) => {
+      console.log(`[TreeInner] Node ${nodeId} content edit: "${newContent}"`);
+      console.log('[TreeInner] SetSentences ', setSentences);
+      // Update the sentences array with new content
+      const edited =  editSentence(nodeId, newContent, sentencesRef.current);
+
+      setSentences(edited);
+    }
+  );
+
   // Pass emotion handler and position to nodes via data
   const nodesWithHandlers = useMemo(
     () =>
@@ -453,10 +466,7 @@ export function TreeInner({ sentences = [], onTreeUpdate }) {
         ...node,
         data: {
           ...node.data,
-          onEmotionChange: handleEmotionChange,
-          isEmotionModalOpen: openEmotionNodeId === node.id,
-          setIsEmotionModalOpen: (isOpen) =>
-            setOpenEmotionNodeId(isOpen ? node.id : null),
+          applyNodeSentenceEdit: applyNodeSentenceEdit,
           nodePosition: node.position, // Pass position for screen calculation
         },
       })),

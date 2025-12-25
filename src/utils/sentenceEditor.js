@@ -882,3 +882,22 @@ function reorderHierarchyNode(sentences, draggedId, targetId, insertBefore) {
 
     return result;
 }
+
+export function editSentence(sentenceId, newContent, sentences) {
+    console.log(`${LOG_PREFIX.PARSER} Editing sentence ${sentenceId}`);
+    const hierarchyMeta = sentences._hierarchyMeta;
+    const updatedSentences = sentences.map(s => {
+        if (s.id === sentenceId) {
+            console.log(`${LOG_PREFIX.PARSER} Old content: "${s.content}"`);
+            console.log(`${LOG_PREFIX.PARSER} New content: "${newContent}"`);
+            return {
+                ...s,
+                content: newContent,
+            };
+        }
+        return s;
+    });
+    updatedSentences._hierarchyMeta = hierarchyMeta;
+    return updatedSentences;
+}
+
