@@ -208,11 +208,6 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     console.log("[TEST] Reordered sentences after applying dirty subtree restructure:", reorderedSentences);
 
     // Ensure evaluation is fully completed before assignment
-    let sentencesWithEmotions;
-    evaluateSentenceEmotions(reorderedSentences).then(result => {
-        sentencesWithEmotions = result;
-    });
-    console.log("[TEST] Sentences with emotions after applying dirty subtree restructure:", sentencesWithEmotions);
     return reorderedSentences;
 }
 
