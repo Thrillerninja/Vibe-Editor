@@ -1,5 +1,7 @@
 import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { deepCloneSentences } from '../../utils/deepClone';
+import { computeSentenceDiff } from '../../utils/diffUtils';
+import DiffView from './DiffView';
 
 // Responsive git-style history graph.
 // Props:
@@ -335,26 +337,45 @@ const HistoryGraph = forwardRef(({
       {pendingRevert != null && (() => {
         const entry = history[pendingRevert];
         if (!entry) return null;
+
+        // Compute diff between current state and the commit we want to revert to
+        const currentState = headIndex != null ? history[headIndex]?.data : [];
+        const revertToState = entry.data;
+        const diff = computeSentenceDiff(revertToState, currentState);
+
         return (
-          <div className="fixed inset-0 z-60 flex items-center justify-center">
+          <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
             {/* backdrop */}
             <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert} />
-            <div className="relative bg-white rounded-lg shadow-lg max-w-md w-full p-4 mx-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-1">
-                  <div className="text-sm font-semibold text-gray-900">Revert to this edit?</div>
-                  <div className="text-xs text-gray-600 mt-1">Edit
-                    #{entry.id + 1} • {new Date(entry.ts).toLocaleString()}</div>
-                  {entry.title &&
-                    <div className="text-xs text-gray-800 mt-2 font-medium">{entry.title}</div>}
+            <div className="relative bg-white rounded-lg shadow-lg max-w-3xl w-full max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="p-4 border-b border-gray-200">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-gray-900">Revert to this edit?</div>
+                    <div className="text-xs text-gray-600 mt-1">
+                      Edit #{entry.id + 1} • {new Date(entry.ts).toLocaleString()}
+                    </div>
+                    {entry.title &&
+                      <div className="text-xs text-gray-800 mt-2 font-medium">{entry.title}</div>}
+                  </div>
                 </div>
               </div>
-              <div className="mt-4 flex justify-end gap-2">
+
+              {/* Diff View */}
+              <div className="flex-1 overflow-auto p-4">
+                <DiffView diff={diff} />
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
                 <button onClick={cancelRevert}
-                  className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel
+                  className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">
+                  Cancel
                 </button>
                 <button onClick={confirmRevert}
-                  className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">Revert
+                  className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">
+                  Revert
                 </button>
               </div>
             </div>
