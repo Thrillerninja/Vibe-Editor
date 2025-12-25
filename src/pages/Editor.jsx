@@ -21,6 +21,7 @@ const EXAMPLE_TEXT =
 
 export default function Editor() {
     const historyGraphRef = useRef(null);
+    const initialCommitAdded = useRef(false);
     useUserIdentification();
     const navigate = useNavigate();
 
@@ -77,6 +78,14 @@ export default function Editor() {
             setHierarchyState('has-dirty-nodes');
         }
     }, [sentences.length, maxDepth]); // Only depend on length and maxDepth, not _hierarchyMeta
+
+    // Add initial commit on mount
+    useEffect(() => {
+        if (!initialCommitAdded.current && historyGraphRef.current) {
+            historyGraphRef.current.addCommit([], "Initial state");
+            initialCommitAdded.current = true;
+        }
+    }, []);
 
     // Update hierarchy state based on current sentences
     useEffect(() => {
