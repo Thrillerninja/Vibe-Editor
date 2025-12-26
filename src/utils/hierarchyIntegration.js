@@ -322,7 +322,6 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             label: 'Document',
             content: '',
             children: [],
-            startIdx: 0,
             emotion: "NEUTRAL",
             intensity: 0,
         };
@@ -361,8 +360,6 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             level: 1, // CRITICAL: Sentences are ALWAYS level 1 (bottom of hierarchy)
             label: label,
             content: sentence.content,
-            startIdx: sentence.startIdx,
-            endIdx: sentence.endIdx,
             children: [],
             emotion: sentence.emotion,
             intensity: sentence.intensity,
@@ -440,8 +437,6 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
                 type: 'sentence',
                 label: sentence.content,
                 content: sentence.content,
-                startIdx: sentence.startIdx,
-                endIdx: sentence.endIdx,
                 children: [],
                 emotion: sentence.emotion || "NEUTRAL",
                 intensity: sentence.intensity || 0,

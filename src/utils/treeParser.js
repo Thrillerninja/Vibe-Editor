@@ -92,7 +92,6 @@ export function parseTextToHierarchy(text) {
     label: 'Document',
     content: text || '',
     children: [],
-    startIdx: 0,
   };
 }
 
@@ -117,8 +116,6 @@ export function flattenTree(tree) {
       data: {
         label: curr.label,
         type: curr.type,
-        startIdx: curr.startIdx,
-        endIdx: curr.endIdx,
         content: curr.content,
         // Preserve emotion metadata
         emotion: curr.emotion,

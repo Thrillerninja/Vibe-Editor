@@ -61,7 +61,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
   function handleSave() {
     if (!(data.content === nodeText)) {
-      data.markNodeModified(id)
+
       setIntensity(selectedIntensity);
       data.applyNodeSentenceEdit(id, nodeText);
     } else {

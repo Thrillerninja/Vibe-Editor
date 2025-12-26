@@ -413,9 +413,13 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       // Update the sentences array with new content
       console.log("[newContent]", newContent);
       const edited =  editSentence(nodeId, newContent, sentencesRef.current);
-      console.log("[edited]", edited);
+
+      // Mark the edited sentence and all its ancestors as dirty/modified
+      const marked = markSentenceAndAncestorsDirty(edited, nodeId);
+
+      console.log("[edited]", marked);
       // Use onTreeUpdate to centralize updates and history handling
-      onTreeUpdate(edited);
+      onTreeUpdate(marked);
     }
   );
 
@@ -438,29 +442,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         )
       );
     });
-  
-  const markNodeModified = useCallback(
-    (nodeId) => {
-      console.log(`[TreeInner] Marking node ${nodeId} as modified (dirty)`);
-      // Update node data to mark as dirty
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeId
-            ? {
-              ...n,
-              data: {
-                ...n.data, 
-                isDirty: true,
-              }, 
-            }
-            : n
-        )
-      );
-      const updated = markSentenceAndAncestorsDirty(sentencesRef.current, nodeId);
-      
-      onTreeUpdate(updated);
-    });
-
+    
   // Pass emotion handler and position to nodes via data
   const nodesWithHandlers = useMemo(
     () =>
@@ -470,7 +452,6 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           ...node.data,
           applyNodeSentenceEdit: applyNodeSentenceEdit,
           applyEmotionToNode: applyEmotionToNode,
-          markNodeModified: markNodeModified,
           nodePosition: node.position, // Pass position for screen calculation
         },
       })),
