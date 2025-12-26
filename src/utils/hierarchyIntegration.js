@@ -459,6 +459,122 @@ export function clearHierarchy(sentences) {
 }
 
 /**
+ * Removes hierarchy branches that have no sentence descendants.
+ * Checks all group nodes in `sentences._hierarchyMeta.nodes` and prunes any subtree
+ * that does not lead to a sentence ID present in the `sentences` array.
+ * Also recalculates `maxLevel` to reflect the highest remaining group level.
+ *
+ * Run this after drag-stop operations (reordering/reparenting) to ensure
+ * no empty branches linger.
+ *
+ * @param {Array} sentences - Sentence array possibly with hierarchy metadata
+ * @returns {Array} Updated sentences (same reference if no changes)
+ */
+export function pruneEmptyHierarchyBranches(sentences) {
+    try {
+        if (!sentences || !sentences._hierarchyMeta || !Array.isArray(sentences._hierarchyMeta.nodes)) {
+            return sentences;
+        }
+
+        const sentenceIds = new Set(sentences.map(s => s.id));
+        const originalNodes = sentences._hierarchyMeta.nodes;
+
+        // Map for quick node lookup
+        const nodeMap = new Map(originalNodes.map(n => [n.id, { ...n, childIds: [...n.childIds] }]));
+
+        // Memoized DFS: does this node lead to any sentence leaf?
+        const memo = new Map();
+        const hasSentenceDescendant = (nodeId, stack = new Set()) => {
+            if (memo.has(nodeId)) return memo.get(nodeId);
+            if (stack.has(nodeId)) {
+                // Cycle guard: treat as no sentence to avoid infinite loop
+                memo.set(nodeId, false);
+                return false;
+            }
+            stack.add(nodeId);
+
+            const node = nodeMap.get(nodeId);
+            if (!node) {
+                // If it's not a group node, check if it's a sentence ID
+                const isSentence = sentenceIds.has(nodeId);
+                memo.set(nodeId, isSentence);
+                stack.delete(nodeId);
+                return isSentence;
+            }
+
+            // Evaluate children: a branch is valid if ANY child leads to a sentence
+            for (const childId of node.childIds || []) {
+                if (sentenceIds.has(childId)) {
+                    memo.set(nodeId, true);
+                    stack.delete(nodeId);
+                    return true;
+                }
+                if (hasSentenceDescendant(childId, stack)) {
+                    memo.set(nodeId, true);
+                    stack.delete(nodeId);
+                    return true;
+                }
+            }
+
+            memo.set(nodeId, false);
+            stack.delete(nodeId);
+            return false;
+        };
+
+        // Determine which group nodes to keep
+        const keepIds = new Set();
+        for (const n of nodeMap.values()) {
+            if (hasSentenceDescendant(n.id)) {
+                keepIds.add(n.id);
+            }
+        }
+
+        // If nothing changes, return original reference
+        if (keepIds.size === nodeMap.size) {
+            // Still sanitize childIds to remove stray references, but if none, return original
+            let strayFound = false;
+            for (const n of nodeMap.values()) {
+                const cleanedChildIds = n.childIds.filter(id => sentenceIds.has(id) || keepIds.has(id));
+                if (cleanedChildIds.length !== n.childIds.length) {
+                    strayFound = true;
+                    break;
+                }
+            }
+            if (!strayFound) return sentences;
+        }
+
+        // Build cleaned nodes list and sanitize childIds
+        const cleanedNodes = [];
+        for (const n of nodeMap.values()) {
+            if (!keepIds.has(n.id)) continue;
+            cleanedNodes.push({
+                ...n,
+                childIds: n.childIds.filter(id => sentenceIds.has(id) || keepIds.has(id)),
+            });
+        }
+
+        // Recalculate maxLevel: if no group nodes remain, fall back to 1 so root attaches to sentences
+        const newMaxLevel = cleanedNodes.length > 0 ? Math.max(...cleanedNodes.map(n => n.level)) : 1;
+
+        // Update metadata
+        const updatedMeta = {
+            ...sentences._hierarchyMeta,
+            nodes: cleanedNodes,
+            maxLevel: newMaxLevel,
+            // Remove dirty flags for removed nodes to avoid dangling references
+            dirtyNodeIds: (sentences._hierarchyMeta.dirtyNodeIds || []).filter(id => id === 'root' || keepIds.has(id)),
+        };
+
+        const updatedSentences = sentences.map(s => ({ ...s }));
+        updatedSentences._hierarchyMeta = updatedMeta;
+        return updatedSentences;
+    } catch (err) {
+        console.error(`${LOG_PREFIX.PARSER} Error pruning empty branches:`, err);
+        return sentences;
+    }
+}
+
+/**
  * Creates a minimal placeholder hierarchy structure with all nodes marked as dirty
  * This allows the dirty-update logic to generate the full hierarchy
  * @param {Array} sentences - Sentences array

@@ -16,6 +16,7 @@ import { useLocalPhysics } from '../../hooks/useLocalPhysics';
 import { useReordering } from '../../hooks/useReordering';
 import { ReparentIndicator } from './ReparentIndicator';
 import { buildTreeFromSentences, flattenTree } from '../../utils/treeParser';
+import { pruneEmptyHierarchyBranches } from '../../utils/hierarchyIntegration';
 import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
@@ -361,9 +362,12 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           reorderInfo.insertBefore
         );
 
+        // Prune empty hierarchy branches (no sentence leaves)
+        const pruned = pruneEmptyHierarchyBranches(updatedSentences);
+
         // Update parent component's state
         if (onTreeUpdate) {
-          onTreeUpdate(updatedSentences);
+          onTreeUpdate(pruned);
         }
 
         // Stop physics
@@ -377,6 +381,12 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
         // Stop physics
         physics.stop();
+
+        // Also prune empty branches after potential reparenting
+        const prunedAfterReparent = pruneEmptyHierarchyBranches(sentencesRef.current);
+        if (onTreeUpdate && prunedAfterReparent !== sentencesRef.current) {
+          onTreeUpdate(prunedAfterReparent);
+        }
 
         // Re-layout after reparent
         setTimeout(async () => {
