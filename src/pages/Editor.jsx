@@ -144,6 +144,15 @@ export default function Editor() {
 
     const clearText = () => setSentences([]);
 
+    // Clear all dirty flags on nodes and sentences
+    const handleClearAllDirty = () => {
+        if (sentences.length === 0) return;
+
+        const updatedSentences = clearDirtyFlags(sentences);
+        setSentences(updatedSentences);
+        addCommit(updatedSentences, 'Cleared dirty flags');
+    };
+
     // Handle AI hierarchy generation
     const handleGenerateHierarchy = async () => {
         if (sentences.length === 0) {
@@ -428,31 +437,44 @@ export default function Editor() {
                             className="flex-1 relative overflow-hidden"
                         >
                             {/* Floating Buttons for Right Pane */}
-                            <button
-                                onClick={handleGenerateHierarchy}
-                                disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
-                                title={hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
-                                style={{
-                                    ...floatingButtonStyle,
-                                    position: 'absolute',
-                                    top: '12px',
-                                    left: '12px',
-                                    backgroundColor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? '#555' : '#000',
-                                    color: 'white',
-                                    cursor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? 'not-allowed' : 'pointer',
-                                }}
-                            >
-                                {isGenerating ? (
-                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                ) : (
+                            <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
+                                <button
+                                    onClick={handleGenerateHierarchy}
+                                    disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
+                                    title={hierarchyState === 'has-dirty-nodes' ? 'Update Dirty Nodes' : 'Generate Hierarchy'}
+                                    style={{
+                                        ...floatingButtonStyle,
+                                        backgroundColor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? '#555' : '#000',
+                                        color: 'white',
+                                        cursor: isGenerating || sentences.length === 0 || hierarchyState === 'generated' ? 'not-allowed' : 'pointer',
+                                    }}
+                                >
+                                    {isGenerating ? (
+                                        <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                    ) : (
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        </svg>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={handleClearAllDirty}
+                                    title="Clear all dirty flags"
+                                    style={{
+                                        ...floatingButtonStyle,
+                                        backgroundColor: '#000',
+                                        color: 'white',
+                                    }}
+                                >
                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21L12 12" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9V6M12 18v-3M9 12H6M18 12h-3M15.5 8.5l2-2M6.5 17.5l2-2M8.5 8.5l-2-2M17.5 17.5l-2-2" />
                                     </svg>
-                                )}
-                            </button>
+                                </button>
+                            </div>
 
                             {/* Depth Slider and Stats */}
                             <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
