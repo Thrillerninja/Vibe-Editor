@@ -45,7 +45,7 @@ export function AnimatedNodeComponent({ id, data }) {
   const [nodeModified, setNodeModified] = useState(data.isDirty);
   const [emotion, setEmotion] = useState(data.emotion || 'neutral');
   const [intensity, setIntensity] = useState(data.intensity ?? 50);
-
+  const [selectedIntensity, setSelectedIntensity] = useState(intensity);
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
 
@@ -61,6 +61,7 @@ export function AnimatedNodeComponent({ id, data }) {
   function handleSave() {
     data.applyNodeSentenceEdit(id, nodeText);
     data.markNodeModified(id)
+    setIntensity(selectedIntensity);
     setIsDialogOpen(false);
   }
 
@@ -70,7 +71,7 @@ export function AnimatedNodeComponent({ id, data }) {
   }
 
   function setNodeIntensity(inputIntensity) {
-    setIntensity(inputIntensity);
+    setSelectedIntensity(inputIntensity);
   }
 
   async function selectEmotion(inputEmotion) {
@@ -80,7 +81,7 @@ export function AnimatedNodeComponent({ id, data }) {
     setEmotion(inputEmotion);
     // Optional: inform user
     // alert(`Selected emotion: ${inputEmotion} (${EMOTION_LABELS[inputEmotion] || 'No label'})`);
-    const rewrittenText = await rewriteSentenceWithEmotion(nodeText, inputEmotion, intensity);
+    const rewrittenText = await rewriteSentenceWithEmotion(nodeText, inputEmotion, selectedIntensity);
     setNodeText(rewrittenText);
     setIsNodeRewriting(false);
   }
@@ -178,21 +179,22 @@ export function AnimatedNodeComponent({ id, data }) {
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {intensity}</div>
+              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {selectedIntensity}</div>
               <input
                 type="range"
                 min="0"
                 max="99"
-                value={intensity}
+                value={selectedIntensity}
                 onChange={(e) => setNodeIntensity(parseInt(e.target.value))}
                 disabled={isNodeRewriting}
                 style={{
+                  accentColor: emotionColor,
                   backgroundColor: '#f',
                   color: '#10B981',
                   width: '100%',
                   height: '6px',
                   borderRadius: '3px',
-                  background: '#ddd',
+                  background: emotionColor,
                   outline: 'none',
                   cursor: isNodeRewriting ? 'not-allowed' : 'pointer'
                 }}
@@ -258,7 +260,7 @@ export function AnimatedNodeComponent({ id, data }) {
                 width: 32,
                 height: 32,
                 border: "5px solid #ccc",
-                borderTop: `5px solid ${getEmotionColor(data.emotion)}`,
+                borderTop: `5px solid ${emotionColor}`,
                 borderRadius: "50%",
                 animation: "spin 0.8s linear infinite",
               }}
