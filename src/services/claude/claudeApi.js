@@ -148,3 +148,61 @@ function applyEmotionsToSentences(sentences, emotionData) {
     newSentences._hierarchyMeta = hierarchy; // Preserve hierarchy meta
     return newSentences;
 }
+
+/**
+ * Rewrite a sentence to match a specific emotion and intensity
+ * @param {string} sentence - Original sentence to rewrite
+ * @param {string} emotion - Target emotion (from EMOTIONS constant)
+ * @param {number} intensity - Emotional intensity (0-99)
+ * @returns {Promise<string>} Rewritten sentence
+ */
+export async function rewriteSentenceWithEmotion(sentence, emotion, intensity) {
+    const client = getClient();
+    
+    console.log(`[Claude Service] Rewriting sentence with emotion: ${emotion}, intensity: ${intensity}`);
+    
+    // Map intensity to descriptive words
+    let intensityDescription;
+    if (intensity < 25) {
+        intensityDescription = "very subtle and mild";
+    } else if (intensity < 50) {
+        intensityDescription = "moderate";
+    } else if (intensity < 75) {
+        intensityDescription = "strong and noticeable";
+    } else {
+        intensityDescription = "very intense and powerful";
+    }
+
+    const prompt = `Please rewrite the following sentence to convey a ${emotion} emotion with ${intensityDescription} intensity (${intensity}/99).
+Hard Constraints:
+- Keep the original meaning and information intact.
+- Adjust tone, word choice, and phrasing to match the ${emotion} emotion.
+- The emotional intensity should be ${intensityDescription} (${intensity}/99).
+- Return only the rewritten sentence, no explanations.
+- Keep the length very similar to the original sentence.
+- NEVER GO MORE THAN 10% LONGER OR SHORTER THAN THE ORIGINAL SENTENCE.
+
+Original sentence: "${sentence}"`;
+
+    try {
+        const message = await client.messages.create({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: prompt
+            }]
+        });
+
+        const rewrittenSentence = stripOuterQuotes(message.content[0].text.trim());
+        console.log('[Claude Service] Sentence rewritten successfully', rewrittenSentence);
+        
+        return rewrittenSentence;
+    } catch (error) {
+        console.error('[Claude Service] Error rewriting sentence:', error);
+        throw new Error(`Failed to rewrite sentence: ${error.message}`);
+    }
+}
+function stripOuterQuotes(str) {
+  return str.replace(/^(['"])(.*)\1$/, "$2");
+}

@@ -1,6 +1,6 @@
 // In AnimatedNodeComponent.jsx
 
-import React, { use, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
@@ -9,7 +9,7 @@ import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX, EMOTION_COLORS, E
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 import '../../components/TreeVisualization/TreeNode.css';
 import { EMOTION_LABELS } from '../../utils/constants';
-
+import { rewriteSentenceWithEmotion } from '../../services/claude/claudeApi.js';
 
 /**
  * Gets node background color based on emotion
@@ -39,45 +39,50 @@ function getBorderColor(emotion, intensity, type) {
  * AnimatedNodeComponent - Renders a single node in the tree
  */
 export function AnimatedNodeComponent({ id, data }) {
-  const [isHovered, setIsHovered] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [nodeEmotion, setNodeEmotion] = useState(data.emotion);
-  const [nodeIntensity, setNodeIntensity] = useState(data.intensity || 50);
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
   const [nodeModified, setNodeModified] = useState(data.isDirty);
-  const border = getBorderColor(nodeEmotion, data.intensity, data.type);
-  const emotionColor = getEmotionColor(nodeEmotion, data.intensity, data.type);
+  const [emotion, setEmotion] = useState(data.emotion || 'neutral');
+  const [intensity, setIntensity] = useState(data.intensity ?? 50);
 
+  const emotionColor = getEmotionColor(emotion, intensity, data.type);
+  const border = getBorderColor(emotion, intensity, data.type);
+
+  
   useEffect(() => {
-    setNodeEmotion(data.emotion);
-    setNodeText(data.content || data.label || "");
     setNodeModified(data.isDirty);
-  }, [data.emotion, data.content, data.label, data.isDirty]);
-
+  }, [data.isDirty]);
 
   useEffect(() => {
-    console.log("[AnimatedNodeComponent] Node data changed:", data, "ID:", id);
-  }, []);
+    setEmotion(data.emotion || 'neutral');
+  }, [data.emotion]);
 
   function handleSave() {
     data.applyNodeSentenceEdit(id, nodeText);
+    data.markNodeModified(id)
     setIsDialogOpen(false);
   }
+
 
   function handleCancel() {
     setIsDialogOpen(false);
   }
 
-  function applyEmotion(emotion) {
-    setNodeEmotion(emotion);
+  function setNodeIntensity(inputIntensity) {
+    setIntensity(inputIntensity);
   }
 
-  function selectEmotion(emotion) {
-    if(isNodeRewriting) return;
-    if(emotion === nodeEmotion) return;
-    setNodeEmotion(emotion);
-    alert(`Selected emotion: ${emotion} (${EMOTION_LABELS[emotion] || 'No label'})`);
+  async function selectEmotion(inputEmotion) {
+    if (isNodeRewriting) return;
+    if (inputEmotion === emotion) return;
+    setIsNodeRewriting(true);
+    setEmotion(inputEmotion);
+    // Optional: inform user
+    // alert(`Selected emotion: ${inputEmotion} (${EMOTION_LABELS[inputEmotion] || 'No label'})`);
+    const rewrittenText = await rewriteSentenceWithEmotion(nodeText, inputEmotion, intensity);
+    setNodeText(rewrittenText);
+    setIsNodeRewriting(false);
   }
 
   // Dialog/modal for editing node - redesigned
@@ -118,8 +123,8 @@ export function AnimatedNodeComponent({ id, data }) {
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Information</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
-            <div><strong>Emotion:</strong> {nodeEmotion || "-"}</div>
-            <div><strong>Intensity:</strong> {data.intensity ?? "-"}</div>
+            <div><strong>Emotion:</strong> {emotion || "-"}</div>
+            <div><strong>Intensity:</strong> {intensity ?? "-"}</div>
             <div><strong>Type:</strong> {data.type || "-"}</div>
             {data.author && <div><strong>Author:</strong> {data.author}</div>}
             {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
@@ -147,13 +152,13 @@ export function AnimatedNodeComponent({ id, data }) {
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontWeight: '500', marginBottom: '8px' }}>Select Emotion:</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {Object.entries(EMOTION_COLORS).map(([emotion, colors]) => {
-                  const isSelected = nodeEmotion === emotion;
+                {Object.entries(EMOTION_COLORS).map(([optEmotion, colors]) => {
+                  const isSelected = emotion.toLowerCase() === optEmotion.toLocaleLowerCase();
                   return (
                     <button
-                      key={emotion}
-                      onClick={() => selectEmotion(emotion)}
-                      disabled={isNodeRewriting}
+                      key={optEmotion}
+                      onClick={() => selectEmotion(optEmotion)}
+                      disabled={isNodeRewriting || isSelected}
                       style={{
                         padding: '8px 12px',
                         backgroundColor: isSelected ? colors.medium : '#f5f5f5',
@@ -166,22 +171,24 @@ export function AnimatedNodeComponent({ id, data }) {
                         textTransform: 'capitalize'
                       }}
                     >
-                      {emotion}
+                      {optEmotion}
                     </button>
                   );
                 })}
               </div>
             </div>
             <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {nodeIntensity}</div>
+              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {intensity}</div>
               <input
                 type="range"
                 min="0"
                 max="99"
-                value={nodeIntensity}
+                value={intensity}
                 onChange={(e) => setNodeIntensity(parseInt(e.target.value))}
                 disabled={isNodeRewriting}
                 style={{
+                  backgroundColor: '#f',
+                  color: '#10B981',
                   width: '100%',
                   height: '6px',
                   borderRadius: '3px',
@@ -251,7 +258,7 @@ export function AnimatedNodeComponent({ id, data }) {
                 width: 32,
                 height: 32,
                 border: "5px solid #ccc",
-                borderTop: `5px solid ${getEmotionColor(nodeEmotion)}`,
+                borderTop: `5px solid ${getEmotionColor(data.emotion)}`,
                 borderRadius: "50%",
                 animation: "spin 0.8s linear infinite",
               }}
@@ -269,8 +276,6 @@ export function AnimatedNodeComponent({ id, data }) {
         className={nodeModified ? "animated-border" : ""}
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
         style={{
           padding: 12,
           borderRadius: 8,
@@ -280,9 +285,6 @@ export function AnimatedNodeComponent({ id, data }) {
           width: 200,
           background: emotionColor,
           border: nodeModified ? `2px solid ${border}` : '2px solid transparent',
-          boxShadow: isHovered
-            ? '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
-            : '0 1px 2px rgba(0,0,0,0.04)',
           position: 'relative',
           fontFamily:
             '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
@@ -309,9 +311,6 @@ export function AnimatedNodeComponent({ id, data }) {
           }}
         >
           {data.label}{"\n"}
-          {nodeEmotion}{"\n"}
-          {data.intensity}{"\n"}
-          {data.type}
         </div>
         {nodeModified && (
           <div className="modified-indicator" title="This node has been modified.">

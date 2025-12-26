@@ -28,7 +28,7 @@ const nodeTypes = { animatedNode: AnimatedNodeComponent };
  * TreeInner - Main tree visualization logic
  * Now works with sentences array as SSOT
  */
-export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
+export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyState }) {
   console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
 
   // ReactFlow state
@@ -51,10 +51,12 @@ export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
 
   // Log component mount/unmount for debugging
   useEffect(() => {
+    console.log('[TreeInner] Component MOUNTED', setHierarchyState);
     console.log('[TreeInner] Component MOUNTED');
     return () => {
       console.log('[TreeInner] Component UNMOUNTED');
     };
+
   }, []);
 
   // Custom hooks
@@ -403,49 +405,6 @@ export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
     [setEdges]
   );
 
-  // Handle emotion change from node
-  const handleEmotionChange = useCallback(
-    (nodeId, emotion, intensity) => {
-      console.log(`[Emotion] Node ${nodeId}: ${emotion} (${intensity})`);
-      // Track AI-powered emotion tagging
-      posthog.capture('emotion_tagged', {
-        node_id: nodeId,
-        emotion: emotion,
-        intensity: intensity,
-        // AI usage tracking
-        model: 'plutchik',
-        feature: 'emotion_selector',
-      });
-
-      // Update node data with emotion
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeId
-            ? {
-              ...n,
-              data: {
-                ...n.data,
-                emotion,
-                intensity,
-              },
-            }
-            : n
-        )
-      );
-
-      // Update the sentences array with emotion data
-      if (onTreeUpdate) {
-        // Use ref to get current sentences without adding to dependencies
-        const updatedSentences = sentencesRef.current.map(s =>
-          s.id === nodeId
-            ? { ...s, emotion, intensity }
-            : s
-        );
-        onTreeUpdate(updatedSentences);
-      }
-    },
-    [onTreeUpdate, setNodes]
-  );
 
 
   const applyNodeSentenceEdit = useCallback(
@@ -459,6 +418,46 @@ export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
     }
   );
 
+  const applyEmotionToNode = useCallback(
+    (nodeId, emotion, intensity) => {
+      console.log(`[TreeInner] Applying emotion to node ${nodeId}: ${emotion} (${intensity})`);
+      // Update node data with emotion
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? {
+              ...n,
+              data: {
+                ...n.data, 
+                emotion,
+                intensity,
+              }, 
+            }
+            : n
+        )
+      );
+    });
+  
+  const markNodeModified = useCallback(
+    (nodeId) => {
+      console.log(`[TreeInner] Marking node ${nodeId} as modified (dirty)`);
+      // Update node data to mark as dirty
+      setNodes((nds) =>
+        nds.map((n) =>
+          n.id === nodeId
+            ? {
+              ...n,
+              data: {
+                ...n.data, 
+                isDirty: true,
+              }, 
+            }
+            : n
+        )
+      );
+      setHierarchyState('has-dirty-nodes');
+    });
+
   // Pass emotion handler and position to nodes via data
   const nodesWithHandlers = useMemo(
     () =>
@@ -467,10 +466,12 @@ export function TreeInner({ sentences = [], onTreeUpdate, setSentences }) {
         data: {
           ...node.data,
           applyNodeSentenceEdit: applyNodeSentenceEdit,
+          applyEmotionToNode: applyEmotionToNode,
+          markNodeModified: markNodeModified,
           nodePosition: node.position, // Pass position for screen calculation
         },
       })),
-    [nodes, handleEmotionChange, openEmotionNodeId]
+    [nodes, openEmotionNodeId]
   );
 
   return (

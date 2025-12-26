@@ -417,8 +417,6 @@ function parseIntoSentences(text) {
             id: uuidv4(),
             type: 'sentence',
             content: sentenceText,
-            startIdx: startIdx,
-            endIdx: endIdx,
             punctuation: punctuation, // What punctuation mark to use
             delimiter: delimiterType, // What comes after the punctuation (semantic type)
             delimiterContent: trailingDelimiter, // Actual delimiter string (preserves exact formatting)

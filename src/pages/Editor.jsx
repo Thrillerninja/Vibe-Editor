@@ -165,20 +165,14 @@ export default function Editor() {
 
             // Apply the restructured subtrees to the existing hierarchy
             let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle);
-            console.log('[TEST1] Updated sentences after applying dirty subtree restructure:', updatedSentences);
+            console.log('[TEST0] Updated sentences before applying dirty subtree emotions:', updatedSentences);
             await evaluateSentenceEmotions(updatedSentences).then(result => {
                 updatedSentences = result;
             });
-            console.log('[TEST1] Updated sentences after applying dirty subtree restructure:', updatedSentences);
+            console.log('[TEST1] Updated sentences after applying dirty subtree emotions:', updatedSentences);
             // Clear dirty flags after successful update
             updatedSentences = clearDirtyFlags(updatedSentences);
-            console.log('[IMPORTANT] Cleared dirty flags after successful restructure', updatedSentences);
-
-            // TODO: Now also request sentence emotions with API Call
-            //const sentencesWithEmotions = await evaluateSentenceEmotions(updatedSentences);
-            
-            //console.log('[App] Updated sentences with emotions:', sentencesWithEmotions);
-            console.log('[App] OLD sentences before emotion update:', updatedSentences);
+            console.log('[TEST2] Cleared dirty flags after successful restructure', updatedSentences);
 
             setSentences(updatedSentences);
             addCommit(updatedSentences, 'Hierarchy regenerated');
@@ -431,6 +425,7 @@ export default function Editor() {
                                 sentences={sentences}
                                 onTreeUpdate={handleTreeUpdate}
                                 setSentences={setSentences}
+                                setHierarchyState={setHierarchyState}
                             />
                         </div>
                     </div>
