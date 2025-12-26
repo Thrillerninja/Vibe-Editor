@@ -206,3 +206,87 @@ Original sentence: "${sentence}"`;
 function stripOuterQuotes(str) {
   return str.replace(/^(['"])(.*)\1$/, "$2");
 }
+
+/**
+ * Rewrite a sentence and return multiple options
+ * @param {string} sentence - Original sentence
+ * @param {string} emotion - Target emotion
+ * @param {number} intensity - Emotional intensity (0-99)
+ * @param {number} numOptions - Number of options to return (default 3)
+ * @returns {Promise<string[]>} Array of rewritten sentence options
+ */
+export async function rewriteSentenceWithEmotionOptions(sentence, emotion, intensity, numOptions = 3) {
+    const client = getClient();
+
+    console.log(`[Claude Service] Rewriting sentence with emotion (multi): ${emotion}, intensity: ${intensity}, options: ${numOptions}`);
+
+    let intensityDescription;
+    if (intensity < 25) {
+        intensityDescription = "very subtle and mild";
+    } else if (intensity < 50) {
+        intensityDescription = "moderate";
+    } else if (intensity < 75) {
+        intensityDescription = "strong and noticeable";
+    } else {
+        intensityDescription = "very intense and powerful";
+    }
+
+    const prompt = `Please rewrite the following sentence to convey a ${emotion} emotion with ${intensityDescription} intensity (${intensity}/99).
+Return exactly ${numOptions} distinct options that each meet all constraints.
+Hard Constraints:
+- Keep the original meaning and information intact.
+- Adjust tone, word choice, and phrasing to match the ${emotion} emotion.
+- The emotional intensity should be ${intensityDescription} (${intensity}/99).
+- Return ONLY a JSON array of exactly ${numOptions} strings, no explanations.
+- Keep the length very similar to the original sentence.
+- NEVER GO MORE THAN 10% LONGER OR SHORTER THAN THE ORIGINAL SENTENCE.
+
+Original sentence: "${sentence}"`;
+
+    try {
+        const message = await client.messages.create({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: prompt
+            }]
+        });
+
+        const raw = message.content[0].text.trim();
+        let options;
+        try {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+                options = parsed.map(o => stripOuterQuotes(String(o).trim())).filter(Boolean);
+            } else {
+                options = [stripOuterQuotes(String(parsed).trim())];
+            }
+        } catch (e) {
+            console.warn('[Claude Service] JSON parse failed for multi rewrite, falling back to heuristics');
+            // Fallback: try to split by newlines or bullet points
+            const candidates = raw
+                .split(/\n+/)
+                .map(l => l.replace(/^[-*\d)\.\s]+/, '').trim())
+                .filter(Boolean);
+            options = candidates.slice(0, numOptions).map(stripOuterQuotes);
+            if (options.length === 0) {
+                options = [stripOuterQuotes(raw)];
+            }
+        }
+
+        // Ensure we return exactly numOptions by padding or trimming
+        if (options.length < numOptions) {
+            const last = options[options.length - 1] || sentence;
+            while (options.length < numOptions) options.push(last);
+        } else if (options.length > numOptions) {
+            options = options.slice(0, numOptions);
+        }
+
+        console.log('[Claude Service] Multi rewrite options ready:', options);
+        return options;
+    } catch (error) {
+        console.error('[Claude Service] Error rewriting sentence (multi):', error);
+        throw new Error(`Failed to rewrite sentence (multi): ${error.message}`);
+    }
+}

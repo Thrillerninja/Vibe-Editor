@@ -21,7 +21,7 @@ import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
-import { markSentenceAndAncestorsDirty } from '../../utils/dirtyTracking';
+import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -442,6 +442,30 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         )
       );
     });
+
+  // Delete a sentence node and update hierarchy metadata
+  const deleteNodeSentence = useCallback((nodeId) => {
+    console.log(`[TreeInner] Deleting node ${nodeId}`);
+    const current = sentencesRef.current;
+    
+    // Update hierarchy metadata (removes from parent chains, marks dirty)
+    const afterMeta = current._hierarchyMeta
+      ? removeSentenceFromHierarchy(current, nodeId)
+      : current;
+
+    // Remove the sentence from the list
+    const filtered = current.filter(s => s.id !== nodeId);
+    if (afterMeta && afterMeta._hierarchyMeta) {
+      filtered._hierarchyMeta = afterMeta._hierarchyMeta;
+    }
+
+    // Immediately remove the node and related edges from ReactFlow state
+    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+
+    // Push update to parent
+    onTreeUpdate(filtered);
+  }, [onTreeUpdate, setNodes, setEdges]);
     
   // Pass emotion handler and position to nodes via data
   const nodesWithHandlers = useMemo(
@@ -452,6 +476,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           ...node.data,
           applyNodeSentenceEdit: applyNodeSentenceEdit,
           applyEmotionToNode: applyEmotionToNode,
+          deleteNodeSentence: deleteNodeSentence,
           nodePosition: node.position, // Pass position for screen calculation
         },
       })),

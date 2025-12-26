@@ -9,7 +9,7 @@ import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX, EMOTION_COLORS, E
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 import '../../components/TreeVisualization/TreeNode.css';
 import { EMOTION_LABELS } from '../../utils/constants';
-import { rewriteSentenceWithEmotion } from '../../services/claude/claudeApi.js';
+import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
 
 /**
  * Gets node background color based on emotion
@@ -46,6 +46,8 @@ export function AnimatedNodeComponent({ id, data }) {
   const [emotion, setEmotion] = useState(data.emotion || 'neutral');
   const [intensity, setIntensity] = useState(data.intensity ?? 50);
   const [selectedIntensity, setSelectedIntensity] = useState(intensity);
+  const [suggestions, setSuggestions] = useState([]);
+  const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
   const [previousEmotion, setPreviousEmotion] = useState(emotion);
@@ -68,12 +70,20 @@ export function AnimatedNodeComponent({ id, data }) {
 
       setSelectedIntensity(intensity);
     }
+    setSuggestions([]);
+    setCurrentSuggestionIndex(0);
     setIsDialogOpen(false);
+    if (nodeText.length === 0) {
+      // If the node text is empty after saving, we delete the node
+      data.deleteNodeSentence(id);
+    }
   }
 
 
   function handleCancel() {
     setEmotion(previousEmotion)
+    setSuggestions([]);
+    setCurrentSuggestionIndex(0);
     setIsDialogOpen(false);
   }
 
@@ -88,9 +98,31 @@ export function AnimatedNodeComponent({ id, data }) {
     setEmotion(inputEmotion);
     // Optional: inform user
     // alert(`Selected emotion: ${inputEmotion} (${EMOTION_LABELS[inputEmotion] || 'No label'})`);
-    const rewrittenText = await rewriteSentenceWithEmotion(nodeText, inputEmotion, selectedIntensity);
-    setNodeText(rewrittenText);
+    try {
+      const options = await rewriteSentenceWithEmotionOptions(nodeText, inputEmotion, selectedIntensity, 3);
+      setSuggestions(options);
+      setCurrentSuggestionIndex(0);
+      if (options && options.length > 0) {
+        setNodeText(options[0]);
+      }
+    } catch (e) {
+      console.error('Failed to get rewrite options:', e);
+    }
     setIsNodeRewriting(false);
+  }
+
+  function showPrevSuggestion() {
+    if (!suggestions || suggestions.length === 0) return;
+    const newIdx = (currentSuggestionIndex - 1 + suggestions.length) % suggestions.length;
+    setCurrentSuggestionIndex(newIdx);
+    setNodeText(suggestions[newIdx]);
+  }
+
+  function showNextSuggestion() {
+    if (!suggestions || suggestions.length === 0) return;
+    const newIdx = (currentSuggestionIndex + 1) % suggestions.length;
+    setCurrentSuggestionIndex(newIdx);
+    setNodeText(suggestions[newIdx]);
   }
 
   // Dialog/modal for editing node - redesigned
@@ -139,10 +171,82 @@ export function AnimatedNodeComponent({ id, data }) {
             {/* Add more fields as needed */}
           </div>
         </div>
+
+                {/* Options Section: actions like delete */}
+        {data.type === "sentence" && (
+          <div style={{ padding: "16px 24px 20px 24px", background: "#fff", borderTop: "1px solid #eee" }}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                title="Delete this sentence"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const ok = window.confirm('Delete this sentence? This cannot be undone.');
+                  if (ok && typeof data.deleteNodeSentence === 'function') {
+                    data.deleteNodeSentence(id);
+                    setIsDialogOpen(false);
+                  }
+                }}
+                disabled={isNodeRewriting}
+                style={{
+                  padding: '8px 12px',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 1px 4px rgba(0,0,0,0.12)'
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        )}
+
+
+
         {/* Bottom: Editing Section (if editable) */}
         {data.type === "sentence" && !isNodeRewriting && (
           <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
+            {suggestions.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <button
+                  onClick={showPrevSuggestion}
+                  disabled={isNodeRewriting}
+                  title="Previous option"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 4,
+                    border: '1px solid #ccc',
+                    background: '#f8f8f8',
+                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ◀
+                </button>
+                <div style={{ fontSize: 12, color: '#555' }}>
+                  Option {currentSuggestionIndex + 1} / {suggestions.length}
+                </div>
+                <button
+                  onClick={showNextSuggestion}
+                  disabled={isNodeRewriting}
+                  title="Next option"
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 4,
+                    border: '1px solid #ccc',
+                    background: '#f8f8f8',
+                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  ▶
+                </button>
+              </div>
+            )}
             <textarea
               value={nodeText}
               onChange={(e) => setNodeText(e.target.value)}
@@ -240,6 +344,7 @@ export function AnimatedNodeComponent({ id, data }) {
           </div>
           
         )}
+
         {/* Close button for non-editable nodes */}
         {data.type !== "sentence" && (
           <div style={{ padding: "16px 24px", display: "flex", justifyContent: "flex-end" }}>
