@@ -64,7 +64,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
   const { checkReorderDrop, reorderNodes, findClosestSibling } = useReordering();
-  const { flowToScreenPosition, setCenter, getZoom } = useReactFlow();
+  const { flowToScreenPosition, setCenter, getZoom, zoomIn, zoomOut, fitView } = useReactFlow();
 
   // Toggle debug mode with 'D' key
   useEffect(() => {
@@ -476,6 +476,20 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       })),
     [nodes, openEmotionNodeId]
   );
+
+  const controlButtonStyle = {
+    width: '36px',
+    height: '36px',
+    borderRadius: '50%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    border: 'none',
+    cursor: 'pointer',
+    backgroundColor: 'white',
+    color: '#374151',
+  };
 
   return (
     <div
