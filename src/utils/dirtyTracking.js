@@ -81,6 +81,42 @@ export function markSentencesAsDirty(sentences, sentenceIds) {
 }
 
 /**
+ * Marks a sentence itself and all its ancestor nodes as dirty
+ * Lightweight helper when you only need to flag one sentence and its chain
+ * @param {Array} sentences - Sentences array with hierarchy metadata
+ * @param {string} sentenceId - ID of the sentence to mark
+ * @returns {Array} Updated sentences with dirty flags
+ */
+export function markSentenceAndAncestorsDirty(sentences, sentenceId) {
+    if (!sentences._hierarchyMeta) {
+        return sentences;
+    }
+
+    console.log(`${LOG_PREFIX.PARSER} Marking sentence and ancestors dirty: ${sentenceId}`);
+
+    const updated = [...sentences];
+    const hierarchyMeta = { ...sentences._hierarchyMeta };
+    const nodes = hierarchyMeta.nodes.map(n => ({ ...n }));
+
+    const dirtyNodeIds = new Set(hierarchyMeta.dirtyNodeIds || []);
+    const dirtySentenceIds = new Set(hierarchyMeta.dirtySentenceIds || []);
+
+    // Mark the sentence itself dirty
+    dirtySentenceIds.add(sentenceId);
+
+    // Mark all ancestors (and root if at top level)
+    markAncestorsAsDirty(sentenceId, nodes, dirtyNodeIds);
+
+    // Persist metadata
+    hierarchyMeta.nodes = nodes;
+    hierarchyMeta.dirtyNodeIds = Array.from(dirtyNodeIds);
+    hierarchyMeta.dirtySentenceIds = Array.from(dirtySentenceIds);
+    updated._hierarchyMeta = hierarchyMeta;
+
+    return updated;
+}
+
+/**
  * Marks a node and all its ancestors as dirty (helper function)
  * @param {string} nodeId - ID of the node to start from
  * @param {Array} nodes - Hierarchy nodes array

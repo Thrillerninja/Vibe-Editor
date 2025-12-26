@@ -21,6 +21,7 @@ import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
+import { markSentenceAndAncestorsDirty } from '../../utils/dirtyTracking';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -455,6 +456,7 @@ export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyS
             : n
         )
       );
+      setSentences(markSentenceAndAncestorsDirty(sentencesRef.current, nodeId));
       setHierarchyState('has-dirty-nodes');
     });
 
