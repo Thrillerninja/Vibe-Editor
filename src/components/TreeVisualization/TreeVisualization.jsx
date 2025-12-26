@@ -14,12 +14,12 @@ import 'reactflow/dist/style.css';
  * @param {Array} sentences - Sentence nodes (SSOT)
  * @param {Function} onTreeUpdate - Callback when tree structure changes
  */
-export default function TreeVisualization({ sentences, onTreeUpdate, setSentences , setHierarchyState}) {
+export default function TreeVisualization({ sentences, onTreeUpdate }) {
   console.log('[TreeVisualization] Rendering with', sentences.length, 'sentences');
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <ReactFlowProvider>
-        <TreeInner sentences={sentences} onTreeUpdate={onTreeUpdate} setSentences={setSentences} setHierarchyState={setHierarchyState} />
+        <TreeInner sentences={sentences} onTreeUpdate={onTreeUpdate} />
       </ReactFlowProvider>
     </div>
   );

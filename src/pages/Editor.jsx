@@ -221,7 +221,7 @@ export default function Editor() {
 
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)
     const handleTreeUpdate = useCallback((updatedSentences) => {
-        console.log('[App] Tree updated, updating sentences:', updatedSentences.length);
+        console.log('[App] Tree updated, updating sentences:', updatedSentences);
         posthog.capture('tree_updated', {
             sentence_count: updatedSentences.length,
         });
@@ -498,8 +498,6 @@ export default function Editor() {
                             <TreeVisualization
                                 sentences={sentences}
                                 onTreeUpdate={handleTreeUpdate}
-                                setSentences={setSentences}
-                                setHierarchyState={setHierarchyState}
                             />
                         </div>
                     </div>

@@ -59,9 +59,11 @@ export function AnimatedNodeComponent({ id, data }) {
   }, [data.emotion]);
 
   function handleSave() {
-    data.applyNodeSentenceEdit(id, nodeText);
+    //alert(nodeText)
+
     data.markNodeModified(id)
     setIntensity(selectedIntensity);
+    data.applyNodeSentenceEdit(id, nodeText);
     setIsDialogOpen(false);
   }
 

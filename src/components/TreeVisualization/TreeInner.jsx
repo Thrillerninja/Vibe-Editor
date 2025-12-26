@@ -29,7 +29,7 @@ const nodeTypes = { animatedNode: AnimatedNodeComponent };
  * TreeInner - Main tree visualization logic
  * Now works with sentences array as SSOT
  */
-export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyState }) {
+export function TreeInner({ sentences, onTreeUpdate }) {
   console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
 
   // ReactFlow state
@@ -52,7 +52,6 @@ export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyS
 
   // Log component mount/unmount for debugging
   useEffect(() => {
-    console.log('[TreeInner] Component MOUNTED', setHierarchyState);
     console.log('[TreeInner] Component MOUNTED');
     return () => {
       console.log('[TreeInner] Component UNMOUNTED');
@@ -411,11 +410,12 @@ export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyS
   const applyNodeSentenceEdit = useCallback(
     (nodeId, newContent) => {
       console.log(`[TreeInner] Node ${nodeId} content edit: "${newContent}"`);
-      console.log('[TreeInner] SetSentences ', setSentences);
       // Update the sentences array with new content
+      console.log("[newContent]", newContent);
       const edited =  editSentence(nodeId, newContent, sentencesRef.current);
-
-      setSentences(edited);
+      console.log("[edited]", edited);
+      // Use onTreeUpdate to centralize updates and history handling
+      onTreeUpdate(edited);
     }
   );
 
@@ -456,8 +456,9 @@ export function TreeInner({ sentences, onTreeUpdate, setSentences, setHierarchyS
             : n
         )
       );
-      setSentences(markSentenceAndAncestorsDirty(sentencesRef.current, nodeId));
-      setHierarchyState('has-dirty-nodes');
+      const updated = markSentenceAndAncestorsDirty(sentencesRef.current, nodeId);
+      
+      onTreeUpdate(updated);
     });
 
   // Pass emotion handler and position to nodes via data
