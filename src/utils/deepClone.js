@@ -16,8 +16,9 @@ export function deepCloneSentences(sentences) {
     // Clone the array and all sentence objects with all their properties
     const cloned = sentences.map(sentence => ({
         ...sentence,
-        // Deep clone emotion if present (nested object)
-        emotion: sentence.emotion ? { ...sentence.emotion } : undefined,
+        // Preserve primitives directly; avoid spreading strings into objects
+        emotion: sentence.emotion,
+        intensity: sentence.intensity,
     }));
 
     // Deep clone hierarchy metadata if present

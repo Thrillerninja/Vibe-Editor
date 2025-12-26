@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { TreeVisualization, HistoryGraph } from '../components';
+import DiffView from '../components/HistoryGraph/DiffView';
 import React from 'react';
 import posthog from '../utils/posthog';
 import { useNavigate } from 'react-router-dom';
@@ -7,8 +8,9 @@ import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
-import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
+import { applyDirtySubtreeRestructure, createPlaceholderHierarchy, clearHierarchy } from '../utils/hierarchyIntegration';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
+import { computeSentenceDiff, hasChanges } from '../utils/diffUtils';
 import { s } from 'framer-motion/client';
 
 const EXAMPLE_TEXT =
@@ -23,6 +25,7 @@ const EXAMPLE_TEXT =
 export default function Editor() {
     const historyGraphRef = useRef(null);
     const initialCommitAdded = useRef(false);
+    const lastCommittedSentencesRef = useRef([]);
     useUserIdentification();
     const navigate = useNavigate();
 
@@ -121,6 +124,12 @@ export default function Editor() {
 
     const addCommit = useCallback((newSentences, title) => {
         historyGraphRef.current?.addCommit(newSentences, title);
+        // Track last committed snapshot for diff previews
+        try {
+            lastCommittedSentencesRef.current = JSON.parse(JSON.stringify(newSentences));
+        } catch {
+            lastCommittedSentencesRef.current = newSentences;
+        }
         prevTextRef.current = text;
     }, [text]);
 
@@ -139,7 +148,6 @@ export default function Editor() {
         });
 
         setSentences(newSentences);
-        addCommit(newSentences, "Example inserted");
     };
 
     const clearText = () => setSentences([]);
@@ -162,9 +170,13 @@ export default function Editor() {
 
         setIsGenerating(true);
         try {
-            // At this point, placeholder hierarchy should already exist from slider change
-            // (or from previous text edits). We just need to restructure dirty nodes.
-            const sentencesToProcess = sentences;
+            // Ensure placeholder hierarchy exists; if not, create it and mark all dirty
+            let sentencesToProcess = sentences;
+            if (!sentencesToProcess._hierarchyMeta) {
+                sentencesToProcess = createPlaceholderHierarchy(sentencesToProcess, maxDepth);
+                setSentences(sentencesToProcess);
+                setHierarchyState('has-dirty-nodes');
+            }
 
             // Dirty update - restructure dirty portions only
             console.log('[App] Restructuring dirty portions of hierarchy');
@@ -236,18 +248,27 @@ export default function Editor() {
         });
 
         setSentences(updatedSentences);
-        addCommit(updatedSentences, 'Tree updated');
     }, [addCommit]);
 
     const handleRevertComplete = (revertedData) => {
-        setSentences(revertedData);
+        // Restore sentences exactly as stored in the commit snapshot
+        const meta = revertedData._hierarchyMeta;
+        let updated = revertedData.map(s => ({ ...s }));
 
-        // Restore maxDepth from the hierarchy metadata
-        if (revertedData._hierarchyMeta && revertedData._hierarchyMeta.maxLevel != null) {
-            const restoredDepth = revertedData._hierarchyMeta.maxLevel + 1;
-            console.log('[App] Restoring maxDepth from history:', restoredDepth);
-            setMaxDepth(restoredDepth);
+        if (meta) {
+            // Preserve the commit's hierarchy metadata without forcing dirty flags
+            updated._hierarchyMeta = { ...meta };
+            // Restore depth from metadata for the UI controls
+            if (meta.maxLevel != null) {
+                const restoredDepth = meta.maxLevel + 1;
+                setMaxDepth(restoredDepth);
+            }
+            // Let the existing effect determine hierarchyState from sentences
+        } else {
+            // No hierarchy present; rely on effect to set state to 'none'
         }
+
+        setSentences(updated);
     };
 
     // Handle horizontal drag start
@@ -327,7 +348,20 @@ export default function Editor() {
         const value = e.target.value;
         if (value === prevTextRef.current) return; // No change
 
-        // Ensure hierarchy exists before committing
+        // Ensure hierarchy exists, mark dirty, but do not auto-commit
+        if (sentences.length > 0 && !sentences._hierarchyMeta) {
+            const updated = createPlaceholderHierarchy(sentences, maxDepth);
+            setSentences(updated);
+            setHierarchyState('has-dirty-nodes');
+        }
+    }
+
+    // Commit preview popup state
+    const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
+    const [commitDiff, setCommitDiff] = useState([]);
+
+    const openCommitPreview = () => {
+        // Prepare sentences (ensure hierarchy exists)
         let sentencesToCommit = sentences;
         if (sentences.length > 0 && !sentences._hierarchyMeta) {
             sentencesToCommit = createPlaceholderHierarchy(sentences, maxDepth);
@@ -335,8 +369,32 @@ export default function Editor() {
             setHierarchyState('has-dirty-nodes');
         }
 
-        addCommit(sentencesToCommit, "Text edited");
-    }
+        const oldSentences = lastCommittedSentencesRef.current || [];
+        const diff = computeSentenceDiff(oldSentences, sentencesToCommit);
+        setCommitDiff(diff);
+        setIsCommitPreviewOpen(true);
+    };
+
+    const confirmCommit = () => {
+        // If there are changes, clear all dirty flags and commit
+        if (hasChanges(commitDiff)) {
+            const hierarchyMeta = sentences._hierarchyMeta;
+            // Reset sentence-level dirty flags
+            let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
+            // Clear hierarchy-level dirty flags if present
+            cleaned = clearDirtyFlags(cleaned);
+            cleaned._hierarchyMeta = hierarchyMeta;
+            setSentences(cleaned);
+            addCommit(cleaned, 'Manual commit');
+        }
+        setIsCommitPreviewOpen(false);
+        setCommitDiff([]);
+    };
+
+    const cancelCommitPreview = () => {
+        setIsCommitPreviewOpen(false);
+        setCommitDiff([]);
+    };
 
     const floatingButtonStyle = {
         width: '44px',
@@ -380,7 +438,7 @@ export default function Editor() {
                                 style={{
                                     ...floatingButtonStyle,
                                     position: 'relative',
-                                    backgroundColor: '#2563eb',
+                                    backgroundColor: '#000',
                                     color: 'white',
                                 }}
                             >
@@ -397,12 +455,26 @@ export default function Editor() {
                                 style={{
                                     ...floatingButtonStyle,
                                     position: 'relative',
-                                    backgroundColor: '#ef4444',
+                                    backgroundColor: '#000',
                                     color: 'white',
                                 }}
                             >
                                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={openCommitPreview}
+                                title="Commit changes"
+                                style={{
+                                    ...floatingButtonStyle,
+                                    position: 'relative',
+                                    backgroundColor: '#000',
+                                    color: 'white',
+                                }}
+                            >
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                             </button>
                         </div>
@@ -419,6 +491,29 @@ export default function Editor() {
                                     '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
                             }}
                         />
+                        {isCommitPreviewOpen && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                                <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
+                                <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-4 border-b border-gray-200">
+                                        <div className="text-sm font-semibold text-gray-900">Commit preview</div>
+                                        <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
+                                    </div>
+                                    <div className="flex-1 overflow-auto p-4">
+                                        <span className="text-xs text-gray-500">Changes since last commit:</span>
+                                        <div className="mt-2">
+                                            <DiffView diff={commitDiff} />
+                                        </div>
+                                    </div>
+                                    <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                                        <button onClick={cancelCommitPreview}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
+                                        <button onClick={confirmCommit}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">Commit</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Draggable Divider */}
