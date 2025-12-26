@@ -59,11 +59,13 @@ export function AnimatedNodeComponent({ id, data }) {
   }, [data.emotion]);
 
   function handleSave() {
-    //alert(nodeText)
-
-    data.markNodeModified(id)
-    setIntensity(selectedIntensity);
-    data.applyNodeSentenceEdit(id, nodeText);
+    if (!(data.content === nodeText)) {
+      data.markNodeModified(id)
+      setIntensity(selectedIntensity);
+      data.applyNodeSentenceEdit(id, nodeText);
+    } else {  
+      setSelectedIntensity(intensity);
+    }
     setIsDialogOpen(false);
   }
 
@@ -161,7 +163,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     <button
                       key={optEmotion}
                       onClick={() => selectEmotion(optEmotion)}
-                      disabled={isNodeRewriting || isSelected}
+                      disabled={isNodeRewriting}
                       style={{
                         padding: '8px 12px',
                         backgroundColor: isSelected ? colors.medium : '#f5f5f5',
