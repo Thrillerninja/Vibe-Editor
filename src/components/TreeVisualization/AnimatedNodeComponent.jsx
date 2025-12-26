@@ -48,14 +48,15 @@ export function AnimatedNodeComponent({ id, data }) {
   const [selectedIntensity, setSelectedIntensity] = useState(intensity);
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
+  const [previousEmotion, setPreviousEmotion] = useState(emotion);
 
-  
   useEffect(() => {
     setNodeModified(data.isDirty);
   }, [data.isDirty]);
 
   useEffect(() => {
     setEmotion(data.emotion || 'neutral');
+    setPreviousEmotion(data.emotion || 'neutral');
   }, [data.emotion]);
 
   function handleSave() {
@@ -63,7 +64,8 @@ export function AnimatedNodeComponent({ id, data }) {
       data.markNodeModified(id)
       setIntensity(selectedIntensity);
       data.applyNodeSentenceEdit(id, nodeText);
-    } else {  
+    } else {
+
       setSelectedIntensity(intensity);
     }
     setIsDialogOpen(false);
@@ -71,6 +73,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
 
   function handleCancel() {
+    setEmotion(previousEmotion)
     setIsDialogOpen(false);
   }
 
