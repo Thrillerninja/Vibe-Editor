@@ -55,6 +55,67 @@ When you edit or reorder:
 - Reordering is manual (via drag & drop in tree)
 - Hierarchy respects your intended sentence order
 
+### Text handling
+
+STAGE 1: USER TYPING (TEXTAREA INPUT)
+├─ User types/deletes in textarea
+├─ onChange → handleTextChange() triggered
+├─ Event carries newText and cursorPosition
+└─ Dispatch to sentences parsing
+
+STAGE 2: TEXT → SENTENCES (SOURCE OF TRUTH)
+├─ applySentenceEdit() called
+├─ Text is split on punctuation & newlines
+├─ Each piece becomes a sentence object:
+│  {
+│    id: UUID,
+│    type: "sentence",
+│    content: "actual text",
+│    punctuation: ".", // if has ending mark
+│    delimiter: "space|newline|paragraph",
+│    delimiterContent: " " | "\n" | "\n\n",
+│    emotion: "neutral",
+│    intensity: 0
+│  }
+├─ Preserve old sentence IDs if content matches
+└─ Return new sentences array (SSOT)
+
+STAGE 3: SENTENCES → HIERARCHY
+├─ sentences._hierarchyMeta tracks:
+│  {
+│    rootTitle: "Doc title",
+│    maxLevel: 3,
+│    nodes: [...hierarchy nodes...],
+│    dirtyNodeIds: [...]  // marked for AI update
+│  }
+└─ Placeholder hierarchy created if needed
+
+STAGE 4: SENTENCES → TEXT (FOR DISPLAY)
+├─ buildTextFromSentences() called
+├─ Reconstructs text from sentence array:
+│  sentence.content + sentence.punctuation + sentence.delimiter
+└─ Returned to textarea value
+
+STAGE 5: SENTENCES → TREE (FOR VISUALIZATION)
+├─ buildTreeFromSentences() called
+├─ Creates tree structure from hierarchy
+├─ flattenTree() converts to ReactFlow nodes/edges
+└─ Passed to TreeVisualization component
+
+STAGE 6: TREE MODIFICATIONS (USER DRAGS/EDITS NODES)
+├─ User edits node in editor modal
+├─ applyNodeSentenceEdit(nodeId, newContent) called
+├─ editSentence() updates sentences array
+├─ markSentenceAndAncestorsDirty() marks for AI update
+├─ handleTreeUpdate() calls onTreeUpdate()
+└─ setSentences() updates state → triggers layout
+
+STAGE 7: HISTORY TRACKING
+├─ Manual commit: user clicks commit button
+├─ Or: automatic on text blur
+├─ historyGraphRef.current.addCommit(sentences, title)
+├─ Stores snapshot: sentences array + hierarchy metadata
+└─ User can revert to any commit
 ## 🚀 Getting Started
 
 ### Installation

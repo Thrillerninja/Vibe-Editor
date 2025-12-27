@@ -1,0 +1,388 @@
+/* src/components/RichTextEditor/styles/editor.css */
+
+:root {
+  --color-text-primary: #1f2937;
+  --color-text-secondary: #6b7280;
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-border: #e5e7eb;
+  --color-accent: #3b82f6;
+  --color-accent-hover: #2563eb;
+}
+
+/* CRITICAL: Wrapper uses flexbox, full height */
+.editor-wrapper {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--color-bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+/* Header: Fixed height, can wrap toolbar to 3 lines max */
+.editor-header-bar {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+  overflow: hidden;
+  max-height: 96px; /* 3 lines max: ~32px per line */
+}
+
+.header-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 8px 16px;
+  flex-wrap: wrap;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 28px;
+}
+
+/* Toolbar container: constrained width, wraps to 3 lines max, then overflows hidden */
+
+
+.toolbar-top {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  max-height: 88px;
+  overflow: hidden; /* Hide toolbar items that overflow */
+}
+
+.toolbar-group {
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.toolbar-btn {
+  padding: 6px 8px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+  transition: all 0.15s;
+  height: 28px;
+  min-width: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbar-btn:hover {
+  background: var(--color-bg-secondary);
+  border-color: #9ca3af;
+}
+
+.toolbar-btn.active {
+  background: var(--color-accent);
+  color: white;
+  border-color: var(--color-accent);
+}
+
+.toolbar-select {
+  padding: 6px 10px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-primary);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s;
+  height: 28px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.toolbar-select:hover {
+  background: var(--color-bg-secondary);
+  border-color: #9ca3af;
+}
+
+.caret {
+  font-size: 9px;
+  margin-left: 4px;
+}
+
+.block-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 200;
+  min-width: 100px;
+}
+
+.menu-item {
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--color-text-primary);
+  transition: background 0.15s;
+}
+
+.menu-item:hover {
+  background: var(--color-bg-secondary);
+}
+
+.menu-item.active {
+  background: #eff6ff;
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 4px;
+  flex-shrink: 0;
+}
+
+/* Header right section: status + stats */
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.hierarchy-status-compact {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 4px;
+  white-space: nowrap;
+  width: fit-content;
+}
+
+.hierarchy-status-compact.status-neutral {
+  color: #6b7280;
+  background: #f3f4f6;
+}
+
+.hierarchy-status-compact.status-pending {
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.hierarchy-status-compact.status-complete {
+  color: #065f46;
+  background: #d1fae5;
+}
+
+.status-icon {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.editor-stats-inline {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* CRITICAL: Editor container - grows to fill remaining space */
+.editor-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg-primary);
+  min-height: 0; /* CRITICAL: allows flex shrinking */
+}
+
+/* CRITICAL: Editor inner - must overflow scroll */
+.editor-inner {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* CRITICAL: enables scrolling */
+}
+
+/* CRITICAL: Editor input - min-height 100%, grows, scrollable */
+.editor-input {
+  min-height: 100%;
+  padding: 24px;
+  outline: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+  flex: 1;
+}
+
+.editor-placeholder {
+  position: absolute;
+  top: 24px;
+  left: 24px;
+  color: #d1d5db;
+  pointer-events: none;
+  font-size: 16px;
+}
+
+/* Typography */
+.editor-heading-h1 {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 20px 0 12px;
+  color: var(--color-text-primary);
+}
+
+.editor-heading-h2 {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 16px 0 10px;
+  color: var(--color-text-primary);
+}
+
+.editor-heading-h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 12px 0 8px;
+  color: var(--color-text-primary);
+}
+
+.editor-paragraph {
+  margin: 0 0 12px 0;
+  color: var(--color-text-primary);
+}
+
+.editor-text-bold {
+  font-weight: 700;
+}
+
+.editor-text-italic {
+  font-style: italic;
+}
+
+.editor-text-underline {
+  text-decoration: underline;
+}
+
+/* Lists */
+.editor-list-ul,
+.editor-list-ol {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: var(--color-text-primary);
+}
+
+.editor-list-item {
+  margin: 4px 0;
+  color: var(--color-text-primary);
+}
+
+/* Quote */
+.editor-quote {
+  border-left: 3px solid var(--color-accent);
+  padding-left: 16px;
+  margin: 12px 0;
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+/* Link */
+.editor-link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.editor-link:hover {
+  color: var(--color-accent-hover);
+}
+
+/* Root */
+.editor-root {
+  color: var(--color-text-primary);
+  background: var(--color-bg-primary);
+}
+
+
+/* Add/update these list styles */
+
+/* Unordered Lists */
+.editor-list-ul {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: var(--color-text-primary);
+  list-style-type: disc;
+}
+
+.editor-list-item {
+  margin: 4px 0;
+  color: var(--color-text-primary);
+  display: list-item;
+  list-style-type: disc;
+}
+
+/* Ordered Lists */
+.editor-list-ol {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: var(--color-text-primary);
+  list-style-type: decimal;
+}
+
+.editor-list-ol .editor-list-item {
+  list-style-type: decimal;
+}
+
+/* Nested list items */
+.editor-list-item.nested-list-item {
+  list-style-type: circle;
+}
+
+.editor-list-ol .editor-list-item.nested-list-item {
+  list-style-type: lower-alpha;
+}
+
+/* List item content */
+.editor-list-item strong {
+  font-weight: 700;
+}
+
+.editor-list-item em {
+  font-style: italic;
+}
