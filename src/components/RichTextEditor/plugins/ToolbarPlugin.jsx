@@ -132,7 +132,7 @@ export function ToolbarPlugin() {
         >
           <span
             style={{
-                fontSize: '20px',
+                fontSize: '18px',
               }}
           >
             {BLOCK_TYPES.find(([t]) => t === blockType)?.[1] || 'Normal'}
