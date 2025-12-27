@@ -124,10 +124,17 @@ export function ToolbarPlugin() {
       <div className="toolbar-group" ref={blockTypeRef}>
         <button
           className="toolbar-select"
+          style={{
+              height: '34px',
+            }}
           onClick={() => setShowBlockMenu(!showBlockMenu)}
           title="Block type"
         >
-          <span>
+          <span
+            style={{
+                fontSize: '20px',
+              }}
+          >
             {BLOCK_TYPES.find(([t]) => t === blockType)?.[1] || 'Normal'}
           </span>
           <span className="caret">▼</span>
