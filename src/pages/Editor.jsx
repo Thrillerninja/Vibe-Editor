@@ -5,13 +5,14 @@ import React from 'react';
 import posthog from '../utils/posthog';
 import { useNavigate } from 'react-router-dom';
 import { buildTextFromSentences } from '../utils/treeParser';
-import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
 import { EMOTIONS, EMOTION_COLORS, EMOTION_LABELS } from '../utils/constants';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
+import RichTextEditor from '../components/RichTextEditor/RichTextEditor';
+import { applySentenceEdit } from '../utils/sentenceEditor';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -207,13 +208,11 @@ export default function Editor() {
     };
 
     // Handle text input changes from textarea - DIRECT EDITING
-    const handleTextChange = (e) => {
-        const newText = e.target.value;
-        const cursorPosition = e.target.selectionStart;
-
+    const handleTextChange = (newText, cursorPosition) => {
         console.log('[App] Text changed, cursor at:', cursorPosition);
 
-        const textLengthChange = newText.length - text.length
+        const textLengthChange = newText.length - text.length;
+
         posthog.capture('text_edited', {
             text_length_change: textLengthChange,
             total_text_length: newText.length,
@@ -225,6 +224,14 @@ export default function Editor() {
         const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
         setSentences(updatedSentences);
     };
+
+  const handleTextBlur = () => {
+    // Ensure hierarchy exists if text was edited
+    if (sentences.length > 0 && !sentences._hierarchyMeta) {
+      const updated = createPlaceholderHierarchy(sentences, maxDepth);
+      setSentences(updated);
+    }
+  };
 
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)
     const handleTreeUpdate = useCallback((updatedSentences) => {
@@ -383,6 +390,14 @@ export default function Editor() {
                             minWidth: 0,
                         }}
                     >
+                        <RichTextEditor
+                            value={text}
+                            onChange={handleTextChange}
+                            onBlur={handleTextBlur}
+                            placeholder="Enter your text here..."
+                            hierarchyState={hierarchyState}
+                            sentences={sentences}
+                            />
                         {/* Floating Buttons for Left Pane */}
                         {/* <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
                             <button
@@ -432,7 +447,7 @@ export default function Editor() {
                             </button>
                         </div> */}
 
-                        <textarea
+                        {/* <textarea
                             ref={textareaRef}
                             value={text}
                             onChange={handleTextChange}
@@ -443,7 +458,30 @@ export default function Editor() {
                                 fontFamily:
                                     '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
                             }}
-                        />
+                        /> */}
+                        {isCommitPreviewOpen && (
+                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                                <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
+                                <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
+                                    <div className="p-4 border-b border-gray-200">
+                                        <div className="text-sm font-semibold text-gray-900">Commit preview</div>
+                                        <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
+                                    </div>
+                                    <div className="flex-1 overflow-auto p-4">
+                                        <span className="text-xs text-gray-500">Changes since last commit:</span>
+                                        <div className="mt-2">
+                                            <DiffView diff={commitDiff} />
+                                        </div>
+                                    </div>
+                                    <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                                        <button onClick={cancelCommitPreview}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
+                                        <button onClick={confirmCommit}
+                                            className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">Commit</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Draggable Divider */}
