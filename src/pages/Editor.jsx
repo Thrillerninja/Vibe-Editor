@@ -12,6 +12,7 @@ import { applyDirtySubtreeRestructure, createPlaceholderHierarchy, clearHierarch
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 import { computeSentenceDiff, hasChanges } from '../utils/diffUtils';
 import { s } from 'framer-motion/client';
+import LogoMenu from '../components/LogoMenu/LogoMenu';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -116,7 +117,7 @@ export default function Editor() {
     const textareaRef = useRef(null);
 
     // Split state for vertical divider
-    const [bottomPct, setBottomPct] = useState(18);
+    const [bottomPct, setBottomPct] = useState(10);
     const verticalContainerRef = useRef(null);
     const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
@@ -411,6 +412,8 @@ export default function Editor() {
 
     return (
         <div className="flex flex-col h-screen bg-gray-50">
+            <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} />
+
             {/* Main Content Area */}
             <div
                 ref={horizontalContainerRef}
@@ -431,7 +434,7 @@ export default function Editor() {
                         }}
                     >
                         {/* Floating Buttons for Left Pane */}
-                        <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
+                        {/* <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
                             <button
                                 onClick={insertExample}
                                 title="Insert example"
@@ -477,7 +480,7 @@ export default function Editor() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                             </button>
-                        </div>
+                        </div> */}
 
                         <textarea
                             ref={textareaRef}
@@ -568,47 +571,6 @@ export default function Editor() {
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21L12 12" />
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9V6M12 18v-3M9 12H6M18 12h-3M15.5 8.5l2-2M6.5 17.5l2-2M8.5 8.5l-2-2M17.5 17.5l-2-2" />
                                     </svg>
-                                </button>
-                            </div>
-
-                            {/* Depth Slider and Stats */}
-                            <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
-                                <div
-                                    style={{
-                                        height: '44px',
-                                        padding: '0 16px',
-                                        backgroundColor: 'white',
-                                        borderRadius: '24px',
-                                        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '8px',
-                                        border: '1px solid #e5e7eb'
-                                    }}
-                                >
-                                    <label htmlFor="depth-slider" className="text-xs font-medium text-gray-700 whitespace-nowrap">
-                                        Depth: {maxDepth}
-                                    </label>
-                                    <input
-                                        id="depth-slider"
-                                        type="range"
-                                        min="3"
-                                        max="6"
-                                        value={maxDepth}
-                                        onChange={(e) => setMaxDepth(parseInt(e.target.value))}
-                                        className="w-20 h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-600"
-                                    />
-                                </div>
-                                <button
-                                    onClick={() => navigate('/stats')}
-                                    title="View analytics"
-                                    style={{
-                                        ...floatingButtonStyle,
-                                        backgroundColor: 'white',
-                                        color: '#374151',
-                                    }}
-                                >
-                                    📊
                                 </button>
                             </div>
 

@@ -312,7 +312,7 @@ const HistoryGraph = forwardRef(({
   return (
     // make container relative so tooltip can be absolutely positioned
     <div className={`w-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box' }}>
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-medium text-gray-700">Edit history</div>
       </div>
 
