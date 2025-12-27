@@ -59,7 +59,7 @@
   gap: 4px;
   flex-wrap: wrap;
   max-height: 88px;
-  overflow: hidden; /* Hide toolbar items that overflow */
+  overflow: visible; /* Hide toolbar items that overflow */
 }
 
 .toolbar-group {
@@ -76,12 +76,12 @@
   background: var(--color-bg-primary);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 20px;
   font-weight: 500;
   color: var(--color-text-primary);
   transition: all 0.15s;
-  height: 28px;
-  min-width: 28px;
+  height: 36px;
+  min-width: 36px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -136,8 +136,10 @@
   border: 1px solid var(--color-border);
   border-radius: 6px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  z-index: 200;
+  z-index: 300; /* INCREASED: ensure it's above everything */
   min-width: 100px;
+  overflow: visible;
+  pointer-events: auto; /* Ensure it's clickable */
 }
 
 .menu-item {
@@ -150,6 +152,8 @@
   font-size: 12px;
   color: var(--color-text-primary);
   transition: background 0.15s;
+  display: block;
+  white-space: nowrap;
 }
 
 .menu-item:hover {

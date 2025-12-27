@@ -103,7 +103,7 @@ export default function RichTextEditor({
         background: 'var(--color-bg-secondary)',
         borderBottom: '1px solid var(--color-border)',
         flexShrink: 0,
-        overflow: 'hidden'
+        overflow: 'visible'
       }}>
         <div style={{
           display: 'flex',
@@ -116,7 +116,7 @@ export default function RichTextEditor({
           <div className="w-[300px] h-16" />
           
           {/* Toolbar */}
-          <div className="flex-1 min-w-45 overflow-hidden max-h-[88px] flex items-center">
+          <div className="flex-1 min-w-55 max-h-[88px] flex items-center">
             <ToolbarPlugin />
           </div>
         </div>
