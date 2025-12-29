@@ -95,7 +95,7 @@ export function sortNodesByDocumentOrder(nodes, sentences) {
  * @param {string} newRootTitle - Optional new root title (if root was dirty)
  * @returns {Array} Updated sentences with restructured hierarchy
  */
-export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees, newRootTitle = null) {
+export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees, newRootTitle = null, newRootEmotion = null, newRootIntensity = null) {
     console.log(`${LOG_PREFIX.PARSER} Applying ${restructuredSubtrees.length} subtree restructures`);
 
     if (!sentences._hierarchyMeta) {
@@ -187,10 +187,15 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
 
     hierarchyMeta.nodes = nodes;
 
-    // Update root title if provided
-    if (newRootTitle) {
-        console.log(`${LOG_PREFIX.PARSER} Updating root title: "${hierarchyMeta.rootTitle}" → "${newRootTitle}"`);
+    // Update root properties only if provided (avoid overwriting with null/undefined)
+    if (typeof newRootTitle === 'string' && newRootTitle.length > 0) {
         hierarchyMeta.rootTitle = newRootTitle;
+    }
+    if (typeof newRootIntensity === 'number') {
+        hierarchyMeta.rootIntensity = newRootIntensity;
+    }
+    if (newRootEmotion !== undefined && newRootEmotion !== null) {
+        hierarchyMeta.rootEmotion = newRootEmotion;
     }
 
     // CRITICAL: Rebuild sentence order from the new hierarchy to ensure document order
@@ -316,6 +321,7 @@ export function integrateHierarchy(sentences, hierarchy) {
  */
 export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     if (!sentences || sentences.length === 0) {
+        
         return {
             id: 'root',
             type: 'root',
@@ -401,6 +407,11 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     const topLevelNodes = Array.from(nodeMap.values()).filter(
         node => node.level === maxLevel
     );
+    
+    console.log(`[ROOTEMOTION] Root emotion:`, sentences);
+
+    const rootMetaEmotion = sentences._hierarchyMeta && sentences._hierarchyMeta.rootEmotion;
+    const rootMetaIntensity = sentences._hierarchyMeta && sentences._hierarchyMeta.rootIntensity;
 
     const root = {
         id: 'root',
@@ -410,8 +421,8 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         children: topLevelNodes,
         startIdx: 0,
         isDirty: dirtyNodeIds.has('root'),
-        emotion: "NEUTRAL",
-        intensity: 0,
+        emotion: rootMetaEmotion !== undefined && rootMetaEmotion !== null ? rootMetaEmotion : "NEUTRAL",
+        intensity: typeof rootMetaIntensity === 'number' ? rootMetaIntensity : 0,
     };
 
     console.log(`${LOG_PREFIX.PARSER} Tree built with hierarchy: root + ${nodeMap.size} nodes`);

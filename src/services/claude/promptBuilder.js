@@ -219,6 +219,10 @@ ROOT TITLE
 ═══════════════════════════════════════════════════════════════════
 
 Generate a concise document title (3-8 words) based on all content.
+
+Also generate a root emotion and intensity based on overall document sentiment. Put those also as props in the output JSON:
+- "rootEmotion": "POSITIVE", "NEGATIVE", or "NEUTRAL"
+- "rootIntensity": integer 0-100 indicating strength of emotion
 ` : ''}
 ═══════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL: DO NOT GENERATE NEW SENTENCE IDs

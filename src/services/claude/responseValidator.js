@@ -47,7 +47,9 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
 
         return {
             restructuredSubtrees: parsed.restructuredSubtrees,
-            newRootTitle: parsed.newRootTitle
+            newRootTitle: parsed.newRootTitle,
+            newRootEmotion: parsed.rootEmotion,
+            newRootIntensity: parsed.rootIntensity
         };
     } catch (error) {
         console.error('[Claude Service] ✗ Response validation failed:', error.message);

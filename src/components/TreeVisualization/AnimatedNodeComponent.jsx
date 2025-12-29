@@ -31,7 +31,7 @@ function getEmotionColor(emotion, intensity, type) {
  * Gets border color based on emotion
  */
 function getBorderColor(emotion, intensity, type) {
-  const colors = EMOTION_COLORS[emotion];
+  const colors = EMOTION_COLORS[emotion?.toLowerCase?.()];
   return colors?.strong || '#222';
 }
 

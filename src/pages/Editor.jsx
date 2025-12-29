@@ -153,15 +153,6 @@ export default function Editor() {
 
     const clearText = () => setSentences([]);
 
-    // Clear all dirty flags on nodes and sentences
-    const handleClearAllDirty = () => {
-        if (sentences.length === 0) return;
-
-        const updatedSentences = clearDirtyFlags(sentences);
-        setSentences(updatedSentences);
-        addCommit(updatedSentences, 'Cleared dirty flags');
-    };
-
     // Handle AI hierarchy generation
     const handleGenerateHierarchy = async () => {
         if (sentences.length === 0) {
@@ -190,7 +181,7 @@ export default function Editor() {
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
             // Ask Claude to restructure dirty subtrees. this contains emotion stuff for hierarchy nodes
-            const { dirtyRootNodes, restructuredSubtrees, newRootTitle } = await updateDirtyNodes(
+            const { dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity } = await updateDirtyNodes(
                 sentencesToProcess,
                 hierarchyMeta,
                 dirtyNodeIds,
@@ -199,7 +190,7 @@ export default function Editor() {
             );
 
             // Apply the restructured subtrees to the existing hierarchy
-            let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle);
+            let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity);
             console.log('[TEST0] Updated sentences before applying dirty subtree emotions:', updatedSentences);
             await evaluateSentenceEmotions(updatedSentences).then(result => {
                 updatedSentences = result;
@@ -557,20 +548,6 @@ export default function Editor() {
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                                         </svg>
                                     )}
-                                </button>
-                                <button
-                                    onClick={handleClearAllDirty}
-                                    title="Clear all dirty flags"
-                                    style={{
-                                        ...floatingButtonStyle,
-                                        backgroundColor: '#000',
-                                        color: 'white',
-                                    }}
-                                >
-                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 21L12 12" />
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9V6M12 18v-3M9 12H6M18 12h-3M15.5 8.5l2-2M6.5 17.5l2-2M8.5 8.5l-2-2M17.5 17.5l-2-2" />
-                                    </svg>
                                 </button>
                             </div>
 

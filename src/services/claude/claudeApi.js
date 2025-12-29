@@ -76,14 +76,16 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         console.log('[Claude Service] Received dirty subtree restructure:', responseText);
 
         // Parse and validate the response
-        const { restructuredSubtrees, newRootTitle } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
-
+        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
+        console.log('[TEST] ROOTPROPS:', { newRootTitle, newRootEmotion, newRootIntensity });
         console.log('[Claude Service] Parsed response - subtrees:', restructuredSubtrees?.length, 'newRootTitle:', newRootTitle);
 
         return {
             dirtyRootNodes: dirtyRootNodes.map(n => n.id),
             restructuredSubtrees,
-            newRootTitle
+            newRootTitle,
+            newRootEmotion: newRootEmotion,
+            newRootIntensity: newRootIntensity
         };
     } catch (error) {
         console.error('[Claude Service] Error restructuring dirty nodes:', error);
@@ -239,8 +241,8 @@ Hard Constraints:
 - The emotional intensity should be ${intensityDescription} (${intensity}/99).
 - Return ONLY a JSON array of exactly ${numOptions} strings, no explanations.
 - Keep the length very similar to the original sentence.
-- NEVER GO MORE THAN 10% LONGER OR SHORTER THAN THE ORIGINAL SENTENCE.
-
+- Critical: Never go more than 10% longer or shorter than the original sentence.
+- Critical: Only use wording/phrasing to change the emotion, do NOT add new information.
 Original sentence: "${sentence}"`;
 
     try {
