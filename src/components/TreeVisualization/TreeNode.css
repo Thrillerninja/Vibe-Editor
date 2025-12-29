@@ -91,3 +91,22 @@
       0 calc(100% - 18px);     /* left ↑ */
   }
 }
+
+/*
+  Smooth node movement ONLY on drop:
+  - By default, no transition to avoid unintended animations
+  - When container gets `.rf-animate-drop`, nodes animate transform changes
+  - Disable transitions while dragging for responsiveness
+*/
+.react-flow__node {
+  transition: none;
+}
+
+.rf-animate-drop .react-flow__node {
+  transition: transform 220ms ease-in-out, opacity 200ms ease-in-out;
+  will-change: transform;
+}
+
+.react-flow__node.react-flow__node-dragging {
+  transition: none;
+}
