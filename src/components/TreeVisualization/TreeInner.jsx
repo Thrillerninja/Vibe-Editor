@@ -44,6 +44,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
   const sentencesRef = useRef(sentences);
+  const animateNextRef = useRef(false);
 
   // Keep sentences ref updated
   useEffect(() => {
@@ -231,7 +232,16 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
       if (shouldApply) {
         console.log(`${LOG_PREFIX.LAYOUT} Setting ${laidOut.length} nodes`);
+        if (animateNextRef.current && containerRef.current) {
+          containerRef.current.classList.add('rf-animate-drop');
+        }
         setNodes(laidOut);
+        if (animateNextRef.current && containerRef.current) {
+          setTimeout(() => {
+            containerRef.current?.classList.remove('rf-animate-drop');
+            animateNextRef.current = false;
+          }, 300);
+        }
         setEdges(flatStructure.edges);
       } else {
         console.log(`${LOG_PREFIX.LAYOUT} Layout not applied (dragging: ${isDraggingRef.current}, sentencesChanged: ${!sentencesStillSame})`);
@@ -346,6 +356,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       isDraggingRef.current = false;
       setReorderIndicator(null);
       setReparentTarget(null);
+      // Animate the next layout update triggered by this drop
+      animateNextRef.current = true;
 
       // Check for reordering first (tighter threshold)
       const reorderInfo = checkReorderDrop(node.id, node.position.y);
@@ -396,7 +408,16 @@ export function TreeInner({ sentences, onTreeUpdate }) {
               rfRef.current.getNodes(),
               rfRef.current.getEdges()
             );
+            if (animateNextRef.current && containerRef.current) {
+              containerRef.current.classList.add('rf-animate-drop');
+            }
             setNodes(laidOut);
+            if (animateNextRef.current && containerRef.current) {
+              setTimeout(() => {
+                containerRef.current?.classList.remove('rf-animate-drop');
+                animateNextRef.current = false;
+              }, 300);
+            }
           }
         }, 50);
       }
