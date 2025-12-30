@@ -1,6 +1,7 @@
 import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { deepCloneSentences } from '../../utils/deepClone';
-import { computeSentenceDiff } from '../../utils/diffUtils';
+import { computeSentenceDiff, hasChanges } from '../../utils/diffUtils';
+import { clearDirtyFlags } from '../../utils/dirtyTracking';
 import DiffView from './DiffView';
 
 // Responsive git-style history graph.
@@ -9,15 +10,19 @@ import DiffView from './DiffView';
 // - onRevertComplete(data): function(data) called when a revert is confirmed
 const HistoryGraph = forwardRef(({
   className = 'history-graph',
+  sentences,
+  lastCommittedSentences,
   onRevertComplete = () => {
   },
-  onCommit = () => {
+  onCommitComplete = () => {
   },
 }, ref) => {
   const [history, setHistory] = useState([]);
   const [headIndex, setHeadIndex] = useState(null);
   const [pendingRevert, setPendingRevert] = useState(null);
   const [redoStack, setRedoStack] = useState([]);
+  const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
+  const [commitDiff, setCommitDiff] = useState([]);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
   const addCommit = (data, title) => {
@@ -79,7 +84,6 @@ const HistoryGraph = forwardRef(({
     // Deep clone the data when reverting to ensure the reverted state is independent
     const clonedData = deepCloneSentences(entry.data);
     onRevertComplete(clonedData);
-    //setHierarchyState('needs-full-regen');
     setHeadIndex(index);
     setPendingRevert(null);
   };
@@ -121,12 +125,29 @@ const HistoryGraph = forwardRef(({
   const canCommit = true;
 
   const handleCommit = () => {
-    onCommit();
-    console.log("Commit button clicked!");
-    // TODO: Implement commit logic here
+    const oldSentences = lastCommittedSentences || [];
+    const diff = computeSentenceDiff(oldSentences, sentences);
+    setCommitDiff(diff);
+    setIsCommitPreviewOpen(true);
   };
 
+  const handleConfirmCommit = () => {
+    if (hasChanges(commitDiff)) {
+        // If there are changes, clear all dirty flags and commit
+        let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
+        cleaned = clearDirtyFlags(cleaned);
+        addCommit(cleaned, 'Manual commit');
+        onCommitComplete(cleaned);
+    }
+    setIsCommitPreviewOpen(false);
+    setCommitDiff([]);
+  };
 
+  const cancelCommitPreview = () => {
+    setIsCommitPreviewOpen(false);
+    setCommitDiff([]);
+  };
+  
   const n = history.length;
 
   // Layout parameters
@@ -533,6 +554,29 @@ const HistoryGraph = forwardRef(({
         );
       })()}
 
+      {isCommitPreviewOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
+            <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b border-gray-200">
+                    <div className="text-sm font-semibold text-gray-900">Commit preview</div>
+                    <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
+                </div>
+                <div className="flex-1 overflow-auto p-4">
+                    <span className="text-xs text-gray-500">Changes since last commit:</span>
+                    <div className="mt-2">
+                        <DiffView diff={commitDiff} />
+                    </div>
+                </div>
+                <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                    <button onClick={cancelCommitPreview}
+                        className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
+                    <button onClick={handleConfirmCommit}
+                        className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">Commit</button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 });

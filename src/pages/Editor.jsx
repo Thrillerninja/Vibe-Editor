@@ -348,45 +348,10 @@ export default function Editor() {
         }
     }
 
-    // Commit preview popup state
-    const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
-    const [commitDiff, setCommitDiff] = useState([]);
-
-    const openCommitPreview = () => {
-        // Prepare sentences (ensure hierarchy exists)
-        let sentencesToCommit = sentences;
-        if (sentences.length > 0 && !sentences._hierarchyMeta) {
-            sentencesToCommit = createPlaceholderHierarchy(sentences, maxDepth);
-            setSentences(sentencesToCommit);
-            setHierarchyState('has-dirty-nodes');
-        }
-
-        const oldSentences = lastCommittedSentencesRef.current || [];
-        const diff = computeSentenceDiff(oldSentences, sentencesToCommit);
-        setCommitDiff(diff);
-        setIsCommitPreviewOpen(true);
-    };
-
-    const confirmCommit = () => {
-        // If there are changes, clear all dirty flags and commit
-        if (hasChanges(commitDiff)) {
-            const hierarchyMeta = sentences._hierarchyMeta;
-            // Reset sentence-level dirty flags
-            let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
-            // Clear hierarchy-level dirty flags if present
-            cleaned = clearDirtyFlags(cleaned);
-            cleaned._hierarchyMeta = hierarchyMeta;
-            setSentences(cleaned);
-            addCommit(cleaned, 'Manual commit');
-        }
-        setIsCommitPreviewOpen(false);
-        setCommitDiff([]);
-    };
-
-    const cancelCommitPreview = () => {
-        setIsCommitPreviewOpen(false);
-        setCommitDiff([]);
-    };
+    const handleCommitComplete = (committedSentences) => {
+        setSentences(committedSentences);
+        lastCommittedSentencesRef.current = committedSentences;
+    }
 
     const floatingButtonStyle = {
         width: '44px',
@@ -485,29 +450,6 @@ export default function Editor() {
                                     '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
                             }}
                         />
-                        {isCommitPreviewOpen && (
-                            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-                                <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
-                                <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
-                                    <div className="p-4 border-b border-gray-200">
-                                        <div className="text-sm font-semibold text-gray-900">Commit preview</div>
-                                        <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
-                                    </div>
-                                    <div className="flex-1 overflow-auto p-4">
-                                        <span className="text-xs text-gray-500">Changes since last commit:</span>
-                                        <div className="mt-2">
-                                            <DiffView diff={commitDiff} />
-                                        </div>
-                                    </div>
-                                    <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
-                                        <button onClick={cancelCommitPreview}
-                                            className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
-                                        <button onClick={confirmCommit}
-                                            className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">Commit</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
                     </div>
 
                     {/* Draggable Divider */}
@@ -568,7 +510,13 @@ export default function Editor() {
                     style={{ flexBasis: `${bottomPct}%`, minHeight: 0 }}
                 >
                     <div className="p-3 h-full">
-                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete} onCommit={openCommitPreview} />
+                        <HistoryGraph
+                            ref={historyGraphRef}
+                            sentences={sentences}
+                            lastCommittedSentences={lastCommittedSentencesRef.current}
+                            onRevertComplete={handleRevertComplete}
+                            onCommitComplete={handleCommitComplete}
+                        />
                     </div>
                 </div>
 
