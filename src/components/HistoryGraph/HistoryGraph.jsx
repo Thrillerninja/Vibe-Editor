@@ -11,6 +11,8 @@ const HistoryGraph = forwardRef(({
   className = 'history-graph',
   onRevertComplete = () => {
   },
+  onCommit = () => {
+  },
 }, ref) => {
   const [history, setHistory] = useState([]);
   const [headIndex, setHeadIndex] = useState(null);
@@ -108,6 +110,13 @@ const HistoryGraph = forwardRef(({
 
   const canUndo = headIndex !== null && headIndex > 0;
   const canRedo = headIndex !== null && headIndex < history.length - 1;
+  const canCommit = true;
+
+  const handleCommit = () => {
+    onCommit();
+    console.log("Commit button clicked!");
+    // TODO: Implement commit logic here
+  };
 
 
   const n = history.length;
@@ -284,6 +293,19 @@ const HistoryGraph = forwardRef(({
                 </svg>
               </button>
             </div>
+            <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
+              <button
+                onClick={handleCommit}
+                disabled={!canCommit}
+                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+                title="Commit current changes"
+                aria-label="Commit"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </button>
+            </div>
             <div className="text-xs text-gray-500">Edits: 0</div>
           </div>
         </div>
@@ -346,6 +368,21 @@ const HistoryGraph = forwardRef(({
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+          </svg>
+        </button>
+        <button
+          onClick={handleCommit}
+          disabled={!canCommit}
+          title="Commit current changes"
+          aria-label="Commit"
+          style={{
+            ...floatingButtonStyle,
+            opacity: !canCommit ? 0.5 : 1,
+            cursor: !canCommit ? 'not-allowed' : 'pointer',
+          }}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </button>
       </div>

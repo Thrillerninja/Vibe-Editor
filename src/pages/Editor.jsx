@@ -568,7 +568,7 @@ export default function Editor() {
                     style={{ flexBasis: `${bottomPct}%`, minHeight: 0 }}
                 >
                     <div className="p-3 h-full">
-                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete} />
+                        <HistoryGraph ref={historyGraphRef} onRevertComplete={handleRevertComplete} onCommit={openCommitPreview} />
                     </div>
                 </div>
 
