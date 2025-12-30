@@ -30,7 +30,8 @@ const HistoryGraph = forwardRef(({
   }, [sentences, lastCommittedSentences]);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
-  const addCommit = (data, title) => {
+  const addCommit = (data, title, options = {}) => {
+    const { isManual = false } = options;
     const id = history.length;
     const ts = Date.now();
 
@@ -43,7 +44,7 @@ const HistoryGraph = forwardRef(({
 
       if (h.length === 0) {
         // no history yet -> first commit
-        const newCommit = [{ id, ts, data: clonedData, title, parentId, branchId }];
+        const newCommit = [{ id, ts, data: clonedData, title, parentId, branchId, isManual }];
         setHeadIndex(0);
         return newCommit;
       }
@@ -59,7 +60,7 @@ const HistoryGraph = forwardRef(({
       }
 
       const newHistory = h.slice(0, h.length);
-      newHistory.push({ id, ts, data: clonedData, title, parentId, branchId });
+      newHistory.push({ id, ts, data: clonedData, title, parentId, branchId, isManual });
       setHeadIndex(newHistory.length - 1);
       setRedoStack([]);
       return newHistory;
@@ -138,7 +139,7 @@ const HistoryGraph = forwardRef(({
         // If there are changes, clear all dirty flags and commit
         let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
         cleaned = clearDirtyFlags(cleaned);
-        addCommit(cleaned, commitTitle || 'Manual commit');
+        addCommit(cleaned, commitTitle || 'Manual commit', { isManual: true });
         onCommitComplete(cleaned);
     }
     setIsCommitPreviewOpen(false);
@@ -148,7 +149,7 @@ const HistoryGraph = forwardRef(({
   const cancelCommitPreview = () => {
     setIsCommitPreviewOpen(false);
   };
-  
+
   const n = history.length;
 
   // Layout parameters
@@ -187,7 +188,7 @@ const HistoryGraph = forwardRef(({
 
       if (commit.parentId == null) {
         x = xOffset;
-        nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title });
+        nodes.push({ i, x, y, lane, ts: commit.ts, text: commit.text, title: commit.title, isManual: commit.isManual });
       } else {
         const parentIndex = history.findIndex((c) => c.id === commit.parentId);
         if (parentIndex !== -1) {
@@ -199,7 +200,7 @@ const HistoryGraph = forwardRef(({
             const parentY = parentNode.y;
             x = parentX + xStep;
 
-            nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title });
+            nodes.push({ i, x, y, lane, ts: commit.ts, data: commit.data, title: commit.title, isManual: commit.isManual });
 
             const color = laneColors[lane % laneColors.length];
             if (Math.abs(parentLane - lane) === 0) {
@@ -425,6 +426,11 @@ const HistoryGraph = forwardRef(({
             height={svgHeight}
             viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
           >
+            <defs>
+                <pattern id="stripes" patternUnits="userSpaceOnUse" width="4" height="4">
+                    <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
+                </pattern>
+            </defs>
             {/* background horizontal lane lines */}
             {laneYs.map((y, li) => (
               <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
@@ -449,28 +455,29 @@ const HistoryGraph = forwardRef(({
                   onMouseLeave={hideTooltip}
                   style={{ cursor: 'pointer' }}
                 >
-                  <circle cx={0} cy={0} r={10.0} fill="transparent" />
                   <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
                   <circle
                     cx={0}
                     cy={0}
-                    r={4.4}
+                    r={4.6}
                     fill={color}
+                    tabIndex={0}
+                  />
+                  {node.isManual && <circle cx={0} cy={0} r={4.6} fill="url(#stripes)" />}
+                  {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827"
+                    strokeWidth={2} opacity={0.9} />}
+                  <circle cx={0} cy={0} r={10.0} fill="transparent"
                     onMouseDown={(e) => {
                       e.preventDefault();
                     }}
-                    style={{ outline: 'none' }}
                     onClick={() => handleRevert(node.i)}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' || e.key === ' ') handleRevert(node.i);
                     }}
                     onBlur={hideTooltip}
-                    tabIndex={0}
                     role="button"
                     aria-label={`Revert to commit ${node.i + 1}`}
                   />
-                  {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827"
-                    strokeWidth={2} opacity={0.9} />}
                 </g>
               );
             })}

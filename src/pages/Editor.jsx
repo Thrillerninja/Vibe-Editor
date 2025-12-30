@@ -123,8 +123,8 @@ export default function Editor() {
     const draggingVerticalRef = useRef(false);
 
 
-    const addCommit = useCallback((newSentences, title) => {
-        historyGraphRef.current?.addCommit(newSentences, title);
+    const addCommit = useCallback((newSentences, title, options = {}) => {
+        historyGraphRef.current?.addCommit(newSentences, title, options);
         // Track last committed snapshot for diff previews
         try {
             lastCommittedSentencesRef.current = JSON.parse(JSON.stringify(newSentences));
@@ -147,11 +147,14 @@ export default function Editor() {
             text_length: EXAMPLE_TEXT.length,
             sentence_count: newSentences.length,
         });
-
         setSentences(newSentences);
+        addCommit(newSentences, 'Example inserted');
     };
 
-    const clearText = () => setSentences([]);
+    const clearText = () => {
+        setSentences([]);
+        addCommit([], 'Text cleared');
+    }
 
     // Handle AI hierarchy generation
     const handleGenerateHierarchy = async () => {
@@ -240,6 +243,7 @@ export default function Editor() {
         });
 
         setSentences(updatedSentences);
+        addCommit(updatedSentences, 'Tree updated');
     }, [addCommit]);
 
     const handleRevertComplete = (revertedData) => {
