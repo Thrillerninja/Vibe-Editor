@@ -17,6 +17,7 @@ const HistoryGraph = forwardRef(({
   const [history, setHistory] = useState([]);
   const [headIndex, setHeadIndex] = useState(null);
   const [pendingRevert, setPendingRevert] = useState(null);
+  const [redoStack, setRedoStack] = useState([]);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
   const addCommit = (data, title) => {
@@ -50,6 +51,7 @@ const HistoryGraph = forwardRef(({
       const newHistory = h.slice(0, h.length);
       newHistory.push({ id, ts, data: clonedData, title, parentId, branchId });
       setHeadIndex(newHistory.length - 1);
+      setRedoStack([]);
       return newHistory;
     });
   };
@@ -86,30 +88,36 @@ const HistoryGraph = forwardRef(({
 
   // Undo: Move to the previous commit in history
   const handleUndo = () => {
-    if (headIndex === null || headIndex === 0) return;
-    const newIndex = headIndex - 1;
-    const entry = history[newIndex];
-    if (!entry) return;
+    if (headIndex === null) return;
+    const currentCommit = history[headIndex];
+    if (!currentCommit || currentCommit.parentId === null) return;
 
-    const clonedData = deepCloneSentences(entry.data);
+    const parentIndex = history.findIndex(c => c.id === currentCommit.parentId);
+    if (parentIndex === -1) return;
+
+    const parentCommit = history[parentIndex];
+    const clonedData = deepCloneSentences(parentCommit.data);
     onRevertComplete(clonedData);
-    setHeadIndex(newIndex);
+    setRedoStack(prev => [headIndex, ...prev]);
+    setHeadIndex(parentIndex);
   };
 
   // Redo: Move to the next commit in history
   const handleRedo = () => {
-    if (headIndex === null || headIndex >= history.length - 1) return;
-    const newIndex = headIndex + 1;
+    if (redoStack.length === 0) return;
+
+    const [newIndex, ...rest] = redoStack;
     const entry = history[newIndex];
     if (!entry) return;
 
     const clonedData = deepCloneSentences(entry.data);
     onRevertComplete(clonedData);
     setHeadIndex(newIndex);
+    setRedoStack(rest);
   };
 
-  const canUndo = headIndex !== null && headIndex > 0;
-  const canRedo = headIndex !== null && headIndex < history.length - 1;
+  const canUndo = headIndex !== null && history[headIndex]?.parentId !== null;
+  const canRedo = redoStack.length > 0;
   const canCommit = true;
 
   const handleCommit = () => {
