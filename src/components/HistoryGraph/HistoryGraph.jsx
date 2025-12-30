@@ -304,7 +304,7 @@ const HistoryGraph = forwardRef(({
               <button
                 onClick={handleUndo}
                 disabled={!canUndo}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
                 title="Undo (go to previous edit)"
                 aria-label="Undo"
               >
@@ -315,7 +315,7 @@ const HistoryGraph = forwardRef(({
               <button
                 onClick={handleRedo}
                 disabled={!canRedo}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
                 title="Redo (go to next edit)"
                 aria-label="Redo"
               >
@@ -328,7 +328,7 @@ const HistoryGraph = forwardRef(({
               <button
                 onClick={handleCommit}
                 disabled={!canCommit}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-gray-100"
+                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
                 title="Commit current changes"
                 aria-label="Commit"
               >
@@ -378,8 +378,10 @@ const HistoryGraph = forwardRef(({
           aria-label="Undo"
           style={{
             ...floatingButtonStyle,
-            opacity: !canUndo ? 0.5 : 1,
+            opacity: !canUndo ? 0.3 : 1,
             cursor: !canUndo ? 'not-allowed' : 'pointer',
+            backgroundColor: !canUndo ? '#e0e0e0' : 'white',
+            color: !canUndo ? '#9ca3af' : '#374151',
           }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -393,8 +395,10 @@ const HistoryGraph = forwardRef(({
           aria-label="Redo"
           style={{
             ...floatingButtonStyle,
-            opacity: !canRedo ? 0.5 : 1,
+            opacity: !canRedo ? 0.3 : 1,
             cursor: !canRedo ? 'not-allowed' : 'pointer',
+            backgroundColor: !canRedo ? '#e0e0e0' : 'white',
+            color: !canRedo ? '#9ca3af' : '#374151',
           }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -408,8 +412,10 @@ const HistoryGraph = forwardRef(({
           aria-label="Commit"
           style={{
             ...floatingButtonStyle,
-            opacity: !canCommit ? 0.5 : 1,
+            opacity: !canCommit ? 0.3 : 1,
             cursor: !canCommit ? 'not-allowed' : 'pointer',
+            backgroundColor: !canCommit ? '#e0e0e0' : 'white',
+            color: !canCommit ? '#9ca3af' : '#374151',
           }}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
