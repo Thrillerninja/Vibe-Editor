@@ -22,7 +22,12 @@ const HistoryGraph = forwardRef(({
   const [pendingRevert, setPendingRevert] = useState(null);
   const [redoStack, setRedoStack] = useState([]);
   const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
-  const [commitDiff, setCommitDiff] = useState([]);
+  const [commitTitle, setCommitTitle] = useState('');
+
+  const commitDiff = useMemo(() => {
+    const oldSentences = lastCommittedSentences || [];
+    return computeSentenceDiff(oldSentences, sentences);
+  }, [sentences, lastCommittedSentences]);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
   const addCommit = (data, title) => {
@@ -122,12 +127,9 @@ const HistoryGraph = forwardRef(({
 
   const canUndo = headIndex !== null && history[headIndex]?.parentId !== null;
   const canRedo = redoStack.length > 0;
-  const canCommit = true;
+  const canCommit = hasChanges(commitDiff);
 
   const handleCommit = () => {
-    const oldSentences = lastCommittedSentences || [];
-    const diff = computeSentenceDiff(oldSentences, sentences);
-    setCommitDiff(diff);
     setIsCommitPreviewOpen(true);
   };
 
@@ -136,16 +138,15 @@ const HistoryGraph = forwardRef(({
         // If there are changes, clear all dirty flags and commit
         let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
         cleaned = clearDirtyFlags(cleaned);
-        addCommit(cleaned, 'Manual commit');
+        addCommit(cleaned, commitTitle || 'Manual commit');
         onCommitComplete(cleaned);
     }
     setIsCommitPreviewOpen(false);
-    setCommitDiff([]);
+    setCommitTitle('');
   };
 
   const cancelCommitPreview = () => {
     setIsCommitPreviewOpen(false);
-    setCommitDiff([]);
   };
   
   const n = history.length;
@@ -448,7 +449,7 @@ const HistoryGraph = forwardRef(({
                   onMouseLeave={hideTooltip}
                   style={{ cursor: 'pointer' }}
                 >
-                  <circle cx={0} cy={0} r={7.0} fill="transparent" />
+                  <circle cx={0} cy={0} r={10.0} fill="transparent" />
                   <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
                   <circle
                     cx={0}
@@ -561,6 +562,17 @@ const HistoryGraph = forwardRef(({
                 <div className="p-4 border-b border-gray-200">
                     <div className="text-sm font-semibold text-gray-900">Commit preview</div>
                     <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
+                    <div className="mt-4">
+                        <label htmlFor="commit-title" className="block text-xs font-medium text-gray-700 mb-1">Commit title:</label>
+                        <input
+                            id="commit-title"
+                            type="text"
+                            value={commitTitle}
+                            onChange={(e) => setCommitTitle(e.target.value)}
+                            placeholder="Commit title (optional)"
+                            className="w-full p-2 border border-gray-300 rounded-md text-sm text-gray-900"
+                        />
+                    </div>
                 </div>
                 <div className="flex-1 overflow-auto p-4">
                     <span className="text-xs text-gray-500">Changes since last commit:</span>
