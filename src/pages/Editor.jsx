@@ -117,7 +117,7 @@ export default function Editor() {
     const textareaRef = useRef(null);
 
     // Split state for vertical divider
-    const [bottomPct, setBottomPct] = useState(10);
+    const [bottomPct, setBottomPct] = useState(12);
     const verticalContainerRef = useRef(null);
     const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
@@ -513,7 +513,7 @@ export default function Editor() {
                     className="bg-white bottom-pane"
                     style={{ flexBasis: `${bottomPct}%`, minHeight: 0 }}
                 >
-                    <div className="p-3 h-full">
+                    <div className="pt-3 pr-3 pl-3 h-full">
                         <HistoryGraph
                             ref={historyGraphRef}
                             sentences={sentences}

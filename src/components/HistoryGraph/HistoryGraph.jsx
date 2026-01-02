@@ -17,6 +17,7 @@ const HistoryGraph = forwardRef(({
   onCommitComplete = () => {
   },
 }, ref) => {
+  const rootRef = useRef(null);
   const [history, setHistory] = useState([]);
   const [headIndex, setHeadIndex] = useState(null);
   const [pendingRevert, setPendingRevert] = useState(null);
@@ -281,7 +282,7 @@ const HistoryGraph = forwardRef(({
 
   // Helper to position tooltip from a mouse event
   function showTooltipAtMouse(e, node) {
-    const container = scrollContainerRef.current;
+    const container = rootRef.current;
     if (!container) return;
     const rect = container.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -363,169 +364,168 @@ const HistoryGraph = forwardRef(({
   };
 
   return (
-    // make container relative so tooltip can be absolutely positioned
-    <div className={`w-full ${className}`} style={{ position: 'relative', boxSizing: 'border-box' }}>
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium text-gray-700">Edit history</div>
+    <div ref={rootRef} className={`w-full ${className} flex flex-col`} style={{ position: 'relative', boxSizing: 'border-box', height: '100%' }}>
+      {/* Sticky Header */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 20, background: 'white' }} className="p-1 pb-2 border-b">
+        <div className="align-middle flex gap-2 items-center">
+          <div className="text-sm font-medium text-gray-700">Edit history</div>
+          {/* Floating Undo/Redo Buttons */}
+          <div style={{ position: 'absolute', top: '-4px', right: '0px', display: 'flex', gap: '8px', zIndex: 21 }}>
+            <button
+              onClick={handleUndo}
+              disabled={!canUndo}
+              title="Undo (go to previous edit)"
+              aria-label="Undo"
+              style={{
+                ...floatingButtonStyle,
+                opacity: !canUndo ? 0.3 : 1,
+                cursor: !canUndo ? 'not-allowed' : 'pointer',
+                backgroundColor: !canUndo ? '#e0e0e0' : 'white',
+                color: !canUndo ? '#9ca3af' : '#374151',
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={!canRedo}
+              title="Redo (go to next edit)"
+              aria-label="Redo"
+              style={{
+                ...floatingButtonStyle,
+                opacity: !canRedo ? 0.3 : 1,
+                cursor: !canRedo ? 'not-allowed' : 'pointer',
+                backgroundColor: !canRedo ? '#e0e0e0' : 'white',
+                color: !canRedo ? '#9ca3af' : '#374151',
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
+              </svg>
+            </button>
+            <button
+              onClick={handleCommit}
+              disabled={!canCommit}
+              title="Commit current changes"
+              aria-label="Commit"
+              style={{
+                ...floatingButtonStyle,
+                opacity: !canCommit ? 0.3 : 1,
+                cursor: !canCommit ? 'not-allowed' : 'pointer',
+                backgroundColor: !canCommit ? '#e0e0e0' : 'white',
+                color: !canCommit ? '#9ca3af' : '#374151',
+              }}
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Floating Undo/Redo Buttons */}
-      <div style={{ position: 'absolute', top: '0', right: '0', display: 'flex', gap: '8px', zIndex: 50 }}>
-        <button
-          onClick={handleUndo}
-          disabled={!canUndo}
-          title="Undo (go to previous edit)"
-          aria-label="Undo"
-          style={{
-            ...floatingButtonStyle,
-            opacity: !canUndo ? 0.3 : 1,
-            cursor: !canUndo ? 'not-allowed' : 'pointer',
-            backgroundColor: !canUndo ? '#e0e0e0' : 'white',
-            color: !canUndo ? '#9ca3af' : '#374151',
-          }}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-          </svg>
-        </button>
-        <button
-          onClick={handleRedo}
-          disabled={!canRedo}
-          title="Redo (go to next edit)"
-          aria-label="Redo"
-          style={{
-            ...floatingButtonStyle,
-            opacity: !canRedo ? 0.3 : 1,
-            cursor: !canRedo ? 'not-allowed' : 'pointer',
-            backgroundColor: !canRedo ? '#e0e0e0' : 'white',
-            color: !canRedo ? '#9ca3af' : '#374151',
-          }}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-          </svg>
-        </button>
-        <button
-          onClick={handleCommit}
-          disabled={!canCommit}
-          title="Commit current changes"
-          aria-label="Commit"
-          style={{
-            ...floatingButtonStyle,
-            opacity: !canCommit ? 0.3 : 1,
-            cursor: !canCommit ? 'not-allowed' : 'pointer',
-            backgroundColor: !canCommit ? '#e0e0e0' : 'white',
-            color: !canCommit ? '#9ca3af' : '#374151',
-          }}
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-        </button>
-      </div>
+      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+        <div className="flex items-start gap-3">
+          <div style={{ width: finalSvgWidth, height: svgHeight, position: 'relative' }}>
+            <svg
+              ref={svgRef}
+              width={finalSvgWidth}
+              height={svgHeight}
+              viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
+            >
+              <defs>
+                  <pattern id="stripes" patternUnits="userSpaceOnUse" width="4" height="4">
+                      <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
+                  </pattern>
+              </defs>
+              {/* background horizontal lane lines */}
+              {laneYs.map((y, li) => (
+                <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
+              ))}
 
-      <div ref={scrollContainerRef} className="flex items-start gap-3 overflow-auto">
-        <div style={{ width: finalSvgWidth, height: svgHeight, position: 'relative' }}>
-          <svg
-            ref={svgRef}
-            width={finalSvgWidth}
-            height={svgHeight}
-            viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
-          >
-            <defs>
-                <pattern id="stripes" patternUnits="userSpaceOnUse" width="4" height="4">
-                    <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
-                </pattern>
-            </defs>
-            {/* background horizontal lane lines */}
-            {laneYs.map((y, li) => (
-              <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
-            ))}
+              {/* edges */}
+              {edges.map((e, idx) => (
+                <path key={idx} d={e.d} fill="none" stroke={e.color} strokeWidth={2.6}
+                  strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+              ))}
 
-            {/* edges */}
-            {edges.map((e, idx) => (
-              <path key={idx} d={e.d} fill="none" stroke={e.color} strokeWidth={2.6}
-                strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
-            ))}
-
-            {/* nodes */}
-            {nodes.map((node) => {
-              const isHead = headIndex === node.i;
-              const color = laneColors[(node.lane ?? 0) % laneColors.length];
-              return (
-                <g
-                  key={node.i}
-                  transform={`translate(${node.x}, ${node.y})`}
-                  onMouseEnter={(e) => showTooltipAtMouse(e, node)}
-                  onMouseMove={(e) => showTooltipAtMouse(e, node)}
-                  onMouseLeave={hideTooltip}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
-                  <circle
-                    cx={0}
-                    cy={0}
-                    r={4.6}
-                    fill={color}
-                    tabIndex={0}
-                  />
-                  {node.isManual && <circle cx={0} cy={0} r={4.6} fill="url(#stripes)" />}
-                  {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827"
-                    strokeWidth={2} opacity={0.9} />}
-                  <circle cx={0} cy={0} r={10.0} fill="transparent"
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                    }}
-                    onClick={() => handleRevert(node.i)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') handleRevert(node.i);
-                    }}
-                    onBlur={hideTooltip}
-                    role="button"
-                    aria-label={`Revert to commit ${node.i + 1}`}
-                  />
-                </g>
-              );
-            })}
-          </svg>
+              {/* nodes */}
+              {nodes.map((node) => {
+                const isHead = headIndex === node.i;
+                const color = laneColors[(node.lane ?? 0) % laneColors.length];
+                return (
+                  <g
+                    key={node.i}
+                    transform={`translate(${node.x}, ${node.y})`}
+                    onMouseEnter={(e) => showTooltipAtMouse(e, node)}
+                    onMouseMove={(e) => showTooltipAtMouse(e, node)}
+                    onMouseLeave={hideTooltip}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <circle cx={0} cy={0} r={6.0} fill="#fff" opacity={0.95} />
+                    <circle
+                      cx={0}
+                      cy={0}
+                      r={4.6}
+                      fill={color}
+                      tabIndex={0}
+                    />
+                    {node.isManual && <circle cx={0} cy={0} r={4.6} fill="url(#stripes)" />}
+                    {isHead && <circle cx={0} cy={0} r={7.0} fill="none" stroke="#111827"
+                      strokeWidth={2} opacity={0.9} />}
+                    <circle cx={0} cy={0} r={10.0} fill="transparent"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                      }}
+                      onClick={() => handleRevert(node.i)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') handleRevert(node.i);
+                      }}
+                      onBlur={hideTooltip}
+                      role="button"
+                      aria-label={`Revert to commit ${node.i + 1}`}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
         </div>
       </div>
 
       {/* Custom tooltip rendered absolutely within the container */}
       {tooltip.visible && tooltip.node && (
-        <div
-          className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
-          style={{
-            // anchor to left when on left side, anchor to right when on right side
-            left: tooltip.x > containerWidth / 2 ? undefined : tooltip.x,
-            right: tooltip.x > containerWidth / 2 ? Math.max(8, containerWidth - tooltip.x) : undefined,
-            top: tooltip.y,
-            // don't use translateX(-100%) anymore; use right anchor instead.
-            transform: 'translate(0%, -60%)',
-            whiteSpace: 'normal',
-            // prevent the tooltip shrinking when anchored to the right
-            ...(tooltip.x > containerWidth / 2 ? { minWidth: 160 } : {}),
-          }}
-          role="status"
-          aria-hidden={false}
-        >
-          <div className="flex items-start gap-2">
+          <div
+              className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
+              style={{
+                  left: tooltip.x,
+                  top: tooltip.y,
+                  transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -60%)`,
+                  marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
+                  whiteSpace: 'normal',
+              }}
+              role="status"
+              aria-hidden={false}
+          >
+              <div className="flex items-start gap-2">
             <span style={{
-              width: 10,
-              height: 10,
-              borderRadius: 6,
-              background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
-              display: 'inline-block',
-              marginTop: 3
+                width: 10,
+                height: 10,
+                borderRadius: 6,
+                background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
+                display: 'inline-block',
+                marginTop: 3
             }} aria-hidden />
-            <div>
-              <div
-                className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
-              <div
-                className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
-            </div>
+                  <div>
+                      <div
+                          className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
+                      <div
+                          className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
+                  </div>
+              </div>
           </div>
-        </div>
       )}
 
       {/* Custom confirmation modal for revert */}
