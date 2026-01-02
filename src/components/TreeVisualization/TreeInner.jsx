@@ -608,16 +608,67 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       }
     }
 
-    // Mark edited sentences and ancestors dirty
-    let marked = updated;
-    if (editedSentenceIds.length > 0) {
-      marked = editedSentenceIds.reduce((acc, sid) => markSentenceAndAncestorsDirty(acc, sid), marked);
-    }
+    // Mark current subtree and all ancestors as dirty on save
     if (meta) {
-      marked._hierarchyMeta = meta;
+      const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
+      const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
+
+      // Mark all descendant sentences dirty
+      descendantsSentences.forEach(sid => dirtySentenceIds.add(sid));
+      // Mark all descendant group nodes dirty
+      descendantsGroups.forEach(nid => dirtyNodeIds.add(nid));
+      // Mark the selected node itself dirty if it's a group node
+      if (nodeMap && nodeMap.has(nodeId)) {
+        dirtyNodeIds.add(nodeId);
+      }
+      // If selected is a sentence id, mark it dirty as well
+      if (sentenceIds.has(nodeId)) {
+        dirtySentenceIds.add(nodeId);
+      }
+
+      // Mark ancestors up to root dirty
+      const markAncestors = (startId) => {
+        if (!nodeMap) {
+          // Without hierarchy meta, we cannot traverse; mark root only if editing root
+          if (startId === 'root') dirtyNodeIds.add('root');
+          return;
+        }
+        let currentId = startId;
+        while (currentId && currentId !== 'root') {
+          let parent = null;
+          for (const node of nodeMap.values()) {
+            if (Array.isArray(node.childIds) && node.childIds.includes(currentId)) {
+              parent = node;
+              break;
+            }
+          }
+          if (parent) {
+            dirtyNodeIds.add(parent.id);
+            currentId = parent.id;
+          } else {
+            // No parent found in hierarchy: mark root
+            dirtyNodeIds.add('root');
+            break;
+          }
+        }
+        // If the start is root itself, ensure root is marked
+        if (startId === 'root') {
+          dirtyNodeIds.add('root');
+        }
+      };
+
+      markAncestors(nodeId);
+
+      meta.dirtyNodeIds = Array.from(dirtyNodeIds);
+      meta.dirtySentenceIds = Array.from(dirtySentenceIds);
     }
 
-    onTreeUpdate(marked);
+    const result = updated;
+    if (meta) {
+      result._hierarchyMeta = meta;
+    }
+
+    onTreeUpdate(result);
   }, [onTreeUpdate]);
 
   // Delete a sentence node and update hierarchy metadata

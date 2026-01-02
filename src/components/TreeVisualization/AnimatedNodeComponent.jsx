@@ -54,6 +54,7 @@ export function AnimatedNodeComponent({ id, data }) {
   const [subtreeIntensity, setSubtreeIntensity] = useState(data.intensity ?? 50);
   const [leafSuggestions, setLeafSuggestions] = useState({}); // id -> { original, options, selectedIdx }
   const [leafOrder, setLeafOrder] = useState([]);
+  const [activeTab, setActiveTab] = useState('information');
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
   const [previousEmotion, setPreviousEmotion] = useState(emotion);
@@ -147,10 +148,10 @@ export function AnimatedNodeComponent({ id, data }) {
         leaves.map(async (leaf) => {
           try {
             const opts = await rewriteSentenceWithEmotionOptions(leaf.content, inputEmotion, subtreeIntensity, 3);
-            return { id: leaf.id, original: leaf.content, options: opts || [], selectedIdx: (opts && opts.length > 0) ? 0 : -1 };
+            return { id: leaf.id, original: leaf.content, options: opts || [], selectedIdx: (opts && opts.length > 0) ? 0 : -1, editedText: (opts && opts.length > 0) ? opts[0] : leaf.content };
           } catch (e) {
             console.error('Failed to get options for leaf', leaf.id, e);
-            return { id: leaf.id, original: leaf.content, options: [], selectedIdx: -1 };
+            return { id: leaf.id, original: leaf.content, options: [], selectedIdx: -1, editedText: leaf.content };
           }
         })
       );
@@ -167,14 +168,14 @@ export function AnimatedNodeComponent({ id, data }) {
     const entry = leafSuggestions[leafId];
     if (!entry || !entry.options || entry.options.length === 0) return;
     const newIdx = (entry.selectedIdx - 1 + entry.options.length) % entry.options.length;
-    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx } }));
+    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx, editedText: entry.options[newIdx] } }));
   }
 
   function rotateLeafNext(leafId) {
     const entry = leafSuggestions[leafId];
     if (!entry || !entry.options || entry.options.length === 0) return;
     const newIdx = (entry.selectedIdx + 1) % entry.options.length;
-    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx } }));
+    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx, editedText: entry.options[newIdx] } }));
   }
 
   function rotateAllPrev() {
@@ -246,29 +247,74 @@ export function AnimatedNodeComponent({ id, data }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top: General Info Section */}
-        <div style={{
-          padding: "24px 24px 16px 24px",
-          borderBottom: "1px solid #eee",
-          background: "#f9fafb"
-        }}>
-          <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 12 }}>Information</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
-            <div><strong>Emotion:</strong> {emotion || "-"}</div>
-            <div><strong>Intensity:</strong> {intensity ?? "-"}</div>
-            <div><strong>Type:</strong> {data.type || "-"}</div>
-            {data.author && <div><strong>Author:</strong> {data.author}</div>}
-            {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
-            {/* Add more fields as needed */}
+        {/* Tabs header */}
+        {!isNodeRewriting && (
+          <div style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid #eee",
+            background: "#f9fafb",
+            display: 'flex',
+            gap: 8
+          }}>
+            {['information','editing'].map(key => {
+              const label = key === 'information' ? 'Information' : 'Editing';
+              const active = activeTab === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: 6,
+                    border: `1px solid ${active ? '#2563eb' : '#d1d5db'}`,
+                    backgroundColor: active ? '#eff6ff' : 'white',
+                    color: active ? '#1d4ed8' : '#374151',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                >{label}</button>
+              );
+            })}
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={handleCancel}
+              disabled={isNodeRewriting}
+              style={{
+                padding: '6px 12px',
+                backgroundColor: '#6b7280',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+              }}
+            >Close</button>
           </div>
-        </div>
+        )}
 
-                {/* Options Section: actions like delete */}
-        {data.type === "sentence" && !isNodeRewriting && (
-          <div style={{ padding: "16px 24px 20px 24px", background: "#fff", borderTop: "1px solid #eee" }}>
+        {/* Information Tab */}
+        {!isNodeRewriting && activeTab === 'information' && (
+          <div style={{
+            padding: "24px 24px 16px 24px",
+            background: "#fff"
+          }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
+              <div><strong>Emotion:</strong> {data.type === 'sentence' ? emotion : subtreeEmotion}</div>
+              <div><strong>Intensity:</strong> {data.type === 'sentence' ? intensity : subtreeIntensity}</div>
+              <div><strong>Type:</strong> {data.type || "-"}</div>
+              {data.author && <div><strong>Author:</strong> {data.author}</div>}
+              {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
+            </div>
+          </div>
+        )}
+
+        {/* Editing Tab: Sentence editing */}
+        {!isNodeRewriting && activeTab === 'editing' && data.type === "sentence" && (
+          <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
+            {/* Options Section: actions like delete */}
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               <button
                 title="Delete this sentence"
                 onClick={(e) => {
@@ -293,14 +339,6 @@ export function AnimatedNodeComponent({ id, data }) {
                 Delete
               </button>
             </div>
-          </div>
-        )}
-
-
-
-        {/* Bottom: Editing Section (if editable) */}
-        {data.type === "sentence" && !isNodeRewriting && (
-          <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
             <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
             {suggestions.length > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -438,7 +476,8 @@ export function AnimatedNodeComponent({ id, data }) {
         )}
 
         {/* Close button for non-editable nodes */}
-        {data.type !== "sentence" && !isNodeRewriting && (
+        {/* Editing Tab: Subtree editing */}
+        {!isNodeRewriting && activeTab === 'editing' && data.type !== "sentence" && (
           <div style={{ padding: "20px 24px", background: "#fff" }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Edit Subtree</div>
             <div style={{ marginBottom: 16 }}>
@@ -530,9 +569,7 @@ export function AnimatedNodeComponent({ id, data }) {
                   {leafOrder.map(leafId => {
                     const entry = leafSuggestions[leafId];
                     if (!entry) return null;
-                    const currentText = (entry.options && entry.options.length > 0 && entry.selectedIdx >= 0)
-                      ? entry.options[entry.selectedIdx]
-                      : entry.original;
+                    const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
                     return (
                       <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
                         <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
@@ -573,9 +610,22 @@ export function AnimatedNodeComponent({ id, data }) {
                             ▶
                           </button>
                         </div>
-                        <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, color: '#000' }}>
-                          {currentText}
-                        </div>
+                        <textarea
+                          value={currentText}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, editedText: val } }));
+                          }}
+                          style={{
+                            width: '100%',
+                            minHeight: 100,
+                            padding: 8,
+                            borderRadius: 6,
+                            border: '1px solid #bbb',
+                            color: '#000000',
+                            resize: 'vertical'
+                          }}
+                        />
                       </div>
                     );
                   })}
@@ -604,9 +654,8 @@ export function AnimatedNodeComponent({ id, data }) {
                   const edits = {};
                   Object.keys(leafSuggestions).forEach(k => {
                     const e = leafSuggestions[k];
-                    if (e.options && e.options.length > 0 && e.selectedIdx >= 0) {
-                      edits[k] = e.options[e.selectedIdx];
-                    }
+                    const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
+                    if (chosen && chosen.length > 0) edits[k] = chosen;
                   });
                   if (typeof data.applySubtreeChanges === 'function') {
                     data.applySubtreeChanges(id, subtreeEmotion, subtreeIntensity, edits);
