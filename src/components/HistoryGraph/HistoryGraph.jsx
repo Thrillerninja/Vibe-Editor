@@ -157,7 +157,7 @@ const HistoryGraph = forwardRef(({
   const xStep = 25;
   const xOffset = 20;
   const yStep = 20;
-  const yOffset = 20;
+  const yOffset = 10;
 
   const laneColors = useMemo(() => [
     '#6366f1', // indigo
@@ -426,7 +426,7 @@ const HistoryGraph = forwardRef(({
         </div>
       </div>
 
-      <div ref={scrollContainerRef} className="flex-1 overflow-auto">
+      <div ref={scrollContainerRef} className="flex-1 overflow-x-auto p-2">
         <div className="flex items-start gap-3">
           <div style={{ width: finalSvgWidth, height: svgHeight, position: 'relative' }}>
             <svg
@@ -502,7 +502,7 @@ const HistoryGraph = forwardRef(({
               style={{
                   left: tooltip.x,
                   top: tooltip.y,
-                  transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -60%)`,
+                  transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -120%)`,
                   marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
                   whiteSpace: 'normal',
               }}
