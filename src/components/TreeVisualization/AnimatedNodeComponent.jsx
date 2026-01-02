@@ -178,32 +178,6 @@ export function AnimatedNodeComponent({ id, data }) {
     setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx, editedText: entry.options[newIdx] } }));
   }
 
-  function rotateAllPrev() {
-    setLeafSuggestions(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(k => {
-        const e = next[k];
-        if (e.options && e.options.length > 0) {
-          e.selectedIdx = (e.selectedIdx - 1 + e.options.length) % e.options.length;
-        }
-      });
-      return next;
-    });
-  }
-
-  function rotateAllNext() {
-    setLeafSuggestions(prev => {
-      const next = { ...prev };
-      Object.keys(next).forEach(k => {
-        const e = next[k];
-        if (e.options && e.options.length > 0) {
-          e.selectedIdx = (e.selectedIdx + 1) % e.options.length;
-        }
-      });
-      return next;
-    });
-  }
-
   function showPrevSuggestion() {
     if (!suggestions || suggestions.length === 0) return;
     const newIdx = (currentSuggestionIndex - 1 + suggestions.length) % suggestions.length;
@@ -532,39 +506,6 @@ export function AnimatedNodeComponent({ id, data }) {
             {/* Leaf suggestions list */}
             {leafOrder.length > 0 && (
               <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <button
-                    onClick={rotateAllPrev}
-                    disabled={isNodeRewriting}
-                    title="Rotate all previous"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      background: '#f8f8f8',
-                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    ◀
-                  </button>
-                  <div style={{ fontSize: 12, color: '#555' }}>Rotate all suggestions</div>
-                  <button
-                    onClick={rotateAllNext}
-                    disabled={isNodeRewriting}
-                    title="Rotate all next"
-                    style={{
-                      width: 28,
-                      height: 28,
-                      borderRadius: 4,
-                      border: '1px solid #ccc',
-                      background: '#f8f8f8',
-                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                    }}
-                  >
-                    ▶
-                  </button>
-                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                   {leafOrder.map(leafId => {
                     const entry = leafSuggestions[leafId];
@@ -572,9 +513,6 @@ export function AnimatedNodeComponent({ id, data }) {
                     const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
                     return (
                       <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
-                        <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
-                          Leaf {leafId}
-                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                           <button
                             onClick={() => rotateLeafPrev(leafId)}
