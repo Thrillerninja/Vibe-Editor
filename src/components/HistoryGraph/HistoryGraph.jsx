@@ -495,7 +495,13 @@ const HistoryGraph = forwardRef(({
       {tooltip.visible && tooltip.node && (
         <div
           className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow max-w-xs"
-          style={{ left: tooltip.x, top: tooltip.y, transform: 'translate(0%, -60%)', whiteSpace: 'normal' }}
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -60%)`,
+            marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
+            whiteSpace: 'normal',
+          }}
           role="status"
           aria-hidden={false}
         >
