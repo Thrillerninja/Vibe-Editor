@@ -494,13 +494,17 @@ const HistoryGraph = forwardRef(({
       {/* Custom tooltip rendered absolutely within the container */}
       {tooltip.visible && tooltip.node && (
         <div
-          className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow max-w-xs"
+          className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
           style={{
-            left: tooltip.x,
+            // anchor to left when on left side, anchor to right when on right side
+            left: tooltip.x > containerWidth / 2 ? undefined : tooltip.x,
+            right: tooltip.x > containerWidth / 2 ? Math.max(8, containerWidth - tooltip.x) : undefined,
             top: tooltip.y,
-            transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -60%)`,
-            marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
+            // don't use translateX(-100%) anymore; use right anchor instead.
+            transform: 'translate(0%, -60%)',
             whiteSpace: 'normal',
+            // prevent the tooltip shrinking when anchored to the right
+            ...(tooltip.x > containerWidth / 2 ? { minWidth: 160 } : {}),
           }}
           role="status"
           aria-hidden={false}
@@ -613,3 +617,4 @@ const HistoryGraph = forwardRef(({
 });
 
 export default HistoryGraph;
+
