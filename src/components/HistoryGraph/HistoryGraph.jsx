@@ -11,7 +11,6 @@ import DiffView from './DiffView';
 const HistoryGraph = forwardRef(({
   className = 'history-graph',
   sentences,
-  lastCommittedSentences,
   onRevertComplete = () => {
   },
   onCommitComplete = () => {
@@ -26,9 +25,9 @@ const HistoryGraph = forwardRef(({
   const [commitTitle, setCommitTitle] = useState('');
 
   const commitDiff = useMemo(() => {
-    const oldSentences = lastCommittedSentences || [];
+    const oldSentences = (headIndex !== null && history[headIndex]) ? history[headIndex].data : [];
     return computeSentenceDiff(oldSentences, sentences);
-  }, [sentences, lastCommittedSentences]);
+  }, [sentences, headIndex, history]);
 
   // Helper to append a new commit. If headIndex is not the last index, this will create a new branch.
   const addCommit = (data, title, options = {}) => {

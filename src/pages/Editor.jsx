@@ -8,10 +8,8 @@ import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
-import { applyDirtySubtreeRestructure, createPlaceholderHierarchy, clearHierarchy } from '../utils/hierarchyIntegration';
+import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
-import { computeSentenceDiff, hasChanges } from '../utils/diffUtils';
-import { s } from 'framer-motion/client';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
 
 const EXAMPLE_TEXT =
@@ -26,9 +24,7 @@ const EXAMPLE_TEXT =
 export default function Editor() {
     const historyGraphRef = useRef(null);
     const initialCommitAdded = useRef(false);
-    const lastCommittedSentencesRef = useRef([]);
     useUserIdentification();
-    const navigate = useNavigate();
 
     // SSOT: Store sentences as the primary data structure
     const [sentences, setSentences] = useState([]);
@@ -125,12 +121,6 @@ export default function Editor() {
 
     const addCommit = useCallback((newSentences, title, options = {}) => {
         historyGraphRef.current?.addCommit(newSentences, title, options);
-        // Track last committed snapshot for diff previews
-        try {
-            lastCommittedSentencesRef.current = JSON.parse(JSON.stringify(newSentences));
-        } catch {
-            lastCommittedSentencesRef.current = newSentences;
-        }
         prevTextRef.current = text;
     }, [text]);
 
@@ -354,7 +344,6 @@ export default function Editor() {
 
     const handleCommitComplete = (committedSentences) => {
         setSentences(committedSentences);
-        lastCommittedSentencesRef.current = committedSentences;
     }
 
     const floatingButtonStyle = {
@@ -517,7 +506,6 @@ export default function Editor() {
                         <HistoryGraph
                             ref={historyGraphRef}
                             sentences={sentences}
-                            lastCommittedSentences={lastCommittedSentencesRef.current}
                             onRevertComplete={handleRevertComplete}
                             onCommitComplete={handleCommitComplete}
                         />
