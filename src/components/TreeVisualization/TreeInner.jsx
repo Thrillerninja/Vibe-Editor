@@ -474,6 +474,203 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       );
     });
 
+  // Get all descendant sentence leaf nodes under a given nodeId
+  const getSubtreeLeaves = useCallback((nodeId) => {
+    const sentences = sentencesRef.current;
+    const meta = sentences._hierarchyMeta;
+    if (!meta || !Array.isArray(meta.nodes)) {
+      // No hierarchy → all sentences are considered leaves under root
+      if (nodeId === 'root') return sentences.map(s => ({ id: s.id, content: s.content }));
+      // If nodeId is a sentence itself
+      const sentence = sentences.find(s => s.id === nodeId);
+      return sentence ? [{ id: sentence.id, content: sentence.content }] : [];
+    }
+
+    const nodeMap = new Map(meta.nodes.map(n => [n.id, n]));
+    const sentenceIds = new Set(sentences.map(s => s.id));
+    const resultIds = new Set();
+    const queue = [];
+
+    if (nodeId === 'root') {
+      const topLevel = meta.nodes.filter(n => n.level === meta.maxLevel);
+      queue.push(...topLevel.map(n => n.id));
+    } else {
+      queue.push(nodeId);
+    }
+
+    while (queue.length) {
+      const cur = queue.shift();
+      const node = nodeMap.get(cur);
+      if (!node) {
+        // cur might be a sentence ID
+        if (sentenceIds.has(cur)) {
+          resultIds.add(cur);
+        }
+        continue;
+      }
+      for (const cid of node.childIds || []) {
+        if (sentenceIds.has(cid)) {
+          resultIds.add(cid);
+        } else {
+          queue.push(cid);
+        }
+      }
+    }
+
+    return sentences
+      .filter(s => resultIds.has(s.id))
+      .map(s => ({ id: s.id, content: s.content }));
+  }, []);
+
+  // Apply subtree changes: set emotion for all descendants and update leaf contents per map
+  const applySubtreeChanges = useCallback((nodeId, newEmotion, newIntensity, leafEditsMap) => {
+    const current = sentencesRef.current;
+    const updated = current.map(s => ({ ...s }));
+    const meta = current._hierarchyMeta ? { ...current._hierarchyMeta } : null;
+    const nodeMap = meta && Array.isArray(meta.nodes) ? new Map(meta.nodes.map(n => [n.id, { ...n }])) : null;
+
+    // Collect descendants (groups and sentences)
+    const sentenceIds = new Set(updated.map(s => s.id));
+    const descendantsSentences = new Set();
+    const descendantsGroups = new Set();
+
+    const enqueueChildren = (startId) => {
+      if (!nodeMap) {
+        // No hierarchy → all sentences under root
+        if (startId === 'root') {
+          updated.forEach(s => descendantsSentences.add(s.id));
+        }
+        return;
+      }
+      const queue = [];
+      if (startId === 'root') {
+        const topLevel = meta.nodes.filter(n => n.level === meta.maxLevel);
+        queue.push(...topLevel.map(n => n.id));
+      } else {
+        queue.push(startId);
+      }
+      while (queue.length) {
+        const cur = queue.shift();
+        const node = nodeMap.get(cur);
+        if (!node) {
+          if (sentenceIds.has(cur)) descendantsSentences.add(cur);
+          continue;
+        }
+        descendantsGroups.add(cur);
+        for (const cid of node.childIds || []) {
+          if (sentenceIds.has(cid)) {
+            descendantsSentences.add(cid);
+          } else {
+            queue.push(cid);
+          }
+        }
+      }
+    };
+
+    enqueueChildren(nodeId);
+
+    // Apply emotion to sentences
+    const editedSentenceIds = [];
+    updated.forEach(s => {
+      if (descendantsSentences.has(s.id)) {
+        s.emotion = newEmotion;
+        s.intensity = newIntensity;
+        if (leafEditsMap && leafEditsMap[s.id]) {
+          s.content = leafEditsMap[s.id];
+          editedSentenceIds.push(s.id);
+        }
+      }
+    });
+
+    // Apply emotion to group nodes
+    if (nodeMap) {
+      descendantsGroups.forEach(gid => {
+        const node = nodeMap.get(gid);
+        if (node) {
+          node.emotion = newEmotion;
+          node.intensity = newIntensity;
+        }
+      });
+      // Also set on target group itself if present
+      const target = nodeMap.get(nodeId);
+      if (target) {
+        target.emotion = newEmotion;
+        target.intensity = newIntensity;
+      }
+      meta.nodes = Array.from(nodeMap.values());
+    }
+
+    // Root emotion update
+    if (nodeId === 'root') {
+      if (meta) {
+        meta.rootEmotion = newEmotion;
+        meta.rootIntensity = newIntensity;
+      }
+    }
+
+    // Mark current subtree and all ancestors as dirty on save
+    if (meta) {
+      const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
+      const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
+
+      // Mark all descendant sentences dirty
+      descendantsSentences.forEach(sid => dirtySentenceIds.add(sid));
+      // Mark all descendant group nodes dirty
+      descendantsGroups.forEach(nid => dirtyNodeIds.add(nid));
+      // Mark the selected node itself dirty if it's a group node
+      if (nodeMap && nodeMap.has(nodeId)) {
+        dirtyNodeIds.add(nodeId);
+      }
+      // If selected is a sentence id, mark it dirty as well
+      if (sentenceIds.has(nodeId)) {
+        dirtySentenceIds.add(nodeId);
+      }
+
+      // Mark ancestors up to root dirty
+      const markAncestors = (startId) => {
+        if (!nodeMap) {
+          // Without hierarchy meta, we cannot traverse; mark root only if editing root
+          if (startId === 'root') dirtyNodeIds.add('root');
+          return;
+        }
+        let currentId = startId;
+        while (currentId && currentId !== 'root') {
+          let parent = null;
+          for (const node of nodeMap.values()) {
+            if (Array.isArray(node.childIds) && node.childIds.includes(currentId)) {
+              parent = node;
+              break;
+            }
+          }
+          if (parent) {
+            dirtyNodeIds.add(parent.id);
+            currentId = parent.id;
+          } else {
+            // No parent found in hierarchy: mark root
+            dirtyNodeIds.add('root');
+            break;
+          }
+        }
+        // If the start is root itself, ensure root is marked
+        if (startId === 'root') {
+          dirtyNodeIds.add('root');
+        }
+      };
+
+      markAncestors(nodeId);
+
+      meta.dirtyNodeIds = Array.from(dirtyNodeIds);
+      meta.dirtySentenceIds = Array.from(dirtySentenceIds);
+    }
+
+    const result = updated;
+    if (meta) {
+      result._hierarchyMeta = meta;
+    }
+
+    onTreeUpdate(result);
+  }, [onTreeUpdate]);
+
   // Delete a sentence node and update hierarchy metadata
   const deleteNodeSentence = useCallback((nodeId) => {
     console.log(`[TreeInner] Deleting node ${nodeId}`);
@@ -507,6 +704,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           ...node.data,
           applyNodeSentenceEdit: applyNodeSentenceEdit,
           applyEmotionToNode: applyEmotionToNode,
+          getSubtreeLeaves: getSubtreeLeaves,
+          applySubtreeChanges: applySubtreeChanges,
           deleteNodeSentence: deleteNodeSentence,
           nodePosition: node.position, // Pass position for screen calculation
         },
