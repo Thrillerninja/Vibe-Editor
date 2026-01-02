@@ -41,6 +41,7 @@ function getBorderColor(emotion, intensity, type) {
 export function AnimatedNodeComponent({ id, data }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
+  const [previousText, setPreviousText] = useState(data.content || data.label || "");
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
   const [nodeModified, setNodeModified] = useState(data.isDirty);
   const [emotion, setEmotion] = useState(data.emotion || 'neutral');
@@ -48,9 +49,16 @@ export function AnimatedNodeComponent({ id, data }) {
   const [selectedIntensity, setSelectedIntensity] = useState(intensity);
   const [suggestions, setSuggestions] = useState([]);
   const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
+  // Subtree editing state (for non-sentence/group nodes)
+  const [subtreeEmotion, setSubtreeEmotion] = useState(data.emotion || 'neutral');
+  const [subtreeIntensity, setSubtreeIntensity] = useState(data.intensity ?? 50);
+  const [leafSuggestions, setLeafSuggestions] = useState({}); // id -> { original, options, selectedIdx }
+  const [leafOrder, setLeafOrder] = useState([]);
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
   const [previousEmotion, setPreviousEmotion] = useState(emotion);
+  const subtreeEmotionColor = getEmotionColor(subtreeEmotion, subtreeIntensity, data.type);
+  const modalAccentColor = data.type === 'sentence' ? emotionColor : subtreeEmotionColor;
 
   useEffect(() => {
     setNodeModified(data.isDirty);
@@ -59,6 +67,9 @@ export function AnimatedNodeComponent({ id, data }) {
   useEffect(() => {
     setEmotion(data.emotion || 'neutral');
     setPreviousEmotion(data.emotion || 'neutral');
+    setPreviousText(data.content || data.label || "");
+    setSubtreeEmotion(data.emotion || 'neutral');
+    setSubtreeIntensity(typeof data.intensity === 'number' ? data.intensity : 50);
   }, [data.emotion]);
 
   function handleSave() {
@@ -81,14 +92,27 @@ export function AnimatedNodeComponent({ id, data }) {
 
 
   function handleCancel() {
-    setEmotion(previousEmotion)
+    // Restore prior emotion and text for sentence nodes
+    setEmotion(previousEmotion);
+    setNodeText(previousText);
+    // Clear sentence suggestions
     setSuggestions([]);
     setCurrentSuggestionIndex(0);
+    // Clear subtree state and revert emotion/intensity
+    setLeafSuggestions({});
+    setLeafOrder([]);
+    setSubtreeEmotion(previousEmotion);
+    setSubtreeIntensity(typeof data.intensity === 'number' ? data.intensity : 50);
+    // Close dialog
     setIsDialogOpen(false);
   }
 
   function setNodeIntensity(inputIntensity) {
     setSelectedIntensity(inputIntensity);
+  }
+
+  function setSubtreeNodeIntensity(inputIntensity) {
+    setSubtreeIntensity(inputIntensity);
   }
 
   async function selectEmotion(inputEmotion) {
@@ -109,6 +133,74 @@ export function AnimatedNodeComponent({ id, data }) {
       console.error('Failed to get rewrite options:', e);
     }
     setIsNodeRewriting(false);
+  }
+
+  // Subtree: load rewrite options for all leaf sentences under this node
+  async function selectSubtreeEmotion(inputEmotion) {
+    if (isNodeRewriting) return;
+    setIsNodeRewriting(true);
+    setSubtreeEmotion(inputEmotion);
+    try {
+      const leaves = typeof data.getSubtreeLeaves === 'function' ? data.getSubtreeLeaves(id) : [];
+      setLeafOrder(leaves.map(l => l.id));
+      const optionsList = await Promise.all(
+        leaves.map(async (leaf) => {
+          try {
+            const opts = await rewriteSentenceWithEmotionOptions(leaf.content, inputEmotion, subtreeIntensity, 3);
+            return { id: leaf.id, original: leaf.content, options: opts || [], selectedIdx: (opts && opts.length > 0) ? 0 : -1 };
+          } catch (e) {
+            console.error('Failed to get options for leaf', leaf.id, e);
+            return { id: leaf.id, original: leaf.content, options: [], selectedIdx: -1 };
+          }
+        })
+      );
+      const map = {};
+      optionsList.forEach(entry => { map[entry.id] = entry; });
+      setLeafSuggestions(map);
+    } catch (e) {
+      console.error('Failed subtree emotion rewrite:', e);
+    }
+    setIsNodeRewriting(false);
+  }
+
+  function rotateLeafPrev(leafId) {
+    const entry = leafSuggestions[leafId];
+    if (!entry || !entry.options || entry.options.length === 0) return;
+    const newIdx = (entry.selectedIdx - 1 + entry.options.length) % entry.options.length;
+    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx } }));
+  }
+
+  function rotateLeafNext(leafId) {
+    const entry = leafSuggestions[leafId];
+    if (!entry || !entry.options || entry.options.length === 0) return;
+    const newIdx = (entry.selectedIdx + 1) % entry.options.length;
+    setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, selectedIdx: newIdx } }));
+  }
+
+  function rotateAllPrev() {
+    setLeafSuggestions(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => {
+        const e = next[k];
+        if (e.options && e.options.length > 0) {
+          e.selectedIdx = (e.selectedIdx - 1 + e.options.length) % e.options.length;
+        }
+      });
+      return next;
+    });
+  }
+
+  function rotateAllNext() {
+    setLeafSuggestions(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => {
+        const e = next[k];
+        if (e.options && e.options.length > 0) {
+          e.selectedIdx = (e.selectedIdx + 1) % e.options.length;
+        }
+      });
+      return next;
+    });
   }
 
   function showPrevSuggestion() {
@@ -145,7 +237,7 @@ export function AnimatedNodeComponent({ id, data }) {
           padding: 0,
           maxWidth: 600,
           width: "90%",
-          border: "3px solid #000000",
+          border: `3px solid ${modalAccentColor}`,
           boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
           display: "flex",
           flexDirection: "column",
@@ -173,7 +265,7 @@ export function AnimatedNodeComponent({ id, data }) {
         </div>
 
                 {/* Options Section: actions like delete */}
-        {data.type === "sentence" && (
+        {data.type === "sentence" && !isNodeRewriting && (
           <div style={{ padding: "16px 24px 20px 24px", background: "#fff", borderTop: "1px solid #eee" }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
             <div style={{ display: "flex", gap: 10 }}>
@@ -346,22 +438,197 @@ export function AnimatedNodeComponent({ id, data }) {
         )}
 
         {/* Close button for non-editable nodes */}
-        {data.type !== "sentence" && (
-          <div style={{ padding: "16px 24px", display: "flex", justifyContent: "flex-end" }}>
-            <button
-              onClick={handleCancel}
-              disabled={isNodeRewriting}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: '#6b7280',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer',
-              }}
-            >
-              Close
-            </button>
+        {data.type !== "sentence" && !isNodeRewriting && (
+          <div style={{ padding: "20px 24px", background: "#fff" }}>
+            <div style={{ fontWeight: 600, marginBottom: 10 }}>Edit Subtree</div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Select Emotion for Subtree:</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {Object.entries(EMOTION_COLORS).map(([optEmotion, colors]) => {
+                  const isSelected = subtreeEmotion.toLowerCase() === optEmotion.toLocaleLowerCase();
+                  return (
+                    <button
+                      key={optEmotion}
+                      onClick={() => selectSubtreeEmotion(optEmotion)}
+                      disabled={isNodeRewriting}
+                      style={{
+                        padding: '8px 12px',
+                        backgroundColor: isSelected ? colors.medium : '#f5f5f5',
+                        color: isSelected ? '#fff' : '#333',
+                        border: `1px solid ${isSelected ? colors.strong : '#ccc'}`,
+                        borderRadius: '4px',
+                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                        fontSize: '14px',
+                        fontWeight: isSelected ? '600' : '400',
+                        textTransform: 'capitalize'
+                      }}
+                    >
+                      {optEmotion}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {subtreeIntensity}</div>
+              <input
+                type="range"
+                min="0"
+                max="99"
+                value={subtreeIntensity}
+                onChange={(e) => setSubtreeNodeIntensity(parseInt(e.target.value))}
+                disabled={isNodeRewriting}
+                style={{
+                  accentColor: subtreeEmotionColor,
+                  width: '100%',
+                  height: '6px',
+                  borderRadius: '3px',
+                  background: subtreeEmotionColor,
+                  outline: 'none',
+                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer'
+                }}
+              />
+            </div>
+
+            {/* Leaf suggestions list */}
+            {leafOrder.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <button
+                    onClick={rotateAllPrev}
+                    disabled={isNodeRewriting}
+                    title="Rotate all previous"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      background: '#f8f8f8',
+                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    ◀
+                  </button>
+                  <div style={{ fontSize: 12, color: '#555' }}>Rotate all suggestions</div>
+                  <button
+                    onClick={rotateAllNext}
+                    disabled={isNodeRewriting}
+                    title="Rotate all next"
+                    style={{
+                      width: 28,
+                      height: 28,
+                      borderRadius: 4,
+                      border: '1px solid #ccc',
+                      background: '#f8f8f8',
+                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                    }}
+                  >
+                    ▶
+                  </button>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {leafOrder.map(leafId => {
+                    const entry = leafSuggestions[leafId];
+                    if (!entry) return null;
+                    const currentText = (entry.options && entry.options.length > 0 && entry.selectedIdx >= 0)
+                      ? entry.options[entry.selectedIdx]
+                      : entry.original;
+                    return (
+                      <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
+                        <div style={{ fontSize: 12, color: '#555', marginBottom: 6 }}>
+                          Leaf {leafId}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                          <button
+                            onClick={() => rotateLeafPrev(leafId)}
+                            disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                            title="Previous option"
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 4,
+                              border: '1px solid #ccc',
+                              background: '#f8f8f8',
+                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            ◀
+                          </button>
+                          <div style={{ fontSize: 12, color: '#555' }}>
+                            {entry.options && entry.options.length > 0 ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}` : 'No options'}
+                          </div>
+                          <button
+                            onClick={() => rotateLeafNext(leafId)}
+                            disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                            title="Next option"
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: 4,
+                              border: '1px solid #ccc',
+                              background: '#f8f8f8',
+                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                            }}
+                          >
+                            ▶
+                          </button>
+                        </div>
+                        <div style={{ whiteSpace: 'pre-wrap', fontSize: 14, color: '#000' }}>
+                          {currentText}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                onClick={handleCancel}
+                disabled={isNodeRewriting}
+                style={{
+                  padding: '6px 12px',
+                  backgroundColor: '#ef4444',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  // Build edits map
+                  const edits = {};
+                  Object.keys(leafSuggestions).forEach(k => {
+                    const e = leafSuggestions[k];
+                    if (e.options && e.options.length > 0 && e.selectedIdx >= 0) {
+                      edits[k] = e.options[e.selectedIdx];
+                    }
+                  });
+                  if (typeof data.applySubtreeChanges === 'function') {
+                    data.applySubtreeChanges(id, subtreeEmotion, subtreeIntensity, edits);
+                  }
+                  // Reset and close
+                  setLeafSuggestions({});
+                  setLeafOrder([]);
+                  setIsDialogOpen(false);
+                }}
+                disabled={isNodeRewriting}
+                style={{
+                  padding: "8px 14px",
+                  background: "#10B981",
+                  color: "white",
+                  borderRadius: 6,
+                  border: "none",
+                  cursor: "pointer",
+                }}
+              >
+                Save
+              </button>
+            </div>
           </div>
         )}
         {/* Loading spinner if rewriting */}
@@ -372,7 +639,7 @@ export function AnimatedNodeComponent({ id, data }) {
                 width: 32,
                 height: 32,
                 border: "5px solid #ccc",
-                borderTop: `5px solid ${emotionColor}`,
+                borderTop: `5px solid ${modalAccentColor}`,
                 borderRadius: "50%",
                 animation: "spin 0.8s linear infinite",
               }}
