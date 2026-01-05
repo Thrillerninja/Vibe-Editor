@@ -13,6 +13,9 @@
  *    f. Validate proper parent-child relationships
  */
 
+import { EMOTION_AXES } from '../../utils/constants.js';
+import { normalizeEmotionProfile } from '../../utils/emotionProfiles.js';
+
 /**
  * Parse the response from dirty subtree restructure
  * @param {string} responseText - Raw response from Claude
@@ -45,11 +48,18 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
         console.log('[Claude Service] ✓ Response validation passed');
         console.log(`[Claude Service] ✓ Validated ${parsed.restructuredSubtrees.length} subtree(s)`);
 
+        if (parsed.rootEmotions) {
+            parsed.rootEmotions = normalizeEmotionProfile(parsed.rootEmotions);
+        } else if (parsed.rootEmotion && typeof parsed.rootIntensity === 'number') {
+            parsed.rootEmotions = normalizeEmotionProfile({ [String(parsed.rootEmotion).toLowerCase()]: parsed.rootIntensity });
+        }
+
         return {
             restructuredSubtrees: parsed.restructuredSubtrees,
             newRootTitle: parsed.newRootTitle,
             newRootEmotion: parsed.rootEmotion,
-            newRootIntensity: parsed.rootIntensity
+            newRootIntensity: parsed.rootIntensity,
+            newRootEmotions: parsed.rootEmotions,
         };
     } catch (error) {
         console.error('[Claude Service] ✗ Response validation failed:', error.message);
@@ -73,6 +83,22 @@ function extractJSON(responseText) {
     }
 
     return jsonText;
+}
+
+function hasValidEmotions(node) {
+    const profile = node && node.emotions;
+    if (!profile || typeof profile !== 'object') return false;
+    return EMOTION_AXES.every((k) => typeof profile[k] === 'number');
+}
+
+function coerceEmotionShape(node) {
+    if (hasValidEmotions(node)) {
+        node.emotions = normalizeEmotionProfile(node.emotions);
+        return;
+    }
+    if (node.emotion && typeof node.intensity === 'number') {
+        node.emotions = normalizeEmotionProfile({ [String(node.emotion).toLowerCase()]: node.intensity });
+    }
 }
 
 /**
@@ -211,6 +237,14 @@ function validateNodeStructure(node, maxDepth, subtreeId) {
     if (node.childIds.length === 0) {
         throw new Error(`Subtree ${subtreeId}: Node ${node.id} has empty childIds (nodes must have children)`);
     }
+
+    // Emotions: require either full profile or legacy fields
+    const profileValid = hasValidEmotions(node);
+    const legacyValid = node.emotion && typeof node.intensity === 'number';
+    if (!profileValid && !legacyValid) {
+        throw new Error(`Subtree ${subtreeId}: Node ${node.id} missing emotions profile (expected "emotions" object with ${EMOTION_AXES.join(', ')} or legacy emotion+intensity)`);
+    }
+    coerceEmotionShape(node);
 
     // Validate level range
     if (node.level < 2 || node.level >= maxDepth) {

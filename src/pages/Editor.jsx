@@ -175,7 +175,7 @@ export default function Editor() {
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
 
             // Ask Claude to restructure dirty subtrees. this contains emotion stuff for hierarchy nodes
-            const { dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity } = await updateDirtyNodes(
+            const { dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = await updateDirtyNodes(
                 sentencesToProcess,
                 hierarchyMeta,
                 dirtyNodeIds,
@@ -184,7 +184,7 @@ export default function Editor() {
             );
 
             // Apply the restructured subtrees to the existing hierarchy
-            let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity);
+            let updatedSentences = applyDirtySubtreeRestructure(sentencesToProcess, dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions);
             console.log('[TEST0] Updated sentences before applying dirty subtree emotions:', updatedSentences);
             await evaluateSentenceEmotions(updatedSentences).then(result => {
                 updatedSentences = result;

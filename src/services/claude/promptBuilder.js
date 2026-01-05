@@ -91,12 +91,12 @@ RULES
    - Use EXACT sentence IDs from input (don't generate new ones)
    - Copy sentence IDs exactly when referencing them in childIds
 
-6. **ADD EMOTION PROPERTY (NEW)**
-   - For every node you create, you MUST include an **"emotion"** property.
-   - The value of "emotion" must be one of: **"POSITIVE"**, **"NEGATIVE"**, or **"NEUTRAL"**.
-   - The emotion should reflect the overall sentiment of the text contained within the node's scope (sentences for level 2, or sub-topics for higher levels).
-   - Also assign an **"intensity"** property (0-100) indicating the strength of the emotion.
-   - EVERY node MUST have these two properties. 
+6. **ADD EMOTION PROFILE (NEW)**
+  - For every node you create, you MUST include an **"emotions"** object with EXACTLY these five keys (0-100 integers):
+    { "positive": n, "negative": n, "neutral": n, "uncertain": n, "emphasis": n }
+  - Values must be clamped to 0-100. Do NOT add extra keys.
+  - The profile should reflect the overall tone of the node's scope (sentences for level 2, grouped topics for higher levels).
+  - Legacy fields "emotion" and "intensity" are optional; if you include them, derive them from the dominant axis of the profile.
 **THESE ARE THE ONLY VALID SENTENCE IDs (copy these exactly):**
 ${allSentenceIds.map(id => `  - ${id}`).join('\n')}
 
@@ -133,16 +133,14 @@ Your response for topLevel=2:
     "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
     "level": 2,
     "title": "Positive Aspects of Cat Ownership",
-    "emotion": "POSITIVE", // Overall positive sentiment (joy, popular)
-    "intensity": 67,
+    "emotions": { "positive": 70, "negative": 5, "neutral": 20, "uncertain": 0, "emphasis": 40 },
     "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
   },
   {
     "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
     "level": 2,
     "title": "Dog Loyalty and Effort",
-    "emotion": "NEUTRAL", // Mix of positive (loyal) and negative (exhausting) sentiment
-    "intensity": 33,
+    "emotions": { "positive": 35, "negative": 30, "neutral": 25, "uncertain": 5, "emphasis": 15 },
     "childIds": ["c3d4e5f6-a7b8-9012-cdef-333333333333", "d4e5f6a7-b8c9-0123-def1-444444444444"]
   }
 ]
@@ -162,16 +160,16 @@ Given these input sentences:
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
   // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
-  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotion": "POSITIVE", intensity: 67, "childIds": ["s1", "s2"]},        // Sentences 0-1
-  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotion": "NEGATIVE", intensity: 40, "childIds": ["s3", "s4"]},        // Sentences 2-3
-  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotion": "NEUTRAL", intensity: 0, "childIds": ["s5", "s6"]},      // Sentences 4-5
+  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotions": {"positive": 70, "negative": 5, "neutral": 20, "uncertain": 0, "emphasis": 40}, "childIds": ["s1", "s2"]},        // Sentences 0-1
+  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotions": {"positive": 10, "negative": 55, "neutral": 20, "uncertain": 5, "emphasis": 25}, "childIds": ["s3", "s4"]},        // Sentences 2-3
+  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotions": {"positive": 15, "negative": 5, "neutral": 60, "uncertain": 10, "emphasis": 15}, "childIds": ["s5", "s6"]},      // Sentences 4-5
 
   // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
-  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n1", "n2"]},     // Contains sentences 0-3 (mixed sentiment)
-  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n3"]},       // Contains sentences 4-5 (cautious, divided)
+  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotions": {"positive": 35, "negative": 35, "neutral": 20, "uncertain": 5, "emphasis": 20}, "childIds": ["n1", "n2"]},     // Contains sentences 0-3 (mixed sentiment)
+  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotions": {"positive": 20, "negative": 10, "neutral": 55, "uncertain": 10, "emphasis": 10}, "childIds": ["n3"]},       // Contains sentences 4-5 (cautious, divided)
 
   // Level 4: Top level grouping all level 3 nodes
-  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotion": "NEUTRAL", intensity: 0, "childIds": ["n4", "n5"]}
+  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotions": {"positive": 25, "negative": 20, "neutral": 45, "uncertain": 5, "emphasis": 15}, "childIds": ["n4", "n5"]}
 ]
 
 Notice in Example 2:
@@ -220,9 +218,10 @@ ROOT TITLE
 
 Generate a concise document title (3-8 words) based on all content.
 
-Also generate a root emotion and intensity based on overall document sentiment. Put those also as props in the output JSON:
-- "rootEmotion": "POSITIVE", "NEGATIVE", or "NEUTRAL"
-- "rootIntensity": integer 0-100 indicating strength of emotion
+Also generate a five-axis emotion profile for the root based on overall document sentiment. Put this as a prop in the output JSON:
+- "rootEmotions": { "positive": 0-100, "negative": 0-100, "neutral": 0-100, "uncertain": 0-100, "emphasis": 0-100 }
+
+Use all five keys exactly and clamp each value to 0-100.
 ` : ''}
 ═══════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL: DO NOT GENERATE NEW SENTENCE IDs
@@ -251,7 +250,8 @@ RESPONSE FORMAT
 Return valid JSON only (no markdown):
 
 {${isRootDirty ? `
-  "newRootTitle": "Document Title",` : ''}
+  "newRootTitle": "Document Title",
+  "rootEmotions": { "positive": 0-100, "negative": 0-100, "neutral": 0-100, "uncertain": 0-100, "emphasis": 0-100 },` : ''}
   "restructuredSubtrees": [
     {
       "rootNodeId": "id-from-input",

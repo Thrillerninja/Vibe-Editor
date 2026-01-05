@@ -76,6 +76,15 @@ export const EMOTIONS = {
   EMPHASIS: 'emphasis',
 };
 
+// Fixed list of axes for multi-emotion profiles
+export const EMOTION_AXES = [
+  EMOTIONS.POSITIVE,
+  EMOTIONS.NEGATIVE,
+  EMOTIONS.NEUTRAL,
+  EMOTIONS.UNCERTAIN,
+  EMOTIONS.EMPHASIS,
+];
+
 export const EMOTION_LABELS = {
   [EMOTIONS.NEUTRAL]: 'Neutral',
   [EMOTIONS.POSITIVE]: 'Positive',

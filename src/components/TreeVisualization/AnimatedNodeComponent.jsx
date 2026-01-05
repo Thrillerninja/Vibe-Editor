@@ -5,11 +5,13 @@ import { Handle, Position, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { measureLabel } from '../../utils/measurements';
-import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX, EMOTION_COLORS, EMOTIONS } from '../../utils/constants';
+import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX, EMOTION_COLORS, EMOTIONS, EMOTION_AXES } from '../../utils/constants';
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
 import '../../components/TreeVisualization/TreeNode.css';
 import { EMOTION_LABELS } from '../../utils/constants';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
+import { normalizeEmotionProfile, deriveLegacyFromProfile, profileFromLegacy } from '../../utils/emotionProfiles.js';
+import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 
 /**
  * Gets node background color based on emotion
@@ -44,14 +46,21 @@ export function AnimatedNodeComponent({ id, data }) {
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
   const [nodeModified, setNodeModified] = useState(data.isDirty);
-  const [emotion, setEmotion] = useState(data.emotion || 'neutral');
-  const [intensity, setIntensity] = useState(data.intensity ?? 50);
-  const [selectedIntensity, setSelectedIntensity] = useState(intensity);
+  const initialProfile = normalizeEmotionProfile(
+    data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
+  );
+  const initialLegacy = deriveLegacyFromProfile(initialProfile);
+  const [emotionProfile, setEmotionProfile] = useState(initialProfile);
+  const [originalEmotionProfile, setOriginalEmotionProfile] = useState(initialProfile);
+  const [emotion, setEmotion] = useState(initialLegacy.emotion || 'neutral');
+  const [intensity, setIntensity] = useState(initialLegacy.intensity ?? 0);
+  const [selectedIntensity, setSelectedIntensity] = useState(initialLegacy.intensity ?? 0);
   const [suggestions, setSuggestions] = useState([]);
   const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
   // Subtree editing state (for non-sentence/group nodes)
-  const [subtreeEmotion, setSubtreeEmotion] = useState(data.emotion || 'neutral');
-  const [subtreeIntensity, setSubtreeIntensity] = useState(data.intensity ?? 50);
+  const [subtreeEmotionProfile, setSubtreeEmotionProfile] = useState(initialProfile);
+  const [subtreeEmotion, setSubtreeEmotion] = useState(initialLegacy.emotion || 'neutral');
+  const [subtreeIntensity, setSubtreeIntensity] = useState(initialLegacy.intensity ?? 0);
   const [leafSuggestions, setLeafSuggestions] = useState({}); // id -> { original, options, selectedIdx }
   const [leafOrder, setLeafOrder] = useState([]);
   const [activeTab, setActiveTab] = useState('information');
@@ -66,22 +75,31 @@ export function AnimatedNodeComponent({ id, data }) {
   }, [data.isDirty]);
 
   useEffect(() => {
-    setEmotion(data.emotion || 'neutral');
-    setPreviousEmotion(data.emotion || 'neutral');
+    const profile = normalizeEmotionProfile(
+      data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
+    );
+    const legacy = deriveLegacyFromProfile(profile);
+    setEmotionProfile(profile);
+    setOriginalEmotionProfile(profile);
+    setEmotion(legacy.emotion || 'neutral');
+    setIntensity(legacy.intensity ?? 0);
+    setPreviousEmotion(legacy.emotion || 'neutral');
     setPreviousText(data.content || data.label || "");
-    setSubtreeEmotion(data.emotion || 'neutral');
-    setSubtreeIntensity(typeof data.intensity === 'number' ? data.intensity : 50);
-  }, [data.emotion]);
+    setSubtreeEmotionProfile(profile);
+    setSubtreeEmotion(legacy.emotion || 'neutral');
+    setSubtreeIntensity(typeof legacy.intensity === 'number' ? legacy.intensity : 0);
+  }, [data.emotions, data.emotion, data.intensity]);
 
   function handleSave() {
-    if (!(data.content === nodeText)) {
+    // If text hasn't changed, revert to original emotion profile
+    const textChanged = nodeText !== previousText;
+    const finalProfile = textChanged ? emotionProfile : originalEmotionProfile;
+    const legacy = deriveLegacyFromProfile(finalProfile);
+    setIntensity(legacy.intensity);
+    setEmotion(legacy.emotion);
+    setEmotionProfile(finalProfile);
+    data.applyNodeSentenceEdit(id, nodeText, finalProfile);
 
-      setIntensity(selectedIntensity);
-      data.applyNodeSentenceEdit(id, nodeText);
-    } else {
-
-      setSelectedIntensity(intensity);
-    }
     setSuggestions([]);
     setCurrentSuggestionIndex(0);
     setIsDialogOpen(false);
@@ -93,8 +111,11 @@ export function AnimatedNodeComponent({ id, data }) {
 
 
   function handleCancel() {
-    // Restore prior emotion and text for sentence nodes
-    setEmotion(previousEmotion);
+    // Always restore original emotion and text
+    const legacy = deriveLegacyFromProfile(originalEmotionProfile);
+    setEmotionProfile(originalEmotionProfile);
+    setEmotion(legacy.emotion);
+    setSelectedIntensity(legacy.intensity);
     setNodeText(previousText);
     // Clear sentence suggestions
     setSuggestions([]);
@@ -102,29 +123,35 @@ export function AnimatedNodeComponent({ id, data }) {
     // Clear subtree state and revert emotion/intensity
     setLeafSuggestions({});
     setLeafOrder([]);
-    setSubtreeEmotion(previousEmotion);
-    setSubtreeIntensity(typeof data.intensity === 'number' ? data.intensity : 50);
+    setSubtreeEmotionProfile(originalEmotionProfile);
+    setSubtreeEmotion(legacy.emotion);
+    setSubtreeIntensity(legacy.intensity);
     // Close dialog
     setIsDialogOpen(false);
   }
 
   function setNodeIntensity(inputIntensity) {
     setSelectedIntensity(inputIntensity);
+    const next = normalizeEmotionProfile({ ...emotionProfile, [emotion]: inputIntensity });
+    setEmotionProfile(next);
   }
 
   function setSubtreeNodeIntensity(inputIntensity) {
     setSubtreeIntensity(inputIntensity);
+    const next = normalizeEmotionProfile({ ...emotionProfile, [subtreeEmotion]: inputIntensity });
+    setEmotionProfile(next);
   }
 
-  async function selectEmotion(inputEmotion) {
+  async function selectEmotionProfile(profileUpdate) {
     if (isNodeRewriting) return;
-    if (inputEmotion === emotion) return;
+    const nextProfile = normalizeEmotionProfile(profileUpdate);
     setIsNodeRewriting(true);
-    setEmotion(inputEmotion);
-    // Optional: inform user
-    // alert(`Selected emotion: ${inputEmotion} (${EMOTION_LABELS[inputEmotion] || 'No label'})`);
+    setEmotionProfile(nextProfile);
+    const legacy = deriveLegacyFromProfile(nextProfile);
+    setEmotion(legacy.emotion);
+    setSelectedIntensity(legacy.intensity);
     try {
-      const options = await rewriteSentenceWithEmotionOptions(nodeText, inputEmotion, selectedIntensity, 3);
+      const options = await rewriteSentenceWithEmotionOptions(nodeText, nextProfile, 3);
       setSuggestions(options);
       setCurrentSuggestionIndex(0);
       if (options && options.length > 0) {
@@ -137,17 +164,21 @@ export function AnimatedNodeComponent({ id, data }) {
   }
 
   // Subtree: load rewrite options for all leaf sentences under this node
-  async function selectSubtreeEmotion(inputEmotion) {
+  async function selectSubtreeEmotionProfile(profileUpdate) {
     if (isNodeRewriting) return;
+    const nextProfile = normalizeEmotionProfile(profileUpdate);
+    const legacy = deriveLegacyFromProfile(nextProfile);
     setIsNodeRewriting(true);
-    setSubtreeEmotion(inputEmotion);
+    setSubtreeEmotionProfile(nextProfile);
+    setSubtreeEmotion(legacy.emotion);
+    setSubtreeIntensity(legacy.intensity);
     try {
       const leaves = typeof data.getSubtreeLeaves === 'function' ? data.getSubtreeLeaves(id) : [];
       setLeafOrder(leaves.map(l => l.id));
       const optionsList = await Promise.all(
         leaves.map(async (leaf) => {
           try {
-            const opts = await rewriteSentenceWithEmotionOptions(leaf.content, inputEmotion, subtreeIntensity, 3);
+            const opts = await rewriteSentenceWithEmotionOptions(leaf.content, nextProfile, 3);
             return { id: leaf.id, original: leaf.content, options: opts || [], selectedIdx: (opts && opts.length > 0) ? 0 : -1, editedText: (opts && opts.length > 0) ? opts[0] : leaf.content };
           } catch (e) {
             console.error('Failed to get options for leaf', leaf.id, e);
@@ -190,6 +221,48 @@ export function AnimatedNodeComponent({ id, data }) {
     const newIdx = (currentSuggestionIndex + 1) % suggestions.length;
     setCurrentSuggestionIndex(newIdx);
     setNodeText(suggestions[newIdx]);
+  }
+
+  async function fetchSubtreeRewriteOptions() {
+    if (isNodeRewriting) return;
+    setIsNodeRewriting(true);
+    try {
+      const leaves = typeof data.getSubtreeLeaves === 'function' ? data.getSubtreeLeaves(id) : [];
+      setLeafOrder(leaves.map(l => l.id));
+      const optionsList = await Promise.all(
+        leaves.map(async (leaf) => {
+          try {
+            const opts = await rewriteSentenceWithEmotionOptions(leaf.content, subtreeEmotionProfile, 3);
+            return { id: leaf.id, original: leaf.content, options: opts || [], selectedIdx: (opts && opts.length > 0) ? 0 : -1, editedText: (opts && opts.length > 0) ? opts[0] : leaf.content };
+          } catch (e) {
+            console.error('Failed to get options for leaf', leaf.id, e);
+            return { id: leaf.id, original: leaf.content, options: [], selectedIdx: -1, editedText: leaf.content };
+          }
+        })
+      );
+      const map = {};
+      optionsList.forEach(entry => { map[entry.id] = entry; });
+      setLeafSuggestions(map);
+    } catch (e) {
+      console.error('Failed subtree rewrite:', e);
+    }
+    setIsNodeRewriting(false);
+  }
+
+  async function fetchRewriteOptions() {
+    if (isNodeRewriting) return;
+    setIsNodeRewriting(true);
+    try {
+      const options = await rewriteSentenceWithEmotionOptions(previousText || nodeText, emotionProfile, 3);
+      setSuggestions(options || []);
+      setCurrentSuggestionIndex(0);
+      if (options && options.length > 0) {
+        setNodeText(options[0]);
+      }
+    } catch (e) {
+      console.error('Failed to get rewrite options:', e);
+    }
+    setIsNodeRewriting(false);
   }
 
   // Dialog/modal for editing node - redesigned
@@ -308,12 +381,24 @@ export function AnimatedNodeComponent({ id, data }) {
                 background: "#fff"
               }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
+                  {data.type !== 'sentence' && data.label && (
+                    <div><strong>Title:</strong> {data.label}</div>
+                  )}
+                  {data.content && (
+                    <div><strong>Content:</strong> {data.content}</div>
+                  )}
                   <div><strong>Emotion:</strong> {data.type === 'sentence' ? emotion : subtreeEmotion}</div>
                   <div><strong>Intensity:</strong> {data.type === 'sentence' ? intensity : subtreeIntensity}</div>
-                  <div><strong>Type:</strong> {data.type || "-"}</div>
                   {data.author && <div><strong>Author:</strong> {data.author}</div>}
                   {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
+                </div>
+                <div style={{ marginTop: 20 }}>
+                  <EmotionRadar
+                    profile={data.type === 'sentence' ? emotionProfile : subtreeEmotionProfile}
+                    onChange={null}
+                    size={260}
+                    label="Current Emotion Profile"
+                  />
                 </div>
               </div>
             )}
@@ -323,7 +408,7 @@ export function AnimatedNodeComponent({ id, data }) {
               <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
             {/* Options Section: actions like delete */}
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
               <button
                 title="Delete this sentence"
                 onClick={(e) => {
@@ -400,54 +485,56 @@ export function AnimatedNodeComponent({ id, data }) {
                 resize: "vertical"
               }}
             />
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Select Emotion:</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {Object.entries(EMOTION_COLORS).map(([optEmotion, colors]) => {
-                  const isSelected = emotion.toLowerCase() === optEmotion.toLocaleLowerCase();
-                  return (
-                    <button
-                      key={optEmotion}
-                      onClick={() => selectEmotion(optEmotion)}
-                      disabled={isNodeRewriting}
-                      style={{
-                        padding: '8px 12px',
-                        backgroundColor: isSelected ? colors.medium : '#f5f5f5',
-                        color: isSelected ? '#fff' : '#333',
-                        border: `1px solid ${isSelected ? colors.strong : '#ccc'}`,
-                        borderRadius: '4px',
-                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        fontWeight: isSelected ? '600' : '400',
-                        textTransform: 'capitalize'
-                      }}
-                    >
-                      {optEmotion}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {selectedIntensity}</div>
-              <input
-                type="range"
-                min="0"
-                max="99"
-                value={selectedIntensity}
-                onChange={(e) => setNodeIntensity(parseInt(e.target.value))}
-                disabled={isNodeRewriting}
-                style={{
-                  accentColor: emotionColor,
-                  backgroundColor: '#f',
-                  color: '#10B981',
-                  width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: emotionColor,
-                  outline: 'none',
-                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer'
+            <div style={{ marginBottom: 16, position: 'relative' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fetchRewriteOptions();
                 }}
+                disabled={isNodeRewriting}
+                title="Generate 3 rewrite options using current emotion profile"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                  color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  zIndex: 10
+                }}
+                onMouseOver={(e) => {
+                  if (!isNodeRewriting) {
+                    e.currentTarget.style.background = '#374151';
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = '#111827';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                ↻
+              </button>
+              <EmotionRadar
+                profile={emotionProfile}
+                onChange={(next) => {
+                  setEmotionProfile(next);
+                  const legacy = deriveLegacyFromProfile(next);
+                  setEmotion(legacy.emotion);
+                  setSelectedIntensity(legacy.intensity);
+                }}
+                size={280}
+                label="Emotion profile"
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
@@ -465,20 +552,22 @@ export function AnimatedNodeComponent({ id, data }) {
               >
                 Cancel
               </button>
-              <button
-                onClick={handleSave}
-                disabled={isNodeRewriting}
-                style={{
-                  padding: "8px 14px",
-                  background: "#10B981",
-                  color: "white",
-                  borderRadius: 6,
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                Save
-              </button>
+              {(nodeText !== previousText || JSON.stringify(emotionProfile) !== JSON.stringify(originalEmotionProfile)) && (
+                <button
+                  onClick={handleSave}
+                  disabled={isNodeRewriting}
+                  style={{
+                    padding: "8px 14px",
+                    background: "#10B981",
+                    color: "white",
+                    borderRadius: 6,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Save
+                </button>
+              )}
             </div>
               </div>
             )}
@@ -487,53 +576,57 @@ export function AnimatedNodeComponent({ id, data }) {
             {/* Editing Tab: Subtree editing */}
             {activeTab === 'editing' && data.type !== "sentence" && (
               <div style={{ padding: "20px 24px", background: "#fff" }}>
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>Edit Subtree</div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Select Emotion for Subtree:</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-                {Object.entries(EMOTION_COLORS).map(([optEmotion, colors]) => {
-                  const isSelected = subtreeEmotion.toLowerCase() === optEmotion.toLocaleLowerCase();
-                  return (
-                    <button
-                      key={optEmotion}
-                      onClick={() => selectSubtreeEmotion(optEmotion)}
-                      disabled={isNodeRewriting}
-                      style={{
-                        padding: '8px 12px',
-                        backgroundColor: isSelected ? colors.medium : '#f5f5f5',
-                        color: isSelected ? '#fff' : '#333',
-                        border: `1px solid ${isSelected ? colors.strong : '#ccc'}`,
-                        borderRadius: '4px',
-                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                        fontSize: '14px',
-                        fontWeight: isSelected ? '600' : '400',
-                        textTransform: 'capitalize'
-                      }}
-                    >
-                      {optEmotion}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <div style={{ fontWeight: '500', marginBottom: '8px' }}>Intensity: {subtreeIntensity}</div>
-              <input
-                type="range"
-                min="0"
-                max="99"
-                value={subtreeIntensity}
-                onChange={(e) => setSubtreeNodeIntensity(parseInt(e.target.value))}
-                disabled={isNodeRewriting}
-                style={{
-                  accentColor: subtreeEmotionColor,
-                  width: '100%',
-                  height: '6px',
-                  borderRadius: '3px',
-                  background: subtreeEmotionColor,
-                  outline: 'none',
-                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer'
+
+            <div style={{ marginBottom: 16, position: 'relative' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fetchSubtreeRewriteOptions();
                 }}
+                disabled={isNodeRewriting}
+                title="Generate 3 rewrite options for each sentence using current emotion profile"
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  right: 0,
+                  width: 36,
+                  height: 36,
+                  borderRadius: '50%',
+                  border: 'none',
+                  background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                  color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 18,
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                  zIndex: 10
+                }}
+                onMouseOver={(e) => {
+                  if (!isNodeRewriting) {
+                    e.currentTarget.style.background = '#374151';
+                    e.currentTarget.style.transform = 'scale(1.1)';
+                  }
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.background = '#111827';
+                  e.currentTarget.style.transform = 'scale(1)';
+                }}
+              >
+                ↻
+              </button>
+              <EmotionRadar
+                profile={subtreeEmotionProfile}
+                onChange={(next) => {
+                  setSubtreeEmotionProfile(next);
+                  const legacy = deriveLegacyFromProfile(next);
+                  setSubtreeEmotion(legacy.emotion);
+                  setSubtreeIntensity(legacy.intensity);
+                }}
+                size={280}
+                label="Subtree emotion profile"
               />
             </div>
 
@@ -620,35 +713,51 @@ export function AnimatedNodeComponent({ id, data }) {
               >
                 Cancel
               </button>
-              <button
-                onClick={() => {
-                  // Build edits map
-                  const edits = {};
-                  Object.keys(leafSuggestions).forEach(k => {
-                    const e = leafSuggestions[k];
-                    const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
-                    if (chosen && chosen.length > 0) edits[k] = chosen;
-                  });
-                  if (typeof data.applySubtreeChanges === 'function') {
-                    data.applySubtreeChanges(id, subtreeEmotion, subtreeIntensity, edits);
-                  }
-                  // Reset and close
-                  setLeafSuggestions({});
-                  setLeafOrder([]);
-                  setIsDialogOpen(false);
-                }}
-                disabled={isNodeRewriting}
-                style={{
-                  padding: "8px 14px",
-                  background: "#10B981",
-                  color: "white",
-                  borderRadius: 6,
-                  border: "none",
-                  cursor: "pointer",
-                }}
-              >
-                Save
-              </button>
+              {(() => {
+                const hasTextChanges = Object.keys(leafSuggestions).some(k => {
+                  const e = leafSuggestions[k];
+                  const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
+                  return chosen !== e.original;
+                });
+                const hasEmotionChanges = JSON.stringify(subtreeEmotionProfile) !== JSON.stringify(originalEmotionProfile);
+                return (hasTextChanges || hasEmotionChanges) && (
+                  <button
+                    onClick={() => {
+                      // Build edits map
+                      const edits = {};
+                      let anyTextChanged = false;
+                      Object.keys(leafSuggestions).forEach(k => {
+                        const e = leafSuggestions[k];
+                        const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
+                        if (chosen && chosen.length > 0) {
+                          edits[k] = chosen;
+                          if (chosen !== e.original) anyTextChanged = true;
+                        }
+                      });
+                      // If no text changed, revert to original emotion
+                      const finalProfile = anyTextChanged ? subtreeEmotionProfile : originalEmotionProfile;
+                      if (typeof data.applySubtreeChanges === 'function') {
+                        data.applySubtreeChanges(id, normalizeEmotionProfile({ ...finalProfile }), edits);
+                      }
+                      // Reset and close
+                      setLeafSuggestions({});
+                      setLeafOrder([]);
+                      setIsDialogOpen(false);
+                    }}
+                    disabled={isNodeRewriting}
+                    style={{
+                      padding: "8px 14px",
+                      background: "#10B981",
+                      color: "white",
+                      borderRadius: 6,
+                      border: "none",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Save
+                  </button>
+                );
+              })()}
             </div>
               </div>
             )}
