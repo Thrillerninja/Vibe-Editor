@@ -125,6 +125,50 @@ export function AnimatedNodeComponent({ id, data }) {
     setNodeText(suggestions[newIdx]);
   }
 
+  /**
+ * Render content with clickable links
+ */
+function renderLinksInContent(text) {
+  if (!text) return text;
+
+  // Match URLs
+  const urlRegex = /(https?:\/\/[^\s<>"{}|\\^`\[\]]*)/g;
+  const parts = text.split(urlRegex);
+
+  return (
+    <div style={{ wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+      {parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          // This is a URL
+          const displayText = part.length > 40 
+            ? part.substring(0, 37) + '…' 
+            : part;
+
+          return (
+            <a
+              key={i}
+              href={part}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={part}
+              style={{
+                color: '#2563eb',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                wordBreak: 'break-all',
+              }}
+            >
+              {displayText}
+            </a>
+          );
+        }
+        return <span key={i}>{part}</span>;
+      })}
+    </div>
+  );
+}
+
   // Dialog/modal for editing node - redesigned
   const dialog = isDialogOpen ? createPortal(
     <div
@@ -424,7 +468,15 @@ export function AnimatedNodeComponent({ id, data }) {
             overflowWrap: 'break-word',
           }}
         >
-          {data.label}{"\n"}
+          {data.type?.startsWith('h') ? (
+            // Render heading with proper level styling
+            <div style={{ fontWeight: 'bold' }}>
+              {renderLinksInContent(data.label)}
+            </div>
+          ) : (
+            // Regular sentence with link support
+            renderLinksInContent(data.label)
+          )}
         </div>
         {nodeModified && (
           <div className="modified-indicator" title="This node has been modified.">

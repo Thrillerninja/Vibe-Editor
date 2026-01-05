@@ -1,4 +1,3 @@
-// src/components/RichTextEditor/RichTextEditor.jsx
 import React, { useCallback, useRef, useState } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -11,6 +10,7 @@ import { ListItemNode, ListNode } from '@lexical/list';
 import { LinkNode } from '@lexical/link';
 import { ListPlugin } from '@lexical/react/LexicalListPlugin';
 import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { $convertToMarkdownString, TRANSFORMERS } from '@lexical/markdown';
 
 import { ToolbarPlugin } from './plugins/ToolbarPlugin';
 import './styles/editor.css';
@@ -44,7 +44,7 @@ const editorConfig = {
   },
   nodes: [HeadingNode, QuoteNode, ListNode, ListItemNode, LinkNode],
   onError: (error) => {
-    console.error('Lexical Error:', error);
+    console.error('[Lexical] Error:', error);
   },
 };
 
@@ -64,24 +64,35 @@ export default function RichTextEditor({
       editorStateRef.current = editorState;
       editorRef.current = editor;
 
-      const rootElement = editor.getRootElement();
-      if (!rootElement) return;
+      editor.read(() => {
+        // Get markdown content
+        const markdownContent = $convertToMarkdownString(TRANSFORMERS);
+        
+        // Get plain text for reference
+        const textContent = editor
+          .getRootElement()
+          ?.textContent || '';
 
-      const textContent = rootElement.textContent || '';
-
-      let cursorPos = 0;
-      try {
-        const selection = editorState._selection;
-        if (selection && selection.anchor) {
-          cursorPos = selection.anchor.offset;
+        let cursorPos = 0;
+        try {
+          const selection = editorState._selection;
+          if (selection && selection.anchor) {
+            cursorPos = selection.anchor.offset;
+          }
+        } catch (e) {
+          cursorPos = textContent.length;
         }
-      } catch (e) {
-        cursorPos = textContent.length;
-      }
 
-      if (onChange) {
-        onChange(textContent, cursorPos);
-      }
+        console.log('[RichTextEditor] Markdown output:');
+        console.log(markdownContent);
+        console.log('[RichTextEditor] Plain text output:');
+        console.log(textContent);
+
+        // Pass markdown to onChange
+        if (onChange) {
+          onChange(markdownContent, cursorPos);
+        }
+      });
     },
     [onChange]
   );
@@ -93,67 +104,50 @@ export default function RichTextEditor({
   }, [onBlur]);
 
   return (
-  <LexicalComposer initialConfig={editorConfig}>
-    <div className="editor-wrapper" style={{ color: 'black' }}>
+    <LexicalComposer initialConfig={editorConfig}>
+      <div className="flex flex-col h-full overflow-hidden">
+        {/* TOP HEADER - Toolbar */}
+        <div className="flex flex-col overflow-visible">
+          <div className="flex items-center flex-wrap">
+            <div className="w-[350px] h-16" />
+            <div className="flex min-w-55 max-h-[88px] items-center p-2 pt-6">
+              <ToolbarPlugin />
+            </div>
+          </div>
+        </div>
 
-      {/* TOP HEADER - Toolbar only, wraps with max 3 lines */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        background: 'var(--color-bg-secondary)',
-        borderBottom: '1px solid var(--color-border)',
-        flexShrink: 0,
-        overflow: 'visible'
-      }}>
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 16,
-          padding: 8,
-          flexWrap: 'wrap',
-        }}>
-          {/* BLOCKER - to be behind the overall page title */}
-          <div className="w-[300px] h-16" />
-          
-          {/* Toolbar */}
-          <div className="flex-1 min-w-55 max-h-[88px] flex items-center">
-            <ToolbarPlugin />
+        {/* EDITOR CONTAINER */}
+        <div className="flex flex-col editor-container">
+          <div className="editor-inner">
+            <RichTextPlugin
+              contentEditable={
+                <ContentEditable
+                  className="editor-input"
+                  onBlur={handleBlur}
+                />
+              }
+              placeholder={
+                <div className="editor-placeholder">{placeholder}</div>
+              }
+              ErrorBoundary={LexicalErrorBoundary}
+            />
+
+            {/* Core Plugins */}
+            <OnChangePlugin onChange={handleEditorChange} />
+            <HistoryPlugin />
+            <ListPlugin />
+            <LinkPlugin />
+          </div>
+
+          {/* FLOATING STATUS */}
+          <div className="flex flex-row align-right gap-2 absolute bottom-2 right-2">
+            {sentences.length} • {value.length}
+            <HierarchyStatus state={hierarchyState} count={sentences.length} />
           </div>
         </div>
       </div>
-
-      {/* EDITOR CONTAINER - grows to fill remaining space */}
-      <div className="editor-container" style={{ position: 'relative' }}>
-        <div className="editor-inner">
-          <RichTextPlugin
-            contentEditable={
-              <ContentEditable
-                className="editor-input"
-                onBlur={handleBlur}
-              />
-            }
-            placeholder={
-              <div className="editor-placeholder">{placeholder}</div>
-            }
-            ErrorBoundary={LexicalErrorBoundary}
-          />
-
-          {/* Core Plugins */}
-          <OnChangePlugin onChange={handleEditorChange} />
-          <HistoryPlugin />
-          <ListPlugin />
-          <LinkPlugin />
-        </div>
-
-        {/* FLOATING STATUS - Bottom Left Corner */}
-        <div className="flex flex-row align-right gap-2 absolute bottom-2 right-2">
-          {sentences.length} • {value.length}
-          <HierarchyStatus state={hierarchyState} count={sentences.length} />
-        </div>
-      </div>
-    </div>
-  </LexicalComposer>
-);
+    </LexicalComposer>
+  );
 }
 
 function HierarchyStatus({ state, count }) {
