@@ -1,3 +1,7 @@
+/**
+ * TreeInner - Main tree visualization logic with Lexical integration
+ */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactFlow, {
   Background,
@@ -176,8 +180,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
     if (prevSentencesRef.current === sentencesKey) {
       console.log(`${LOG_PREFIX.LAYOUT} Sentences unchanged, skipping layout`);
-      return;
-    }
+        return;
+      }
 
     prevSentencesRef.current = sentencesKey;
 
@@ -402,7 +406,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         const prunedAfterReparent = pruneEmptyHierarchyBranches(sentencesRef.current);
         if (onTreeUpdate && prunedAfterReparent !== sentencesRef.current) {
           onTreeUpdate(prunedAfterReparent);
-        }
+      }
 
         // Re-layout after reparent
         setTimeout(async () => {

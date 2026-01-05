@@ -1,4 +1,8 @@
-import React, { useCallback, useRef, useState } from 'react';
+/**
+ * RichTextEditor - Integrates Lexical editor with new node structure
+ */
+
+import React, { useCallback, useRef } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -13,6 +17,7 @@ import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 import { $convertToMarkdownString, TRANSFORMERS } from '@lexical/markdown';
 
 import { ToolbarPlugin } from './plugins/ToolbarPlugin';
+import { LinkHoverPlugin } from './plugins/LinkHoverPlugin';
 import './styles/editor.css';
 
 const editorConfig = {
@@ -48,6 +53,15 @@ const editorConfig = {
   },
 };
 
+/**
+ * RichTextEditor Component - Lexical-based editor
+ * @param {string} value - Markdown content
+ * @param {Function} onChange - Called with (markdown, cursorPosition)
+ * @param {Function} onBlur - Called when editor loses focus
+ * @param {string} placeholder - Placeholder text
+ * @param {string} hierarchyState - Current hierarchy state
+ * @param {SentenceNode[]} sentences - Sentence nodes
+ */
 export default function RichTextEditor({
   value,
   onChange,
@@ -59,20 +73,19 @@ export default function RichTextEditor({
   const editorStateRef = useRef(null);
   const editorRef = useRef(null);
 
+  /**
+   * Handle editor state changes
+   */
   const handleEditorChange = useCallback(
     (editorState, editor) => {
       editorStateRef.current = editorState;
       editorRef.current = editor;
 
       editor.read(() => {
-        // Get markdown content
+        // Convert to markdown
         const markdownContent = $convertToMarkdownString(TRANSFORMERS);
-        
-        // Get plain text for reference
-        const textContent = editor
-          .getRootElement()
-          ?.textContent || '';
 
+        // Get cursor position
         let cursorPos = 0;
         try {
           const selection = editorState._selection;
@@ -80,15 +93,12 @@ export default function RichTextEditor({
             cursorPos = selection.anchor.offset;
           }
         } catch (e) {
-          cursorPos = textContent.length;
+          cursorPos = markdownContent.length;
         }
 
-        console.log('[RichTextEditor] Markdown output:');
-        console.log(markdownContent);
-        console.log('[RichTextEditor] Plain text output:');
-        console.log(textContent);
+        console.log('[RichTextEditor] Markdown:', markdownContent);
+        console.log('[RichTextEditor] Cursor:', cursorPos);
 
-        // Pass markdown to onChange
         if (onChange) {
           onChange(markdownContent, cursorPos);
         }
@@ -106,19 +116,15 @@ export default function RichTextEditor({
   return (
     <LexicalComposer initialConfig={editorConfig}>
       <div className="flex flex-col h-full overflow-hidden">
-        {/* TOP HEADER - Toolbar */}
-        <div className="flex flex-col overflow-visible">
-          <div className="flex items-center flex-wrap">
-            <div className="w-[350px] h-16" />
-            <div className="flex min-w-55 max-h-[88px] items-center p-2 pt-6">
-              <ToolbarPlugin />
-            </div>
-          </div>
+        {/* Toolbar */}
+        <div className="flex flex-wrap gap-2 bg-gray-50 px-4 py-2 flex-shrink-0">
+          <div className="w-[300px] h-16 flex-shrink-0" />
+          <ToolbarPlugin />
         </div>
 
-        {/* EDITOR CONTAINER */}
-        <div className="flex flex-col editor-container">
-          <div className="editor-inner">
+        {/* Editor */}
+        <div className="flex flex-col flex-1 editor-container overflow-hidden">
+          <div className="editor-inner flex-1">
             <RichTextPlugin
               contentEditable={
                 <ContentEditable
@@ -132,16 +138,19 @@ export default function RichTextEditor({
               ErrorBoundary={LexicalErrorBoundary}
             />
 
-            {/* Core Plugins */}
+            {/* Plugins */}
             <OnChangePlugin onChange={handleEditorChange} />
             <HistoryPlugin />
             <ListPlugin />
             <LinkPlugin />
+            <LinkHoverPlugin />
           </div>
 
-          {/* FLOATING STATUS */}
-          <div className="flex flex-row align-right gap-2 absolute bottom-2 right-2">
-            {sentences.length} • {value.length}
+          {/* Status Bar */}
+          <div className="flex flex-row justify-end gap-2 px-4 py-2 bg-gray-50 text-sm text-gray-600">
+            <span>{sentences.length} nodes</span>
+            <span>•</span>
+            <span>{value.length} chars</span>
             <HierarchyStatus state={hierarchyState} count={sentences.length} />
           </div>
         </div>
@@ -150,31 +159,34 @@ export default function RichTextEditor({
   );
 }
 
+/**
+ * HierarchyStatus Component - Shows hierarchy build status
+ */
 function HierarchyStatus({ state, count }) {
   const config = {
     none: {
       icon: '◯',
       text: 'No hierarchy',
-      color: 'status-neutral',
+      color: 'text-gray-500',
     },
     'has-dirty-nodes': {
       icon: '◐',
       text: 'Pending',
-      color: 'status-pending',
+      color: 'text-yellow-600',
     },
     generated: {
       icon: '◉',
       text: 'Complete',
-      color: 'status-complete',
+      color: 'text-green-600',
     },
   };
 
   const { icon, text, color } = config[state] || config.none;
 
   return (
-    <div className={`hierarchy-status-compact ${color}`}>
-      <span className="status-icon">{icon}</span>
-      <span className="status-text">{text}</span>
-    </div>
+    <span className={`${color} flex items-center gap-1`}>
+      <span>{icon}</span>
+      <span>{text}</span>
+    </span>
   );
 }

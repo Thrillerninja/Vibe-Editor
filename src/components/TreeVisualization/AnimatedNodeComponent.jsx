@@ -10,6 +10,7 @@ import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal'
 import '../../components/TreeVisualization/TreeNode.css';
 import { EMOTION_LABELS } from '../../utils/constants';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
+import ReactMarkdown from 'react-markdown';
 import { normalizeEmotionProfile, deriveLegacyFromProfile, profileFromLegacy } from '../../utils/emotionProfiles.js';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 
@@ -867,7 +868,7 @@ function renderLinksInContent(text) {
             overflowWrap: 'break-word',
           }}
         >
-          {data.type?.startsWith('h') ? (
+          {/* {data.type?.startsWith('h') ? (
             // Render heading with proper level styling
             <div style={{ fontWeight: 'bold' }}>
               {renderLinksInContent(data.label)}
@@ -875,7 +876,8 @@ function renderLinksInContent(text) {
           ) : (
             // Regular sentence with link support
             renderLinksInContent(data.label)
-          )}
+          )} */}
+          {renderNodeContent(data.label, data.type, data.structure, data.inlineElements)}
         </div>
         {nodeModified && (
           <div className="modified-indicator" title="This node has been modified.">
@@ -886,4 +888,254 @@ function renderLinksInContent(text) {
       {dialog}
     </>
   );
+}
+
+
+/**
+ * Renders node content with full markdown support
+ * Handles links, bold, italic, lists, headings, and code blocks
+ */
+/**
+ * Renders node content using structured metadata and inline elements
+ */
+function renderNodeContent(content, type, structure, inlineElements) {
+  // Build markdown from structure and inline elements
+  let markdown = buildMarkdownFromStructure(
+    content,
+    structure,
+    inlineElements
+  );
+
+  return (
+    <div
+      style={{
+        width: '100%',
+        lineHeight: 1.4,
+      }}
+    >
+      <ReactMarkdown
+        components={{
+          p: ({ children }) => <span>{children}</span>,
+          a: ({ children, href }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                color: '#2563eb',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                wordBreak: 'break-all',
+              }}
+            >
+              {children}
+            </a>
+          ),
+          strong: ({ children }) => (
+            <strong style={{ fontWeight: 700 }}>{children}</strong>
+          ),
+          em: ({ children }) => (
+            <em style={{ fontStyle: 'italic' }}>{children}</em>
+          ),
+          code: ({ children }) => (
+            <code
+              style={{
+                backgroundColor: '#f3f4f6',
+                padding: '2px 4px',
+                borderRadius: '2px',
+                fontSize: '0.9em',
+                fontFamily: 'monospace',
+              }}
+            >
+              {children}
+            </code>
+          ),
+          h1: ({ children }) => (
+            <h1
+              style={{
+                fontSize: '1.5em',
+                fontWeight: 700,
+                margin: '0.3em 0',
+              }}
+            >
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2
+              style={{
+                fontSize: '1.3em',
+                fontWeight: 700,
+                margin: '0.3em 0',
+              }}
+            >
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3
+              style={{
+                fontSize: '1.1em',
+                fontWeight: 700,
+                margin: '0.3em 0',
+              }}
+            >
+              {children}
+            </h3>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote
+              style={{
+                borderLeft: '3px solid #3b82f6',
+                paddingLeft: '0.8em',
+                margin: '0.3em 0',
+                fontStyle: 'italic',
+                color: '#666',
+              }}
+            >
+              {children}
+            </blockquote>
+          ),
+          ul: ({ children }) => (
+            <ul
+              style={{
+                margin: '0.3em 0',
+                paddingLeft: '1.5em',
+                listStyleType: 'disc',
+                textAlign: 'left',
+              }}
+            >
+              {children}
+            </ul>
+          ),
+          ol: ({ children }) => (
+            <ol
+              style={{
+                margin: '0.3em 0',
+                paddingLeft: '1.5em',
+                listStyleType: 'decimal',
+                textAlign: 'left',
+              }}
+            >
+              {children}
+            </ol>
+          ),
+          li: ({ children }) => (
+            <li style={{ margin: '0.2em 0', textAlign: 'left' }}>
+              {children}
+            </li>
+          ),
+        }}
+        skipHtml
+      >
+        {markdown}
+      </ReactMarkdown>
+    </div>
+  );
+}
+
+/**
+ * Detects if content starts with enumeration pattern (1. 2. etc.)
+ * Returns {number, text} or null
+ */
+function parseEnumeration(text) {
+  const match = text.match(/^(\d+)\.\s+(.*)$/);
+  if (match) {
+    return {
+      number: match[1],
+      text: match[2],
+    };
+  }
+  return null;
+}
+
+
+/**
+ * Builds markdown string from content, structure, and inline elements
+ */
+function buildMarkdownFromStructure(content, structure, inlineElements) {
+  // Apply inline formatting (links, bold, italic, code, etc.)
+  let markdown = applyInlineElements(content, inlineElements);
+
+  // Apply structure-level formatting
+  if (structure) {
+    if (structure.headingLevel) {
+      const hashes = '#'.repeat(structure.headingLevel);
+      markdown = `${hashes} ${markdown}`;
+    } else if (structure.listType) {
+      const indent = '  '.repeat(structure.listIndentLevel || 0);
+      let marker = structure.listMarker || 
+        (structure.listType === 'ordered' ? '1.' : '-');
+      if (structure.listType === 'task') {
+        const checked = structure.taskChecked ? 'x' : ' ';
+        markdown = `${indent}- [${checked}] ${markdown}`;
+      } else {
+        markdown = `${indent}${marker} ${markdown}`;
+      }
+    } else if (structure.codeLanguage) {
+      const fence = '```';
+      markdown = `${fence}${structure.codeLanguage}\n${markdown}\n${fence}`;
+    } else if (structure.quoteDepth) {
+      const prefix = '> '.repeat(structure.quoteDepth);
+      markdown = markdown
+        .split('\n')
+        .map((line) => `${prefix}${line}`)
+        .join('\n');
+    }
+  }
+
+  return markdown;
+}
+
+/**
+ * Applies inline elements (bold, italic, links, code, etc.)
+ * Processes from end to start to avoid index shifts
+ */
+function applyInlineElements(content, inlineElements) {
+  if (!inlineElements || inlineElements.length === 0) {
+    return content;
+  }
+
+  // Sort by start position in reverse order
+  const sorted = [...inlineElements].sort((a, b) => b.start - a.start);
+
+  let result = content;
+
+  for (const element of sorted) {
+    const before = result.substring(0, element.start);
+    const text = result.substring(element.start, element.end);
+    const after = result.substring(element.end);
+
+    let wrapped = text;
+    switch (element.type) {
+      case 'bold':
+        wrapped = `**${text}**`;
+        break;
+      case 'italic':
+        wrapped = `*${text}*`;
+        break;
+      case 'code':
+        wrapped = `\`${text}\``;
+        break;
+      case 'strikethrough':
+        wrapped = `~~${text}~~`;
+        break;
+      case 'link':
+        const title = element.title ? ` "${element.title}"` : '';
+        wrapped = `[${text}](${element.url}${title})`;
+        break;
+      case 'email':
+        wrapped = `[${text}](mailto:${element.email})`;
+        break;
+      case 'image':
+        const imgTitle = element.title ? ` "${element.title}"` : '';
+        wrapped = `![${element.alt || ''}](${element.url}${imgTitle})`;
+        break;
+    }
+
+    result = before + wrapped + after;
+  }
+
+  return result;
 }
