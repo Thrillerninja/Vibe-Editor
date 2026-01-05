@@ -201,7 +201,8 @@ export function AnimatedNodeComponent({ id, data }) {
         background: "rgba(0,0,0,0.45)",
         display: "flex",
         justifyContent: "center",
-        alignItems: "center",
+        alignItems: "flex-start",
+        paddingTop: '10vh',
         zIndex: 9999999,
       }}
     >
@@ -212,7 +213,7 @@ export function AnimatedNodeComponent({ id, data }) {
           padding: 0,
           maxWidth: 600,
           width: "90%",
-          height: '72vh',
+          height: 'auto',
           maxHeight: '72vh',
           border: `3px solid ${modalAccentColor}`,
           boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
@@ -233,6 +234,8 @@ export function AnimatedNodeComponent({ id, data }) {
               display: 'flex',
               alignItems: 'center',
               gap: 16,
+              height: 52,
+              boxSizing: 'border-box',
             }}
           >
             <div style={{ display: 'flex', gap: 16 }}>
@@ -297,7 +300,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
         {/* Scrollable content area */}
         {!isNodeRewriting && (
-          <div style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+          <div style={{ overflowY: 'auto', background: '#fff', maxHeight: 'calc(72vh - 52px)' }}>
             {/* Information Tab */}
             {activeTab === 'information' && (
               <div style={{
