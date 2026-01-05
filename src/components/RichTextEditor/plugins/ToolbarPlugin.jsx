@@ -99,7 +99,7 @@ export function ToolbarPlugin() {
   };
 
   const BLOCK_TYPES = [
-    ['paragraph', 'Normal'],
+    ['paragraph', 'Content'],
     ['h1', 'H1'],
     ['h2', 'H2'],
     ['h3', 'H3'],
@@ -107,9 +107,9 @@ export function ToolbarPlugin() {
   ];
 
   return (
-    <div className="toolbar-top">
+    <div className="flex items-center min-w-[260px] gap-1 flex-wrap flex-1 ">
       {/* Undo/Redo */}
-      <div className="toolbar-group">
+      <div className="flex gap-0.5">
         <button
           onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
           className="toolbar-btn"
@@ -126,7 +126,7 @@ export function ToolbarPlugin() {
         </button>
       </div>
 
-      <div className="toolbar-divider" />
+      <div className="w-px h-4 bg-gray-300 mx-1 flex-shrink-0" />
 
       {/* Block Type */}
       <div className="toolbar-group" ref={blockTypeRef}>
@@ -143,7 +143,7 @@ export function ToolbarPlugin() {
                 fontSize: '18px',
               }}
           >
-            {BLOCK_TYPES.find(([t]) => t === blockType)?.[1] || 'Normal'}
+            {BLOCK_TYPES.find(([t]) => t === blockType)?.[1] || 'Content'}
           </span>
           <span className="caret">▼</span>
         </button>
@@ -163,7 +163,7 @@ export function ToolbarPlugin() {
         )}
       </div>
 
-      <div className="toolbar-divider" />
+      <div className="w-px h-4 bg-gray-300 mx-1 flex-shrink-0" />
 
       {/* Text Formatting */}
       <div className="toolbar-group">
@@ -190,7 +190,7 @@ export function ToolbarPlugin() {
         </button>
       </div>
 
-      <div className="toolbar-divider" />
+      <div className="w-px h-4 bg-gray-300 mx-1 flex-shrink-0" />
 
       {/* Lists */}
       <div className="toolbar-group">
