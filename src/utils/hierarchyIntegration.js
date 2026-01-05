@@ -372,7 +372,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             label: 'Document',
             content: '',
             children: [],
-            emotion: "NEUTRAL",
+            emotion: "INTEREST",
             intensity: 0,
         };
     }
@@ -533,7 +533,7 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
             };
         }),
         startIdx: 0,
-        emotion: "NEUTRAL",
+        emotion: "INTEREST",
         emotions: { ...EMPTY_EMOTION_PROFILE },
         intensity: 0,
     };

@@ -52,14 +52,14 @@ export function AnimatedNodeComponent({ id, data }) {
   const initialLegacy = deriveLegacyFromProfile(initialProfile);
   const [emotionProfile, setEmotionProfile] = useState(initialProfile);
   const [originalEmotionProfile, setOriginalEmotionProfile] = useState(initialProfile);
-  const [emotion, setEmotion] = useState(initialLegacy.emotion || 'neutral');
+  const [emotion, setEmotion] = useState(initialLegacy.emotion || 'interest');
   const [intensity, setIntensity] = useState(initialLegacy.intensity ?? 0);
   const [selectedIntensity, setSelectedIntensity] = useState(initialLegacy.intensity ?? 0);
   const [suggestions, setSuggestions] = useState([]);
   const [currentSuggestionIndex, setCurrentSuggestionIndex] = useState(0);
   // Subtree editing state (for non-sentence/group nodes)
   const [subtreeEmotionProfile, setSubtreeEmotionProfile] = useState(initialProfile);
-  const [subtreeEmotion, setSubtreeEmotion] = useState(initialLegacy.emotion || 'neutral');
+  const [subtreeEmotion, setSubtreeEmotion] = useState(initialLegacy.emotion || 'interest');
   const [subtreeIntensity, setSubtreeIntensity] = useState(initialLegacy.intensity ?? 0);
   const [leafSuggestions, setLeafSuggestions] = useState({}); // id -> { original, options, selectedIdx }
   const [leafOrder, setLeafOrder] = useState([]);
@@ -81,12 +81,12 @@ export function AnimatedNodeComponent({ id, data }) {
     const legacy = deriveLegacyFromProfile(profile);
     setEmotionProfile(profile);
     setOriginalEmotionProfile(profile);
-    setEmotion(legacy.emotion || 'neutral');
+    setEmotion(legacy.emotion || 'interest');
     setIntensity(legacy.intensity ?? 0);
-    setPreviousEmotion(legacy.emotion || 'neutral');
+    setPreviousEmotion(legacy.emotion || 'interest');
     setPreviousText(data.content || data.label || "");
     setSubtreeEmotionProfile(profile);
-    setSubtreeEmotion(legacy.emotion || 'neutral');
+    setSubtreeEmotion(legacy.emotion || 'interest');
     setSubtreeIntensity(typeof legacy.intensity === 'number' ? legacy.intensity : 0);
   }, [data.emotions, data.emotion, data.intensity]);
 
@@ -284,10 +284,10 @@ export function AnimatedNodeComponent({ id, data }) {
           background: "#fff",
           borderRadius: 12,
           padding: 0,
-          maxWidth: 600,
+          maxWidth: 800,
           width: "90%",
           height: 'auto',
-          maxHeight: '72vh',
+          maxHeight: '80vh',
           border: `3px solid ${modalAccentColor}`,
           boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
           display: "flex",
@@ -396,7 +396,7 @@ export function AnimatedNodeComponent({ id, data }) {
                   <EmotionRadar
                     profile={data.type === 'sentence' ? emotionProfile : subtreeEmotionProfile}
                     onChange={null}
-                    size={260}
+                    size={340}
                     label="Current Emotion Profile"
                   />
                 </div>
@@ -533,7 +533,7 @@ export function AnimatedNodeComponent({ id, data }) {
                   setEmotion(legacy.emotion);
                   setSelectedIntensity(legacy.intensity);
                 }}
-                size={280}
+                size={360}
                 label="Emotion profile"
               />
             </div>
@@ -625,7 +625,7 @@ export function AnimatedNodeComponent({ id, data }) {
                   setSubtreeEmotion(legacy.emotion);
                   setSubtreeIntensity(legacy.intensity);
                 }}
-                size={280}
+                size={360}
                 label="Subtree emotion profile"
               />
             </div>

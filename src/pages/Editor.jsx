@@ -506,14 +506,19 @@ export default function Editor() {
                                     backdropFilter: 'saturate(180%) blur(4px)'
                                 }}
                             >
-                                <div style={{ fontWeight: 600, marginBottom: 8 }}>Legend</div>
+                                <div style={{ fontWeight: 600, marginBottom: 8 }}>DES Emotions Legend</div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 10, rowGap: 8 }}>
                                     {[
-                                        EMOTIONS.POSITIVE,
-                                        EMOTIONS.NEGATIVE,
-                                        EMOTIONS.UNCERTAIN,
-                                        EMOTIONS.EMPHASIS,
-                                        EMOTIONS.NEUTRAL,
+                                        EMOTIONS.INTEREST,
+                                        EMOTIONS.JOY,
+                                        EMOTIONS.SURPRISE,
+                                        EMOTIONS.SADNESS,
+                                        EMOTIONS.ANGER,
+                                        EMOTIONS.DISGUST,
+                                        EMOTIONS.CONTEMPT,
+                                        EMOTIONS.FEAR,
+                                        EMOTIONS.SHAME,
+                                        EMOTIONS.GUILT,
                                     ].map((key) => {
                                         const swatch = EMOTION_COLORS[key]?.medium || '#e5e7eb';
                                         const label = EMOTION_LABELS[key] || key;

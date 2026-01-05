@@ -115,11 +115,28 @@ export async function evaluateSentenceEmotions(sentences) {
     const client = getClient();
 
     console.log('[Claude Service] Evaluating emotions for sentences');
-    const prompt = `For each input sentence assign a five-axis emotion profile.
-Return ONLY valid JSON: an array where each item is { "id": "<sentence-id>", "emotions": { "positive": 0-100, "negative": 0-100, "neutral": 0-100, "uncertain": 0-100, "emphasis": 0-100 } }.
-- Use all five keys exactly: ${EMOTION_AXES.join(', ')}.
+    const prompt = `For each input sentence, assign a 10-axis emotion profile using the Differential Emotions Scale (DES) by Izard (1997).
+
+The DES measures these 10 fundamental, distinct emotions:
+1. INTEREST (0-100): Curiosity, excitement, fascination, engagement with content
+2. JOY (0-100): Happiness, delight, pleasure, enjoyment, contentment
+3. SURPRISE (0-100): Amazement, astonishment, unexpectedness
+4. SADNESS (0-100): Sorrow, melancholy, distress, downheartedness, grief
+5. ANGER (0-100): Hostility, rage, frustration, irritation
+6. DISGUST (0-100): Revulsion, repugnance, distaste, aversion
+7. CONTEMPT (0-100): Scorn, disdain, disrespect, superiority
+8. FEAR (0-100): Anxiety, worry, terror, nervousness, apprehension
+9. SHAME (0-100): Embarrassment, humiliation, feeling exposed or inadequate
+10. GUILT (0-100): Remorse, regret, self-blame, moral distress
+
+Rate each emotion independently based on the sentence's content, tone, and implied emotional state.
+Multiple emotions can be present simultaneously with varying intensities.
+
+Return ONLY valid JSON: an array where each item is { "id": "<sentence-id>", "emotions": { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 } }.
+- Use all ten DES emotion keys exactly: ${EMOTION_AXES.join(', ')}.
 - Clamp every value to 0-100.
 - Do not add extra fields or prose.
+
 Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
 
     console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
@@ -207,12 +224,25 @@ export async function rewriteSentenceWithEmotion(sentence, emotionProfileInput) 
 
     console.log(`[Claude Service] Rewriting sentence with profile: ${profileText}`);
 
-    const prompt = `Rewrite the sentence to reflect this 5-axis emotion profile (0-100 scale): ${profileText}.
+    const prompt = `Rewrite the sentence to reflect this 10-axis DES emotion profile (0-100 scale): ${profileText}.
 Profile JSON (authoritative, use these exact values): ${profileJson}
-The dominant axis is ${legacy.emotion} at ${legacy.intensity}/100.
+The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
+
+The Differential Emotions Scale (DES) by Izard (1997) includes:
+- INTEREST: curiosity, excitement, engagement
+- JOY: happiness, delight, pleasure
+- SURPRISE: amazement, astonishment
+- SADNESS: sorrow, distress, grief
+- ANGER: hostility, rage, frustration
+- DISGUST: revulsion, distaste
+- CONTEMPT: scorn, disdain
+- FEAR: anxiety, worry, terror
+- SHAME: embarrassment, humiliation
+- GUILT: remorse, regret, self-blame
+
 Hard constraints:
 - Keep the original meaning and information intact.
-- Adjust tone, word choice, and phrasing to reflect the profile above.
+- Adjust tone, word choice, and phrasing to reflect the emotion profile above.
 - Return only the rewritten sentence, no explanations.
 - Keep the length within 10% of the original.
 
@@ -259,13 +289,26 @@ export async function rewriteSentenceWithEmotionOptions(sentence, emotionProfile
 
     console.log(`[Claude Service] Rewriting sentence with emotion profile (multi): ${profileText}, options: ${numOptions}`);
 
-    const prompt = `Rewrite the sentence to match this 5-axis emotion profile (0-100 per axis): ${profileText}.
+    const prompt = `Rewrite the sentence to match this 10-axis DES emotion profile (0-100 per axis): ${profileText}.
 Profile JSON (authoritative, use these exact values): ${profileJson}
-The dominant axis is ${legacy.emotion} at ${legacy.intensity}/100.
+The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
+
+The Differential Emotions Scale (DES) by Izard (1997) includes:
+- INTEREST: curiosity, excitement, engagement
+- JOY: happiness, delight, pleasure
+- SURPRISE: amazement, astonishment
+- SADNESS: sorrow, distress, grief
+- ANGER: hostility, rage, frustration
+- DISGUST: revulsion, distaste
+- CONTEMPT: scorn, disdain
+- FEAR: anxiety, worry, terror
+- SHAME: embarrassment, humiliation
+- GUILT: remorse, regret, self-blame
+
 Return exactly ${numOptions} options as a pure JSON array of strings (no commentary).
 Hard constraints:
 - Preserve the original meaning and information.
-- Use tone/phrasing to reflect the profile; do NOT add new information.
+- Use tone/phrasing to reflect the emotion profile; do NOT add new information.
 - Keep the length within 10% of the original.
 Original sentence: "${sentence}"`;
 

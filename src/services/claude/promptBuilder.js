@@ -91,12 +91,24 @@ RULES
    - Use EXACT sentence IDs from input (don't generate new ones)
    - Copy sentence IDs exactly when referencing them in childIds
 
-6. **ADD EMOTION PROFILE (NEW)**
-  - For every node you create, you MUST include an **"emotions"** object with EXACTLY these five keys (0-100 integers):
-    { "positive": n, "negative": n, "neutral": n, "uncertain": n, "emphasis": n }
+6. **ADD EMOTION PROFILE (NEW - DES)**
+  - For every node you create, you MUST include an **"emotions"** object with EXACTLY these ten DES keys (0-100 integers):
+    { "interest": n, "joy": n, "surprise": n, "sadness": n, "anger": n, "disgust": n, "contempt": n, "fear": n, "shame": n, "guilt": n }
   - Values must be clamped to 0-100. Do NOT add extra keys.
-  - The profile should reflect the overall tone of the node's scope (sentences for level 2, grouped topics for higher levels).
-  - Legacy fields "emotion" and "intensity" are optional; if you include them, derive them from the dominant axis of the profile.
+  - The Differential Emotions Scale (DES) by Izard (1997) measures these fundamental emotions:
+    * INTEREST: Curiosity, excitement, fascination, engagement with content
+    * JOY: Happiness, delight, pleasure, contentment
+    * SURPRISE: Being startled, amazed, or astonished
+    * SADNESS: Unhappiness, sorrow, dejection, feeling downcast
+    * ANGER: Rage, frustration, irritation, hostility
+    * DISGUST: Revulsion, distaste, feeling repelled
+    * CONTEMPT: Scorn, disdain, feeling something is beneath you
+    * FEAR: Anxiety, worry, dread, being scared
+    * SHAME: Embarrassment, humiliation, feeling exposed
+    * GUILT: Remorse, regret, feeling responsible for wrongdoing
+  - Each dimension is independent; text can have multiple simultaneous emotions at high intensities.
+  - The profile should reflect the overall emotional tone of the node's scope (sentences for level 2, grouped topics for higher levels).
+  - Legacy fields "emotion" and "intensity" are optional; if you include them, derive them from the dominant emotion of the profile.
 **THESE ARE THE ONLY VALID SENTENCE IDs (copy these exactly):**
 ${allSentenceIds.map(id => `  - ${id}`).join('\n')}
 
@@ -133,19 +145,19 @@ Your response for topLevel=2:
     "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
     "level": 2,
     "title": "Positive Aspects of Cat Ownership",
-    "emotions": { "positive": 70, "negative": 5, "neutral": 20, "uncertain": 0, "emphasis": 40 },
+    "emotions": { "interest": 50, "joy": 70, "surprise": 10, "sadness": 5, "anger": 0, "disgust": 0, "contempt": 0, "fear": 5, "shame": 0, "guilt": 0 },
     "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
   },
   {
     "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
     "level": 2,
     "title": "Dog Loyalty and Effort",
-    "emotions": { "positive": 35, "negative": 30, "neutral": 25, "uncertain": 5, "emphasis": 15 },
+    "emotions": { "interest": 40, "joy": 35, "surprise": 5, "sadness": 20, "anger": 10, "disgust": 0, "contempt": 5, "fear": 10, "shame": 5, "guilt": 5 },
     "childIds": ["c3d4e5f6-a7b8-9012-cdef-333333333333", "d4e5f6a7-b8c9-0123-def1-444444444444"]
   }
 ]
 
-**Example 2: topLevel=4 with Emotion (MUST create levels 2, 3, AND 4)**
+**Example 2: topLevel=4 with DES Emotion Profile (MUST create levels 2, 3, AND 4)**
 
 Given these input sentences:
 [
@@ -160,16 +172,16 @@ Given these input sentences:
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
   // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
-  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotions": {"positive": 70, "negative": 5, "neutral": 20, "uncertain": 0, "emphasis": 40}, "childIds": ["s1", "s2"]},        // Sentences 0-1
-  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotions": {"positive": 10, "negative": 55, "neutral": 20, "uncertain": 5, "emphasis": 25}, "childIds": ["s3", "s4"]},        // Sentences 2-3
-  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotions": {"positive": 15, "negative": 5, "neutral": 60, "uncertain": 10, "emphasis": 15}, "childIds": ["s5", "s6"]},      // Sentences 4-5
+  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotions": {"interest": 60, "joy": 75, "surprise": 40, "sadness": 0, "anger": 0, "disgust": 0, "contempt": 0, "fear": 5, "shame": 0, "guilt": 0}, "childIds": ["s1", "s2"]},
+  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotions": {"interest": 30, "joy": 5, "surprise": 45, "sadness": 60, "anger": 25, "disgust": 10, "contempt": 5, "fear": 50, "shame": 15, "guilt": 10}, "childIds": ["s3", "s4"]},
+  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["s5", "s6"]},
 
   // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
-  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotions": {"positive": 35, "negative": 35, "neutral": 20, "uncertain": 5, "emphasis": 20}, "childIds": ["n1", "n2"]},     // Contains sentences 0-3 (mixed sentiment)
-  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotions": {"positive": 20, "negative": 10, "neutral": 55, "uncertain": 10, "emphasis": 10}, "childIds": ["n3"]},       // Contains sentences 4-5 (cautious, divided)
+  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotions": {"interest": 45, "joy": 40, "surprise": 43, "sadness": 30, "anger": 13, "disgust": 5, "contempt": 3, "fear": 28, "shame": 8, "guilt": 5}, "childIds": ["n1", "n2"]},
+  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["n3"]},
 
   // Level 4: Top level grouping all level 3 nodes
-  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotions": {"positive": 25, "negative": 20, "neutral": 45, "uncertain": 5, "emphasis": 15}, "childIds": ["n4", "n5"]}
+  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotions": {"interest": 43, "joy": 28, "surprise": 32, "sadness": 26, "anger": 10, "disgust": 3, "contempt": 4, "fear": 27, "shame": 7, "guilt": 5}, "childIds": ["n4", "n5"]}
 ]
 
 Notice in Example 2:
@@ -218,10 +230,10 @@ ROOT TITLE
 
 Generate a concise document title (3-8 words) based on all content.
 
-Also generate a five-axis emotion profile for the root based on overall document sentiment. Put this as a prop in the output JSON:
-- "rootEmotions": { "positive": 0-100, "negative": 0-100, "neutral": 0-100, "uncertain": 0-100, "emphasis": 0-100 }
+Also generate a ten-axis DES emotion profile for the root based on overall document sentiment. Put this as a prop in the output JSON:
+- "rootEmotions": { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 }
 
-Use all five keys exactly and clamp each value to 0-100.
+Use all ten DES emotion keys exactly and clamp each value to 0-100.
 ` : ''}
 ═══════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL: DO NOT GENERATE NEW SENTENCE IDs
@@ -251,7 +263,7 @@ Return valid JSON only (no markdown):
 
 {${isRootDirty ? `
   "newRootTitle": "Document Title",
-  "rootEmotions": { "positive": 0-100, "negative": 0-100, "neutral": 0-100, "uncertain": 0-100, "emphasis": 0-100 },` : ''}
+  "rootEmotions": { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 },` : ''}
   "restructuredSubtrees": [
     {
       "rootNodeId": "id-from-input",

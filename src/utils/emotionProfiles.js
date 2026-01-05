@@ -31,7 +31,7 @@ export function deriveLegacyFromProfile(profile) {
   const normalized = normalizeEmotionProfile(profile);
   const ranked = EMOTION_AXES.map((key) => ({ key, value: normalized[key] || 0 }))
     .sort((a, b) => b.value - a.value);
-  const top = ranked[0] || { key: EMOTIONS.NEUTRAL, value: 0 };
+  const top = ranked[0] || { key: EMOTIONS.INTEREST, value: 0 };
   return { emotion: top.key, intensity: top.value, profile: normalized };
 }
 
