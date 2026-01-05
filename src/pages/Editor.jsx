@@ -9,6 +9,7 @@ import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
+import { EMOTIONS, EMOTION_COLORS, EMOTION_LABELS } from '../utils/constants';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
 
@@ -461,7 +462,7 @@ export default function Editor() {
                             className="flex-1 relative overflow-hidden"
                         >
                             {/* Floating Buttons for Right Pane */}
-                            <div style={{ position: 'absolute', top: '12px', left: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
+                            <div style={{ position: 'absolute', top: '12px', right: '12px', display: 'flex', gap: '8px', zIndex: 50 }}>
                                 <button
                                     onClick={handleGenerateHierarchy}
                                     disabled={isGenerating || sentences.length === 0 || hierarchyState === 'generated'}
@@ -484,6 +485,57 @@ export default function Editor() {
                                         </svg>
                                     )}
                                 </button>
+                            </div>
+
+                            {/* Emotion Legend - top-left */}
+                            <div
+                                aria-label="Emotion legend"
+                                style={{
+                                    position: 'absolute',
+                                    top: '12px',
+                                    left: '12px',
+                                    background: 'rgba(255,255,255,0.95)',
+                                    border: '1px solid #e5e7eb',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+                                    padding: '10px 12px',
+                                    zIndex: 50,
+                                    fontSize: '13px',
+                                    color: '#111827',
+                                    maxWidth: '260px',
+                                    backdropFilter: 'saturate(180%) blur(4px)'
+                                }}
+                            >
+                                <div style={{ fontWeight: 600, marginBottom: 8 }}>Legend</div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', columnGap: 10, rowGap: 8 }}>
+                                    {[
+                                        EMOTIONS.POSITIVE,
+                                        EMOTIONS.NEGATIVE,
+                                        EMOTIONS.UNCERTAIN,
+                                        EMOTIONS.EMPHASIS,
+                                        EMOTIONS.NEUTRAL,
+                                    ].map((key) => {
+                                        const swatch = EMOTION_COLORS[key]?.medium || '#e5e7eb';
+                                        const label = EMOTION_LABELS[key] || key;
+                                        return (
+                                            <React.Fragment key={key}>
+                                                <span
+                                                    aria-hidden
+                                                    style={{
+                                                        display: 'inline-block',
+                                                        width: 14,
+                                                        height: 14,
+                                                        borderRadius: 4,
+                                                        background: swatch,
+                                                        border: '1px solid rgba(0,0,0,0.1)',
+                                                        marginTop: 2,
+                                                    }}
+                                                />
+                                                <span style={{ whiteSpace: 'nowrap' }}>{label}</span>
+                                            </React.Fragment>
+                                        );
+                                    })}
+                                </div>
                             </div>
 
                             <TreeVisualization

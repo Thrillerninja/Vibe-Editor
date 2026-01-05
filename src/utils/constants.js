@@ -81,7 +81,7 @@ export const EMOTION_LABELS = {
   [EMOTIONS.POSITIVE]: 'Positive',
   [EMOTIONS.NEGATIVE]: 'Negative',
   [EMOTIONS.UNCERTAIN]: 'Uncertain',
-  [EMOTIONS.EMPHASIS]: 'Strong Emphasis',
+  [EMOTIONS.EMPHASIS]: 'Emphasis',
 };
 
 // Emotion colors by intensity (0-100)
