@@ -212,6 +212,8 @@ export function AnimatedNodeComponent({ id, data }) {
           padding: 0,
           maxWidth: 600,
           width: "90%",
+          height: '72vh',
+          maxHeight: '72vh',
           border: `3px solid ${modalAccentColor}`,
           boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
           display: "flex",
@@ -221,71 +223,101 @@ export function AnimatedNodeComponent({ id, data }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Tabs header */}
+        {/* Tabs header - simplified underline style */}
         {!isNodeRewriting && (
-          <div style={{
-            padding: "10px 12px",
-            borderBottom: "1px solid #eee",
-            background: "#f9fafb",
-            display: 'flex',
-            gap: 8
-          }}>
-            {['information','editing'].map(key => {
-              const label = key === 'information' ? 'Information' : 'Editing';
-              const active = activeTab === key;
-              return (
-                <button
-                  key={key}
-                  onClick={() => setActiveTab(key)}
-                  style={{
-                    padding: '6px 12px',
-                    borderRadius: 6,
-                    border: `1px solid ${active ? '#2563eb' : '#d1d5db'}`,
-                    backgroundColor: active ? '#eff6ff' : 'white',
-                    color: active ? '#1d4ed8' : '#374151',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >{label}</button>
-              );
-            })}
+          <div
+            style={{
+              padding: '0 16px',
+              borderBottom: '1px solid #e5e7eb',
+              background: '#ffffff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 16,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 16 }}>
+              {['information', 'editing'].map((key) => {
+                const label = key === 'information' ? 'Information' : 'Editing';
+                const active = activeTab === key;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setActiveTab(key)}
+                    style={{
+                      appearance: 'none',
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '12px 4px',
+                      margin: 0,
+                      cursor: 'pointer',
+                      color: active ? '#111827' : '#6b7280',
+                      fontSize: 14,
+                      fontWeight: active ? 600 : 500,
+                      position: 'relative',
+                      outline: 'none',
+                    }}
+                  >
+                    <span>{label}</span>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: 2,
+                        backgroundColor: active ? '#000000' : 'transparent',
+                        borderRadius: 2,
+                        transition: 'background-color 120ms ease',
+                      }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
             <div style={{ flex: 1 }} />
             <button
               onClick={handleCancel}
               disabled={isNodeRewriting}
               style={{
-                padding: '6px 12px',
-                backgroundColor: '#6b7280',
-                color: 'white',
+                appearance: 'none',
+                background: 'transparent',
                 border: 'none',
-                borderRadius: '6px',
+                color: '#6b7280',
+                padding: '8px 10px',
                 cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 500,
               }}
-            >Close</button>
+            >
+              Close
+            </button>
           </div>
         )}
 
-        {/* Information Tab */}
-        {!isNodeRewriting && activeTab === 'information' && (
-          <div style={{
-            padding: "24px 24px 16px 24px",
-            background: "#fff"
-          }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
-              <div><strong>Emotion:</strong> {data.type === 'sentence' ? emotion : subtreeEmotion}</div>
-              <div><strong>Intensity:</strong> {data.type === 'sentence' ? intensity : subtreeIntensity}</div>
-              <div><strong>Type:</strong> {data.type || "-"}</div>
-              {data.author && <div><strong>Author:</strong> {data.author}</div>}
-              {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
-            </div>
-          </div>
-        )}
+        {/* Scrollable content area */}
+        {!isNodeRewriting && (
+          <div style={{ flex: 1, overflowY: 'auto', background: '#fff' }}>
+            {/* Information Tab */}
+            {activeTab === 'information' && (
+              <div style={{
+                padding: "24px 24px 16px 24px",
+                background: "#fff"
+              }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div><strong>Content:</strong> {data.content || data.label || "-"}</div>
+                  <div><strong>Emotion:</strong> {data.type === 'sentence' ? emotion : subtreeEmotion}</div>
+                  <div><strong>Intensity:</strong> {data.type === 'sentence' ? intensity : subtreeIntensity}</div>
+                  <div><strong>Type:</strong> {data.type || "-"}</div>
+                  {data.author && <div><strong>Author:</strong> {data.author}</div>}
+                  {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
+                </div>
+              </div>
+            )}
 
-        {/* Editing Tab: Sentence editing */}
-        {!isNodeRewriting && activeTab === 'editing' && data.type === "sentence" && (
-          <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
+            {/* Editing Tab: Sentence editing */}
+            {activeTab === 'editing' && data.type === "sentence" && (
+              <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
             {/* Options Section: actions like delete */}
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
@@ -445,14 +477,13 @@ export function AnimatedNodeComponent({ id, data }) {
                 Save
               </button>
             </div>
-          </div>
-          
-        )}
+              </div>
+            )}
 
-        {/* Close button for non-editable nodes */}
-        {/* Editing Tab: Subtree editing */}
-        {!isNodeRewriting && activeTab === 'editing' && data.type !== "sentence" && (
-          <div style={{ padding: "20px 24px", background: "#fff" }}>
+            {/* Close button for non-editable nodes */}
+            {/* Editing Tab: Subtree editing */}
+            {activeTab === 'editing' && data.type !== "sentence" && (
+              <div style={{ padding: "20px 24px", background: "#fff" }}>
             <div style={{ fontWeight: 600, marginBottom: 10 }}>Edit Subtree</div>
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontWeight: '500', marginBottom: '8px' }}>Select Emotion for Subtree:</div>
@@ -616,6 +647,8 @@ export function AnimatedNodeComponent({ id, data }) {
                 Save
               </button>
             </div>
+              </div>
+            )}
           </div>
         )}
         {/* Loading spinner if rewriting */}
