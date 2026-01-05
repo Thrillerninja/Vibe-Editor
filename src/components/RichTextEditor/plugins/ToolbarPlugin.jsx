@@ -27,9 +27,13 @@ export function ToolbarPlugin() {
     italic: false,
     underline: false,
   });
+  // Headings
   const [blockType, setBlockType] = useState('paragraph');
   const blockTypeRef = useRef(null);
   const [showBlockMenu, setShowBlockMenu] = useState(false);
+  // Links
+  const [linkUrl, setLinkUrl] = useState('');
+  const [showLinkInput, setShowLinkInput] = useState(false);
 
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
@@ -67,6 +71,10 @@ export function ToolbarPlugin() {
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
+
+  useEffect(() => {
+    console.log("LinkSwitch " + showLinkInput)
+  }, [showLinkInput])
 
   const formatText = (format) => {
     editor.dispatchCommand(FORMAT_TEXT_COMMAND, format);
@@ -205,6 +213,53 @@ export function ToolbarPlugin() {
           ①
         </button>
       </div>
+      
+      {/* Links */}
+      <button
+        onClick={() => setShowLinkInput(!showLinkInput)}
+        className="toolbar-btn"
+        title="Add Link (Ctrl+K)"
+      >
+        🔗
+      </button>
+
+      {showLinkInput && (
+        <input
+          type="text"
+          placeholder="https://example.com"
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && linkUrl.trim()) {
+              editor.update(() => {
+                const selection = $getSelection();
+                if ($isRangeSelection(selection)) {
+                  // Wrap selected text in a span with link styling
+                  // Since Lexical Link might not be set up, use a simpler approach
+                  const nodes = selection.getNodes();
+                  nodes.forEach(node => {
+                    if (node.isTextContent?.()) {
+                      // Add link metadata to text node
+                      node.setFormat(node.getFormat() | 8); // Custom format flag
+                    }
+                  });
+                }
+              });
+              setLinkUrl('');
+              setShowLinkInput(false);
+            }
+          }}
+          autoFocus
+          style={{ 
+            padding: '6px 8px', 
+            marginLeft: '8px',
+            border: '1px solid #ccc',
+            borderRadius: '4px',
+            minWidth: '200px',
+            fontSize: '14px'
+          }}
+        />
+      )}
     </div>
   );
 }

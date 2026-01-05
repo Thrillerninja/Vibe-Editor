@@ -69,7 +69,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const { checkReorderDrop, reorderNodes, findClosestSibling } = useReordering();
   const { flowToScreenPosition, setCenter, getZoom, zoomIn, zoomOut, fitView } = useReactFlow();
 
-  // Toggle debug mode with 'D' key
+  // Toggle debug mode with 'F8' key
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'F8') {
