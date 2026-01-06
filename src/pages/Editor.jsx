@@ -497,7 +497,7 @@ export default function Editor() {
                                     borderRadius: '8px',
                                     boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
                                     padding: '10px 12px',
-                                    zIndex: 50,
+                                    zIndex: 35,
                                     fontSize: '13px',
                                     color: '#111827',
                                     maxWidth: '260px',

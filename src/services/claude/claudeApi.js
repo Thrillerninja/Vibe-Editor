@@ -260,7 +260,7 @@ Original sentence: "${sentence}"`;
 
         const rewrittenSentence = stripOuterQuotes(message.content[0].text.trim());
         console.log('[Claude Service] Sentence rewritten successfully', rewrittenSentence);
-        
+
         return rewrittenSentence;
     } catch (error) {
         console.error('[Claude Service] Error rewriting sentence:', error);
@@ -268,7 +268,7 @@ Original sentence: "${sentence}"`;
     }
 }
 function stripOuterQuotes(str) {
-  return str.replace(/^(['"])(.*)\1$/, "$2");
+    return str.replace(/^(['"])(.*)\1$/, "$2");
 }
 
 /**
@@ -305,12 +305,18 @@ The Differential Emotions Scale (DES) by Izard (1997) includes:
 - SHAME: embarrassment, humiliation
 - GUILT: remorse, regret, self-blame
 
-Return exactly ${numOptions} options as a pure JSON array of strings (no commentary).
+CRITICAL: You must ALWAYS provide exactly ${numOptions} rewritten versions, even if the original sentence is very short, simple, or lacks context. Do NOT ask for clarification. Do NOT refuse. Just rewrite it with the specified emotion.
+
+Return exactly ${numOptions} options as a pure JSON array of strings (no commentary, no explanations, no apologies).
 Hard constraints:
 - Preserve the original meaning and information.
 - Use tone/phrasing to reflect the emotion profile; do NOT add new information.
 - Keep the length within 10% of the original.
-Original sentence: "${sentence}"`;
+- Even for simple sentences like "Test" or "Hello", provide variations that reflect the emotion.
+
+Original sentence: "${sentence}"
+
+Output format: ["rewritten version 1", "rewritten version 2", "rewritten version 3"]`;
 
     try {
         const message = await client.messages.create({

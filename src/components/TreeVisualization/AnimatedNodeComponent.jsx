@@ -406,169 +406,166 @@ export function AnimatedNodeComponent({ id, data }) {
             {/* Editing Tab: Sentence editing */}
             {activeTab === 'editing' && data.type === "sentence" && (
               <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
-            {/* Options Section: actions like delete */}
-            <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-              <button
-                title="Delete this sentence"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  const ok = window.confirm('Delete this sentence? This cannot be undone.');
-                  if (ok && typeof data.deleteNodeSentence === 'function') {
-                    data.deleteNodeSentence(id);
-                    setIsDialogOpen(false);
-                  }
-                }}
-                disabled={isNodeRewriting}
-                style={{
-                  padding: '8px 12px',
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '6px',
-                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                  boxShadow: '0 1px 4px rgba(0,0,0,0.12)'
-                }}
-              >
-                Delete
-              </button>
-            </div>
-            <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
-            {suggestions.length > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <button
-                  onClick={showPrevSuggestion}
-                  disabled={isNodeRewriting}
-                  title="Previous option"
+
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
+                {suggestions.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <button
+                      onClick={showPrevSuggestion}
+                      disabled={isNodeRewriting}
+                      title="Previous option"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        background: '#f8f8f8',
+                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      ◀
+                    </button>
+                    <div style={{ fontSize: 12, color: '#555' }}>
+                      Option {currentSuggestionIndex + 1} / {suggestions.length}
+                    </div>
+                    <button
+                      onClick={showNextSuggestion}
+                      disabled={isNodeRewriting}
+                      title="Next option"
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 4,
+                        border: '1px solid #ccc',
+                        background: '#f8f8f8',
+                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      ▶
+                    </button>
+                  </div>
+                )}
+                <textarea
+                  value={nodeText}
+                  onChange={(e) => setNodeText(e.target.value)}
                   style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 4,
-                    border: '1px solid #ccc',
-                    background: '#f8f8f8',
-                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  ◀
-                </button>
-                <div style={{ fontSize: 12, color: '#555' }}>
-                  Option {currentSuggestionIndex + 1} / {suggestions.length}
-                </div>
-                <button
-                  onClick={showNextSuggestion}
-                  disabled={isNodeRewriting}
-                  title="Next option"
-                  style={{
-                    width: 28,
-                    height: 28,
-                    borderRadius: 4,
-                    border: '1px solid #ccc',
-                    background: '#f8f8f8',
-                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                  }}
-                >
-                  ▶
-                </button>
-              </div>
-            )}
-            <textarea
-              value={nodeText}
-              onChange={(e) => setNodeText(e.target.value)}
-              style={{
-                width: "100%",
-                minHeight: 120,
-                padding: 10,
-                borderRadius: 6,
-                border: "1px solid #bbb",
-                marginBottom: 16,
-                color: "#000000",
-                resize: "vertical"
-              }}
-            />
-            <div style={{ marginBottom: 16, position: 'relative' }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fetchRewriteOptions();
-                }}
-                disabled={isNodeRewriting}
-                title="Generate 3 rewrite options using current emotion profile"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: isNodeRewriting ? '#e5e7eb' : '#111827',
-                  color: isNodeRewriting ? '#9ca3af' : '#ffffff',
-                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 18,
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  zIndex: 10
-                }}
-                onMouseOver={(e) => {
-                  if (!isNodeRewriting) {
-                    e.currentTarget.style.background = '#374151';
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = '#111827';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                ↻
-              </button>
-              <EmotionRadar
-                profile={emotionProfile}
-                onChange={(next) => {
-                  setEmotionProfile(next);
-                  const legacy = deriveLegacyFromProfile(next);
-                  setEmotion(legacy.emotion);
-                  setSelectedIntensity(legacy.intensity);
-                }}
-                size={360}
-                label="Emotion profile"
-              />
-            </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                onClick={handleCancel}
-                disabled={isNodeRewriting}
-                style={{
-                  padding: '6px 12px',
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              {(nodeText !== previousText || JSON.stringify(emotionProfile) !== JSON.stringify(originalEmotionProfile)) && (
-                <button
-                  onClick={handleSave}
-                  disabled={isNodeRewriting}
-                  style={{
-                    padding: "8px 14px",
-                    background: "#10B981",
-                    color: "white",
+                    width: "100%",
+                    minHeight: 120,
+                    padding: 10,
                     borderRadius: 6,
-                    border: "none",
-                    cursor: "pointer",
+                    border: "1px solid #bbb",
+                    marginBottom: 16,
+                    color: "#000000",
+                    resize: "vertical"
                   }}
-                >
-                  Save
-                </button>
-              )}
-            </div>
+                />
+                <div style={{ marginBottom: 16, position: 'relative' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetchRewriteOptions();
+                    }}
+                    disabled={isNodeRewriting}
+                    title="Generate 3 rewrite options using current emotion profile"
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                      color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 18,
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      zIndex: 10
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isNodeRewriting) {
+                        e.currentTarget.style.background = '#374151';
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = '#111827';
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    ↻
+                  </button>
+                  <EmotionRadar
+                    profile={emotionProfile}
+                    onChange={(next) => {
+                      setEmotionProfile(next);
+                      const legacy = deriveLegacyFromProfile(next);
+                      setEmotion(legacy.emotion);
+                      setSelectedIntensity(legacy.intensity);
+                    }}
+                    size={360}
+                    label="Emotion profile"
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <button
+                    title="Delete this sentence"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const ok = window.confirm('Delete this sentence? This cannot be undone.');
+                      if (ok && typeof data.deleteNodeSentence === 'function') {
+                        data.deleteNodeSentence(id);
+                        setIsDialogOpen(false);
+                      }
+                    }}
+                    disabled={isNodeRewriting}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                      marginRight: 'auto'
+                    }}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isNodeRewriting}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  {nodeText !== previousText && (
+                    <button
+                      onClick={handleSave}
+                      disabled={isNodeRewriting}
+                      style={{
+                        padding: "8px 14px",
+                        background: "#10B981",
+                        color: "white",
+                        borderRadius: 6,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Save
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
@@ -577,188 +574,188 @@ export function AnimatedNodeComponent({ id, data }) {
             {activeTab === 'editing' && data.type !== "sentence" && (
               <div style={{ padding: "20px 24px", background: "#fff" }}>
 
-            <div style={{ marginBottom: 16, position: 'relative' }}>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fetchSubtreeRewriteOptions();
-                }}
-                disabled={isNodeRewriting}
-                title="Generate 3 rewrite options for each sentence using current emotion profile"
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  right: 0,
-                  width: 36,
-                  height: 36,
-                  borderRadius: '50%',
-                  border: 'none',
-                  background: isNodeRewriting ? '#e5e7eb' : '#111827',
-                  color: isNodeRewriting ? '#9ca3af' : '#ffffff',
-                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 18,
-                  transition: 'all 0.2s ease',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                  zIndex: 10
-                }}
-                onMouseOver={(e) => {
-                  if (!isNodeRewriting) {
-                    e.currentTarget.style.background = '#374151';
-                    e.currentTarget.style.transform = 'scale(1.1)';
-                  }
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.background = '#111827';
-                  e.currentTarget.style.transform = 'scale(1)';
-                }}
-              >
-                ↻
-              </button>
-              <EmotionRadar
-                profile={subtreeEmotionProfile}
-                onChange={(next) => {
-                  setSubtreeEmotionProfile(next);
-                  const legacy = deriveLegacyFromProfile(next);
-                  setSubtreeEmotion(legacy.emotion);
-                  setSubtreeIntensity(legacy.intensity);
-                }}
-                size={360}
-                label="Subtree emotion profile"
-              />
-            </div>
-
-            {/* Leaf suggestions list */}
-            {leafOrder.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {leafOrder.map(leafId => {
-                    const entry = leafSuggestions[leafId];
-                    if (!entry) return null;
-                    const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
-                    return (
-                      <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                          <button
-                            onClick={() => rotateLeafPrev(leafId)}
-                            disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
-                            title="Previous option"
-                            style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 4,
-                              border: '1px solid #ccc',
-                              background: '#f8f8f8',
-                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            ◀
-                          </button>
-                          <div style={{ fontSize: 12, color: '#555' }}>
-                            {entry.options && entry.options.length > 0 ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}` : 'No options'}
-                          </div>
-                          <button
-                            onClick={() => rotateLeafNext(leafId)}
-                            disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
-                            title="Next option"
-                            style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: 4,
-                              border: '1px solid #ccc',
-                              background: '#f8f8f8',
-                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                            }}
-                          >
-                            ▶
-                          </button>
-                        </div>
-                        <textarea
-                          value={currentText}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, editedText: val } }));
-                          }}
-                          style={{
-                            width: '100%',
-                            minHeight: 100,
-                            padding: 8,
-                            borderRadius: 6,
-                            border: '1px solid #bbb',
-                            color: '#000000',
-                            resize: 'vertical'
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                onClick={handleCancel}
-                disabled={isNodeRewriting}
-                style={{
-                  padding: '6px 12px',
-                  backgroundColor: '#ef4444',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                Cancel
-              </button>
-              {(() => {
-                const hasTextChanges = Object.keys(leafSuggestions).some(k => {
-                  const e = leafSuggestions[k];
-                  const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
-                  return chosen !== e.original;
-                });
-                const hasEmotionChanges = JSON.stringify(subtreeEmotionProfile) !== JSON.stringify(originalEmotionProfile);
-                return (hasTextChanges || hasEmotionChanges) && (
+                <div style={{ marginBottom: 16, position: 'relative' }}>
                   <button
-                    onClick={() => {
-                      // Build edits map
-                      const edits = {};
-                      let anyTextChanged = false;
-                      Object.keys(leafSuggestions).forEach(k => {
-                        const e = leafSuggestions[k];
-                        const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
-                        if (chosen && chosen.length > 0) {
-                          edits[k] = chosen;
-                          if (chosen !== e.original) anyTextChanged = true;
-                        }
-                      });
-                      // If no text changed, revert to original emotion
-                      const finalProfile = anyTextChanged ? subtreeEmotionProfile : originalEmotionProfile;
-                      if (typeof data.applySubtreeChanges === 'function') {
-                        data.applySubtreeChanges(id, normalizeEmotionProfile({ ...finalProfile }), edits);
-                      }
-                      // Reset and close
-                      setLeafSuggestions({});
-                      setLeafOrder([]);
-                      setIsDialogOpen(false);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      fetchSubtreeRewriteOptions();
                     }}
                     disabled={isNodeRewriting}
+                    title="Generate 3 rewrite options for each sentence using current emotion profile"
                     style={{
-                      padding: "8px 14px",
-                      background: "#10B981",
-                      color: "white",
-                      borderRadius: 6,
-                      border: "none",
-                      cursor: "pointer",
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: 36,
+                      height: 36,
+                      borderRadius: '50%',
+                      border: 'none',
+                      background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                      color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 18,
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                      zIndex: 10
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isNodeRewriting) {
+                        e.currentTarget.style.background = '#374151';
+                        e.currentTarget.style.transform = 'scale(1.1)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.background = '#111827';
+                      e.currentTarget.style.transform = 'scale(1)';
                     }}
                   >
-                    Save
+                    ↻
                   </button>
-                );
-              })()}
-            </div>
+                  <EmotionRadar
+                    profile={subtreeEmotionProfile}
+                    onChange={(next) => {
+                      setSubtreeEmotionProfile(next);
+                      const legacy = deriveLegacyFromProfile(next);
+                      setSubtreeEmotion(legacy.emotion);
+                      setSubtreeIntensity(legacy.intensity);
+                    }}
+                    size={360}
+                    label="Subtree emotion profile"
+                  />
+                </div>
+
+                {/* Leaf suggestions list */}
+                {leafOrder.length > 0 && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                      {leafOrder.map(leafId => {
+                        const entry = leafSuggestions[leafId];
+                        if (!entry) return null;
+                        const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
+                        return (
+                          <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                              <button
+                                onClick={() => rotateLeafPrev(leafId)}
+                                disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                                title="Previous option"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 4,
+                                  border: '1px solid #ccc',
+                                  background: '#f8f8f8',
+                                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                ◀
+                              </button>
+                              <div style={{ fontSize: 12, color: '#555' }}>
+                                {entry.options && entry.options.length > 0 ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}` : 'No options'}
+                              </div>
+                              <button
+                                onClick={() => rotateLeafNext(leafId)}
+                                disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                                title="Next option"
+                                style={{
+                                  width: 28,
+                                  height: 28,
+                                  borderRadius: 4,
+                                  border: '1px solid #ccc',
+                                  background: '#f8f8f8',
+                                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                }}
+                              >
+                                ▶
+                              </button>
+                            </div>
+                            <textarea
+                              value={currentText}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, editedText: val } }));
+                              }}
+                              style={{
+                                width: '100%',
+                                minHeight: 100,
+                                padding: 8,
+                                borderRadius: 6,
+                                border: '1px solid #bbb',
+                                color: '#000000',
+                                resize: 'vertical'
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                  <button
+                    onClick={handleCancel}
+                    disabled={isNodeRewriting}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  {(() => {
+                    const hasTextChanges = Object.keys(leafSuggestions).some(k => {
+                      const e = leafSuggestions[k];
+                      const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
+                      return chosen !== e.original;
+                    });
+                    const hasEmotionChanges = JSON.stringify(subtreeEmotionProfile) !== JSON.stringify(originalEmotionProfile);
+                    return (hasTextChanges || hasEmotionChanges) && (
+                      <button
+                        onClick={() => {
+                          // Build edits map
+                          const edits = {};
+                          let anyTextChanged = false;
+                          Object.keys(leafSuggestions).forEach(k => {
+                            const e = leafSuggestions[k];
+                            const chosen = e.editedText ?? ((e.options && e.options.length > 0 && e.selectedIdx >= 0) ? e.options[e.selectedIdx] : e.original);
+                            if (chosen && chosen.length > 0) {
+                              edits[k] = chosen;
+                              if (chosen !== e.original) anyTextChanged = true;
+                            }
+                          });
+                          // If no text changed, revert to original emotion
+                          const finalProfile = anyTextChanged ? subtreeEmotionProfile : originalEmotionProfile;
+                          if (typeof data.applySubtreeChanges === 'function') {
+                            data.applySubtreeChanges(id, normalizeEmotionProfile({ ...finalProfile }), edits);
+                          }
+                          // Reset and close
+                          setLeafSuggestions({});
+                          setLeafOrder([]);
+                          setIsDialogOpen(false);
+                        }}
+                        disabled={isNodeRewriting}
+                        style={{
+                          padding: "8px 14px",
+                          background: "#10B981",
+                          color: "white",
+                          borderRadius: 6,
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Save
+                      </button>
+                    );
+                  })()}
+                </div>
               </div>
             )}
           </div>
