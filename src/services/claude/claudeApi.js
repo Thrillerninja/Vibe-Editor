@@ -64,6 +64,8 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     // Build subtree information for each dirty root
     const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);
 
+    if (dirtySubtrees.length === 0 && !isRootDirty) return { dirtyRootNodes: [], restructuredSubtrees: [] };
+
     // Build the prompt
     const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
 

@@ -91,15 +91,33 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
     console.log(`[Claude Service] Building dirty subtrees for ${dirtyRootNodes.length} root nodes`);
     console.log(`[Claude Service] Total sentences in document: ${sentences.length}`);
 
+    const clampTopLevel = (level) => {
+        const maxLevel = typeof hierarchyMeta.maxLevel === 'number'
+            ? hierarchyMeta.maxLevel
+            : Infinity;
+        return Math.max(2, Math.min(level, maxLevel));
+    };
+
     for (const rootNode of dirtyRootNodes) {
         const sentencesInSubtree = findSentencesInNode(rootNode, hierarchyMeta, sentences);
 
         console.log(`[Claude Service] Subtree ${rootNode.id} contains ${sentencesInSubtree.length} sentences`);
         console.log(`[Claude Service]   Sentence orders: ${sentencesInSubtree.map(s => sentences.indexOf(s)).join(', ')}`);
 
+        // If a dirty root has no sentences beneath it, it cannot be meaningfully
+        // restructured by Claude. Skip it (it will typically be removed when we
+        // rebuild groups anyway).
+        if (sentencesInSubtree.length === 0) {
+            console.warn(
+                `[Claude Service] Skipping dirty root ${rootNode.id} because it contains 0 sentences`
+            );
+            continue;
+        }
+
         dirtySubtrees.push({
             rootNodeId: rootNode.id,
-            topLevel: rootNode.level, // The level of the top nodes in the new hierarchy
+            // Claude/validator semantics require topLevel >= 2.
+            topLevel: clampTopLevel(rootNode.level),
             sentences: sentencesInSubtree.map((s, index) => ({
                 id: s.id,
                 order: sentences.indexOf(s), // Compute order from position in main sentences array
