@@ -64,7 +64,12 @@ export function parseDirtyRestructureResponse(responseText, maxDepth, originalSu
     } catch (error) {
         console.error('[Claude Service] ✗ Response validation failed:', error.message);
         console.error('[Claude Service] Response text:', responseText);
-        throw new Error(`Invalid Claude response: ${error.message}`);
+        console.error('[Claude Service] Restructuring failed, using fallback');
+        return {
+            restructuredSubtrees: [], // ← Empty = no changes
+            newRootTitle: null,
+            newRootEmotions: null,
+        };
     }
 }
 

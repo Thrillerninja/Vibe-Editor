@@ -361,7 +361,7 @@ export function applyClaudeRestructureToNodeMap(
     if (!reachableNodeIds.has(nodeId) && nodeId !== rootId) {
       orphanedIds.push(nodeId);
       updated.delete(nodeId);
-      console.log(`[Adapter] 🗑️ Deleted orphaned node: ${nodeId.substring(0, 8)}`);
+      console.log(`[Adapter] Deleted orphaned node: ${nodeId.substring(0, 8)}`);
     }
   }
 

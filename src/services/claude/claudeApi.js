@@ -95,33 +95,17 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
             // Fall back gracefully
         }
 
-        // Parse and validate the response
-        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
-        // Derive legacy fields if only profile was provided
-        let resolvedRootEmotion = newRootEmotion;
-        let resolvedRootIntensity = newRootIntensity;
-        let resolvedRootEmotions = newRootEmotions;
-        if (newRootEmotions && (newRootEmotion === undefined || newRootIntensity === undefined)) {
-            const legacy = deriveLegacyFromProfile(newRootEmotions);
-            resolvedRootEmotion = legacy.emotion;
-            resolvedRootIntensity = legacy.intensity;
-            resolvedRootEmotions = legacy.profile;
-        }
-        console.log('[TEST] ROOTPROPS:', { newRootTitle, newRootEmotion: resolvedRootEmotion, newRootIntensity: resolvedRootIntensity, newRootEmotions: resolvedRootEmotions });
-        console.log('[Claude Service] Parsed response - subtrees:', restructuredSubtrees?.length, 'newRootTitle:', newRootTitle);
-
-        return {
-            dirtyRootNodes: dirtyRootNodes.map(n => n.id),
-            restructuredSubtrees,
-            newRootTitle,
-            newRootEmotion: resolvedRootEmotion,
-            newRootIntensity: resolvedRootIntensity,
-            newRootEmotions: resolvedRootEmotions,
-        };
+        return parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
+        
     } catch (error) {
+        if (error.message?.includes('max_tokens') || error.message?.includes('context')) {
+            console.error('[Claude Service] Token limit exceeded, chunking request');
+            // Re-attempt with smaller batch
+            return handleTokenLimitExceeded(sentences, hierarchyMeta, dirtyNodeIds, dirtySentenceIds, maxDepth);
+        }
         console.error('[Claude Service] Error restructuring dirty nodes:', error);
         console.error('[Claude Service] Error stack:', error.stack);
-        throw new Error(`Failed to restructure dirty nodes: ${error.message}`);
+        throw error;
     }
 }
 

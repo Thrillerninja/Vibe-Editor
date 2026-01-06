@@ -12,8 +12,6 @@
  * - Claude creates a COMPLETE hierarchy from level 2 up to level N
  */
 
-import { v4 as uuidv4 } from 'uuid';
-
 /**
  * Build a prompt for restructuring dirty subtrees
  * @param {Array} dirtySubtrees - Array of subtree information
