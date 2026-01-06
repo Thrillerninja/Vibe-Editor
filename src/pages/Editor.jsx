@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { TreeVisualization, HistoryGraph } from '../components';
-import DiffView from '../components/HistoryGraph/DiffView';
 import React from 'react';
 import posthog from '../utils/posthog';
-import { useNavigate } from 'react-router-dom';
 import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
