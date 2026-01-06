@@ -112,54 +112,54 @@ export const EMOTION_LABELS = {
 // Emotion colors by intensity (0-100) - Rainbow spectrum with proper gradients
 export const EMOTION_COLORS = {
   [EMOTIONS.INTEREST]: {
-    light: '#ffcccb',    // Light red
-    medium: '#ff6b6b',   // Medium red
-    strong: '#e60000',   // Strong red
-  },
-  [EMOTIONS.JOY]: {
-    light: '#ffe4cc',    // Light orange
-    medium: '#ff9d5c',   // Medium orange
-    strong: '#ff6600',   // Strong orange
-  },
-  [EMOTIONS.SURPRISE]: {
     light: '#fff9cc',    // Light yellow
     medium: '#ffeb3b',   // Medium yellow
     strong: '#ffd700',   // Strong yellow (gold)
   },
-  [EMOTIONS.SADNESS]: {
+  [EMOTIONS.JOY]: {
     light: '#e6f7cc',    // Light lime
     medium: '#b5e550',   // Medium lime
     strong: '#7cb342',   // Strong lime
   },
-  [EMOTIONS.ANGER]: {
+  [EMOTIONS.SURPRISE]: {
     light: '#ccf5cc',    // Light green
     medium: '#66cc66',   // Medium green
     strong: '#00a651',   // Strong green
   },
-  [EMOTIONS.DISGUST]: {
+  [EMOTIONS.SADNESS]: {
     light: '#ccf5f5',    // Light cyan
     medium: '#4dd0e1',   // Medium cyan
     strong: '#00bcd4',   // Strong cyan
   },
-  [EMOTIONS.CONTEMPT]: {
+  [EMOTIONS.ANGER]: {
     light: '#cce0ff',    // Light blue
     medium: '#64b5f6',   // Medium blue
     strong: '#1976d2',   // Strong blue
   },
-  [EMOTIONS.FEAR]: {
+  [EMOTIONS.DISGUST]: {
     light: '#d6ccff',    // Light indigo
     medium: '#7c4dff',   // Medium indigo
     strong: '#4527a0',   // Strong indigo
   },
-  [EMOTIONS.SHAME]: {
+  [EMOTIONS.CONTEMPT]: {
     light: '#f3ccff',    // Light purple
     medium: '#ba68c8',   // Medium purple
     strong: '#7b1fa2',   // Strong purple
   },
-  [EMOTIONS.GUILT]: {
+  [EMOTIONS.FEAR]: {
     light: '#ffcce6',    // Light magenta
     medium: '#ec407a',   // Medium magenta
     strong: '#c2185b',   // Strong magenta
+  },
+  [EMOTIONS.SHAME]: {
+    light: '#ffcccb',    // Light red
+    medium: '#ff6b6b',   // Medium red
+    strong: '#e60000',   // Strong red
+  },
+  [EMOTIONS.GUILT]: {
+    light: '#ffe4cc',    // Light orange
+    medium: '#ff9d5c',   // Medium orange
+    strong: '#ff6600',   // Strong orange
   },
 };
 
