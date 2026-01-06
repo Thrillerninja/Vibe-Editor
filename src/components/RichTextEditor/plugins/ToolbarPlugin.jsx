@@ -20,7 +20,7 @@ import {
 import { $setBlocksType } from '@lexical/selection';
 import { $createParagraphNode } from 'lexical';
 
-export function ToolbarPlugin() {
+export default function ToolbarPlugin() {
   const [editor] = useLexicalComposerContext();
   const [activeFormats, setActiveFormats] = useState({
     bold: false,

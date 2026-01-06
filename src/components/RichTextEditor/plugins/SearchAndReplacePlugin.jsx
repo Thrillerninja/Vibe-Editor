@@ -11,7 +11,7 @@ import {
 } from 'lexical';
 import '../styles/editor.css';
 
-export function SearchAndReplacePlugin() {
+export default function SearchAndReplacePlugin() {
   const [editor] = useLexicalComposerContext();
   const [isOpen, setIsOpen] = useState(false);
   const [searchText, setSearchText] = useState('');

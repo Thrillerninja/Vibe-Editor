@@ -5,7 +5,7 @@ import { $convertToMarkdownString, TRANSFORMERS } from '@lexical/markdown';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
-export function ExportPlugin() {
+export default function ExportPlugin() {
   const [editor] = useLexicalComposerContext();
   const [isOpen, setIsOpen] = useState(false);
 

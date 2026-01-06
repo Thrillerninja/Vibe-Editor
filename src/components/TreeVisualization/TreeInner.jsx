@@ -1,8 +1,19 @@
 /**
- * TreeInner - Main tree visualization logic with Lexical integration
+ * @fileoverview TreeInner - Main tree visualization logic with Lexical integration
+ *
+ * Manages ReactFlow visualization, drag-and-drop, layout, and node editing.
+ * Works directly with Node map as SSOT.
+ *
+ * @typedef {import('../types/node').Node} Node
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import ReactFlow, {
   Background,
   Controls,
@@ -19,66 +30,121 @@ import { useReparenting } from '../../hooks/useReparenting';
 import { useLocalPhysics } from '../../hooks/useLocalPhysics';
 import { useReordering } from '../../hooks/useReordering';
 import { ReparentIndicator } from './ReparentIndicator';
-import { buildTreeFromSentences, flattenTree } from '../../utils/treeParser';
-import { pruneEmptyHierarchyBranches } from '../../utils/hierarchyIntegration';
 import { runElk } from '../../utils/layoutEngine';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { useFlowScreenConverters } from '../../utils/coords';
-import { applyReordering } from '../../utils/sentenceEditor';
-import { editSentence } from '../../utils/sentenceEditor';
-import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
-import { normalizeEmotionProfile, deriveLegacyFromProfile } from '../../utils/emotionProfiles';
-// Move nodeTypes outside component to prevent recreation
+import {
+  cloneNode,
+  markNodeDirty,
+  getDescendants,
+  isGroupNode,
+  isContentNode,
+} from '../../types/node';
+
+/** Move nodeTypes outside component to prevent recreation */
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
 /**
  * TreeInner - Main tree visualization logic
- * Now works with sentences array as SSOT
+ * Works with node map as SSOT
+ *
+ * @param {Object} props
+ * @param {Map<string, Node>} props.nodeMap - Map of all nodes
+ * @param {string} props.rootId - Root node ID
+ * @param {(nodeMap: Map<string, Node>) => void} props.onTreeUpdate
+ * @returns {React.ReactElement}
  */
-export function TreeInner({ sentences, onTreeUpdate }) {
-  console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
+export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
+  console.log('[TreeInner] Component rendering with', nodeMap.size, 'nodes');
 
   // ReactFlow state
+  /** @type {[Array, Function, Function]} */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
+
+  /** @type {[Array, Function, Function]} */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+
+  /** @type {[Object | null, Function]} */
   const [reorderIndicator, setReorderIndicator] = useState(null);
+
+  /** @type {[Object | null, Function]} */
   const [reparentTarget, setReparentTarget] = useState(null);
+
+  /** @type {[string | null, Function]} */
   const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
+
+  /** @type {[boolean, Function]} */
   const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
+
+  /** @type {React.MutableRefObject<any>} */
   const rfRef = useRef(null);
+
+  /** @type {React.MutableRefObject<HTMLDivElement>} */
   const containerRef = useRef(null);
+
+  /** @type {React.MutableRefObject<boolean>} */
   const isDraggingRef = useRef(false);
-  const sentencesRef = useRef(sentences);
+
+  /** @type {React.MutableRefObject<Map<string, Node>>} */
+  const nodeMapRef = useRef(nodeMap);
+
+  /** @type {React.MutableRefObject<boolean>} */
   const animateNextRef = useRef(false);
 
-  // Keep sentences ref updated
-  useEffect(() => {
-    sentencesRef.current = sentences;
-    console.log('[TreeInner] sentencesRef updated', sentences);
-  }, [sentences]);
+  // Track what changed during drag for relayout
+  const prevNodeMapRef = useRef(nodeMap);/**
 
-  // Log component mount/unmount for debugging
-  useEffect(() => {
-    console.log('[TreeInner] Component MOUNTED');
-    return () => {
-      console.log('[TreeInner] Component UNMOUNTED');
-    };
+  * Store original node positions before drag for snap-back
+  */
+  const originalNodePositionsRef = useRef({});
 
-  }, []);
+  // Keep track of which node was dragged and if tree changed
+  const draggedNodeIdRef = useRef(null);
+  const treeChangedRef = useRef(false);
+
+  // Keep nodeMap ref updated
+  useEffect(() => {
+    nodeMapRef.current = nodeMap;
+    console.log('[TreeInner] nodeMapRef updated, size:', nodeMap.size);
+  }, [nodeMap]);
 
   // Custom hooks
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
-  const { checkReorderDrop, reorderNodes, findClosestSibling } = useReordering();
-  const { flowToScreenPosition, setCenter, getZoom, zoomIn, zoomOut, fitView } = useReactFlow();
+  const { checkReorderDrop, findClosestSibling } = useReordering();
+  const {
+    flowToScreenPosition,
+    setCenter,
+    getZoom,
+    zoomIn,
+    zoomOut,
+    fitView,
+  } = useReactFlow();
 
-  // Toggle debug mode with 'F8' key
+  // =========================================================================
+  // INITIALIZATION
+  // =========================================================================
+
+  // Log component mount/unmount
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    console.log('[TreeInner] Component MOUNTED');
+    return () => {
+      console.log('[TreeInner] Component UNMOUNTED');
+    };
+  }, []);
+
+  // Toggle debug hitboxes with F8
+  useEffect(() => {
+    /**
+     * @param {KeyboardEvent} e
+     */
+    const handleKeyDown = e => {
       if (e.key === 'F8') {
-        setShowDebugHitboxes((prev) => !prev);
-        console.log(`${LOG_PREFIX.DRAG} Debug hitboxes: ${!showDebugHitboxes}`);
+        setShowDebugHitboxes(prev => !prev);
+        console.log(
+          `${LOG_PREFIX.DRAG} Debug hitboxes: ${!showDebugHitboxes}`
+        );
       }
     };
 
@@ -86,7 +152,327 @@ export function TreeInner({ sentences, onTreeUpdate }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showDebugHitboxes]);
 
-  // Zoom and pan to node + dialog when emotion selector opens
+  // Cleanup physics on unmount
+  useEffect(() => {
+    return () => {
+      console.log(`${LOG_PREFIX.PHYSICS} Component unmounting, cleaning up`);
+      physics.stop();
+    };
+  }, []);
+
+  // =========================================================================
+  // NODE MODIFICATION HELPERS
+  // =========================================================================
+
+  /**
+   * Reparent a node under a new parent
+   *
+   * @param {string} nodeId - Node to reparent
+   * @param {string} newParentId - New parent node ID
+   */
+  const reparentNode = useCallback(
+    (nodeId, newParentId) => {
+      const updated = new Map(nodeMapRef.current);
+      const node = updated.get(nodeId);
+      const newParent = updated.get(newParentId);
+
+      // Validate both nodes exist
+      if (!node) {
+        console.error(`[TreeInner] Cannot reparent: node ${nodeId} not found`);
+        return;
+      }
+
+      if (!newParent) {
+        console.error(
+          `[TreeInner] Cannot reparent: new parent ${newParentId} not found`
+        );
+        return;
+      }
+
+      // Prevent self-parenting
+      if (nodeId === newParentId) {
+        console.warn('[TreeInner] Cannot reparent node to itself');
+        return;
+      }
+
+      // Remove from old parent
+      if (node.hierarchy.parentId) {
+        const oldParent = updated.get(node.hierarchy.parentId);
+        if (oldParent) {
+          const oldParentClone = cloneNode(oldParent);
+          oldParentClone.hierarchy.childIds =
+            oldParentClone.hierarchy.childIds.filter(id => id !== nodeId);
+          updated.set(oldParent.id, oldParentClone);
+        }
+      }
+
+      // Update node's parent
+      const nodeClone = cloneNode(node);
+      nodeClone.hierarchy.parentId = newParentId;
+      nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
+      nodeClone.metadata.isDirty = true;
+      nodeClone.metadata.modifiedAt = new Date().toISOString();
+      updated.set(nodeId, nodeClone);
+
+      // Add to new parent
+      const newParentClone = cloneNode(newParent);
+      if (!newParentClone.hierarchy.childIds.includes(nodeId)) {
+        newParentClone.hierarchy.childIds.push(nodeId);
+      }
+      updated.set(newParentId, newParentClone);
+
+      console.log(
+        `[TreeInner] Reparented ${nodeId} to ${newParentId} (level ${nodeClone.hierarchy.level})`
+      );
+
+      treeChangedRef.current = true;
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate]
+  );
+
+  /**
+  * Reorder a node relative to a sibling(same parent)
+  *
+  * @param { string } nodeId - Node to reorder
+  * @param { string } targetSiblingId - Target sibling node
+  * @param { boolean } insertBefore - Insert before or after
+  */
+  const reorderNode = useCallback(
+    (nodeId, targetSiblingId, insertBefore) => {
+      console.log(
+        `[TreeInner] Reorder: ${nodeId} ${insertBefore ? 'BEFORE' : 'AFTER'
+        } ${targetSiblingId}`
+      );
+
+      const updated = new Map(nodeMapRef.current);
+      const node = updated.get(nodeId);
+      const sibling = updated.get(targetSiblingId);
+
+      if (!node || !sibling) {
+        console.error('[TreeInner] Reorder: Node or sibling not found');
+        return;
+      }
+
+      // Verify same parent
+      if (node.hierarchy.parentId !== sibling.hierarchy.parentId) {
+        console.error(
+          `[TreeInner] Reorder: Different parents: ${node.hierarchy.parentId} vs ${sibling.hierarchy.parentId}`
+        );
+        return;
+      }
+
+      const parentId = node.hierarchy.parentId;
+      const parent = updated.get(parentId);
+
+      if (!parent) {
+        console.error(`[TreeInner] Reorder: Parent not found: ${parentId}`);
+        return;
+      }
+
+      // Reorder children
+      const parentClone = cloneNode(parent);
+      const childIds = [...parentClone.hierarchy.childIds];
+
+      // Remove node from current position
+      const nodeIndex = childIds.indexOf(nodeId);
+      if (nodeIndex === -1) {
+        console.error(`[TreeInner] Reorder: Node not in parent's children`);
+        return;
+      }
+
+      childIds.splice(nodeIndex, 1);
+
+      // Find target position
+      const siblingIndex = childIds.indexOf(targetSiblingId);
+      if (siblingIndex === -1) {
+        console.error(
+          `[TreeInner] Reorder: Target sibling not in parent's children`
+        );
+        return;
+      }
+
+      const insertIndex = insertBefore ? siblingIndex : siblingIndex + 1;
+
+      // Insert at new position
+      childIds.splice(insertIndex, 0, nodeId);
+
+      parentClone.hierarchy.childIds = childIds;
+      updated.set(parentId, parentClone);
+
+      // Mark as dirty
+      const nodeClone = cloneNode(node);
+      nodeClone.metadata.isDirty = true;
+      nodeClone.metadata.modifiedAt = new Date().toISOString();
+      updated.set(nodeId, nodeClone);
+
+      console.log(
+        `[TreeInner] ✅ Reorder applied: new order = [${childIds.join(', ')}]`
+      );
+
+      treeChangedRef.current = true;
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate]
+  );
+
+  // =========================================================================
+  // TREE BUILDING & LAYOUT
+  // =========================================================================
+
+  /**
+   * Build ReactFlow nodes and edges from node map
+   * Validates that all edges reference existing nodes
+   *
+   * @returns {{nodes: Array, edges: Array}}
+   */
+  const buildFlowStructure = useCallback(() => {
+    console.log('[TreeInner] Building flow structure from', nodeMap.size, 'nodes');
+
+    const flowNodes = [];
+    const flowEdges = [];
+
+    // Create flow nodes from each node in map
+    nodeMap.forEach((node) => {
+      flowNodes.push({
+        id: node.id,
+        data: {
+          label: node.content,
+          content: node.content,
+          type: node.type,
+          level: node.hierarchy.level,
+          emotion: node.emotion,
+          metadata: node.metadata,
+          isDirty: node.metadata.isDirty,
+        },
+        position: { x: 0, y: 0 },
+        type: 'animatedNode',
+        style: {
+          width: 'auto',
+          height: 'auto',
+        },
+      });
+    });
+
+    // Create set of valid node IDs for edge validation
+    const validNodeIds = new Set(nodeMap.keys());
+
+    // Create edges from hierarchy - VALIDATE both nodes exist
+    nodeMap.forEach((node) => {
+      if (node.hierarchy.parentId) {
+        // Only create edge if parent exists in nodeMap
+        if (validNodeIds.has(node.hierarchy.parentId)) {
+          flowEdges.push({
+            id: `${node.hierarchy.parentId}-${node.id}`,
+            source: node.hierarchy.parentId,
+            target: node.id,
+            animated: false,
+          });
+        } else {
+          // Orphaned node - log warning
+          console.warn(
+            `[TreeInner] Node ${node.id} references missing parent ${node.hierarchy.parentId}`
+          );
+        }
+      }
+    });
+
+    console.log(
+      `[TreeInner] Built ${flowNodes.length} flow nodes and ${flowEdges.length} edges`
+    );
+
+    return { nodes: flowNodes, edges: flowEdges };
+  }, [nodeMap]);
+
+  /**
+ * Track previous nodeMap structure to avoid redundant layouts
+ */
+  const prevNodeMapKeyRef = useRef(null);
+
+  /**
+   * Check if nodeMap structure has meaningfully changed
+   *
+   * @returns {boolean}
+   */
+  const hasNodeMapStructureChanged = useCallback(() => {
+    if (!prevNodeMapKeyRef.current) return true;
+
+    // Create a structure key based on node IDs and parent relationships
+    const structureKey = Array.from(nodeMap.entries())
+      .map(([id, node]) => `${id}:${node.hierarchy.parentId}`)
+      .sort()
+      .join('|');
+
+    const changed = structureKey !== prevNodeMapKeyRef.current;
+    prevNodeMapKeyRef.current = structureKey;
+
+    return changed;
+  }, [nodeMap]);
+
+  /**
+   * Build structure and apply layout when tree structure changes
+   */
+  const applyLayout = useCallback(async () => {
+    if (isDraggingRef.current) {
+      console.log('[TreeInner] Skipping layout update (dragging)');
+      return;
+    }
+
+    if (!hasNodeMapStructureChanged()) {
+      console.log('[TreeInner] Node map structure unchanged, skipping layout');
+      return;
+    }
+
+    try {
+      const { nodes: flowNodes, edges: flowEdges } = buildFlowStructure();
+
+      if (flowNodes.length === 0) {
+        console.warn('[TreeInner] No nodes to layout');
+        return;
+      }
+
+      console.log(
+        `[TreeInner] Applying ELK layout to ${flowNodes.length} nodes and ${flowEdges.length} edges`
+      );
+
+      const laidOut = await runElk(flowNodes, flowEdges);
+
+      // Only apply if not dragging
+      if (!isDraggingRef.current) {
+        if (animateNextRef.current && containerRef.current) {
+          containerRef.current.classList.add('rf-animate-drop');
+        }
+
+        setNodes(laidOut);
+        setEdges(flowEdges);
+
+        if (animateNextRef.current && containerRef.current) {
+          setTimeout(() => {
+            containerRef.current?.classList.remove('rf-animate-drop');
+            animateNextRef.current = false;
+          }, 300);
+        }
+
+        console.log('[TreeInner] Layout applied successfully');
+      }
+    } catch (err) {
+      console.error('[TreeInner] Layout error:', err);
+      // Don't crash - just keep previous layout
+    }
+  }, [nodeMap, buildFlowStructure, hasNodeMapStructureChanged, setNodes, setEdges]);
+
+  // Apply layout when nodeMap structure changes
+  useEffect(() => {
+    applyLayout();
+  }, [applyLayout]);
+
+  // =========================================================================
+  // EMOTION PANEL FOCUS
+  // =========================================================================
+
+  /**
+   * Focus view on node when emotion panel opens
+   */
   useEffect(() => {
     if (!openEmotionNodeId || !containerRef.current) return;
 
@@ -106,7 +492,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
     // Dialog dimensions (from EmotionSelector)
     const dialogWidth = 380;
-    const dialogHeight = 600; // Approximate height
+    const dialogHeight = 600;
 
     // Calculate the bounding box that includes both node and dialog
     // Dialog is positioned below the node (nodeBottom + 12px gap)
@@ -115,7 +501,10 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
     // Center point between node and dialog area
     const centerX = node.position.x + nodeWidth / 2;
-    const centerY = node.position.y + nodeHeight / 2 + (12 + dialogHeight / 2) / 2;
+    const centerY =
+      node.position.y +
+      nodeHeight / 2 +
+      (12 + dialogHeight / 2) / 2;
 
     // Calculate zoom level to fit both node and dialog
     const padding = 100; // Extra padding around the content
@@ -127,220 +516,120 @@ export function TreeInner({ sentences, onTreeUpdate }) {
     setTimeout(() => {
       setCenter(centerX, centerY, {
         zoom: targetZoom,
-        duration: 400, // Smooth 400ms animation
+        duration: 400,
       });
     }, 50); // Small delay to ensure node is rendered
 
   }, [openEmotionNodeId, nodes, setCenter]);
 
-  // Build tree structure directly from sentences
-  const flat = useMemo(() => {
-    console.log(`${LOG_PREFIX.LAYOUT} Building tree from ${sentences.length} sentences`);
-    const tree = buildTreeFromSentences(sentences);
-    return flattenTree(tree);
-  }, [sentences]);
-
-  // Cleanup physics on unmount only - no dependencies to avoid loops
-  useEffect(() => {
-    return () => {
-      console.log(`${LOG_PREFIX.PHYSICS} Component unmounting, cleaning up`);
-      physics.stop();
-    };
-  }, []); // Empty deps - cleanup only on unmount
-
-  // Track previous sentences to prevent unnecessary layout updates
-  const prevSentencesRef = useRef(null);
-
-  // Apply ELK layout when sentences actually change
-  useEffect(() => {
-    // Don't update layout while dragging
-    if (isDraggingRef.current) {
-      console.log(`${LOG_PREFIX.LAYOUT} Skipping layout update (dragging)`);
-      return;
-    }
-
-    // Check if sentences actually changed (avoid re-layout on re-renders)
-    // Include hierarchy metadata since that affects the tree structure
-    const sentencesKey = JSON.stringify({
-      sentences: sentences.map(s => ({
-        id: s.id,
-        content: s.content,
-        parentId: s.parentId,
-        emotion: s.emotion,
-        intensity: s.intensity,
-        emotions: s.emotions,
-      })),
-      hierarchyMeta: sentences._hierarchyMeta ? {
-        maxLevel: sentences._hierarchyMeta.maxLevel,
-        nodeCount: sentences._hierarchyMeta.nodes?.length || 0,
-        dirtyCount: sentences._hierarchyMeta.dirtyNodeIds?.length || 0,
-        rootTitle: sentences._hierarchyMeta.rootTitle
-      } : null
-    });
-
-    if (prevSentencesRef.current === sentencesKey) {
-      console.log(`${LOG_PREFIX.LAYOUT} Sentences unchanged, skipping layout`);
-        return;
-      }
-
-    prevSentencesRef.current = sentencesKey;
-
-    const applyLayout = async () => {
-      // Rebuild tree inside effect to avoid stale closure
-      const tree = buildTreeFromSentences(sentences);
-      const flatStructure = flattenTree(tree);
-
-      console.log(`${LOG_PREFIX.LAYOUT} Applying layout for ${flatStructure.nodes.length} nodes`);
-
-      // Preserve ONLY metadata (emotion, intensity) from existing nodes
-      // Always use NEW label/content from flatStructure.nodes
-      // Use getNodes() to get current nodes without adding to dependencies
-      const currentNodes = rfRef.current?.getNodes() || [];
-      const withData = flatStructure.nodes.map((n) => {
-        const existing = currentNodes.find((x) => x.id === n.id);
-        if (existing && existing.data) {
-          return {
-            ...n,
-            data: {
-              ...n.data, // New data (label, content, type, etc.)
-              // Preserve only emotion metadata from existing IF not already in new data
-              emotion: n.data.emotion || existing.data.emotion,
-              emotions: n.data.emotions || existing.data.emotions,
-              intensity: n.data.intensity !== undefined ? n.data.intensity : existing.data.intensity,
-            },
-          };
-        }
-        return n;
-      });
-
-      const laidOut = await runElk(withData, flatStructure.edges);
-
-      // Check if we should apply the layout
-      // Apply if: not dragging AND sentences are still the same
-      // Don't use cancelled flag - React Strict Mode unmount/remount would block it
-      const currentSentencesKey = JSON.stringify({
-        sentences: sentencesRef.current.map(s => ({
-          id: s.id,
-          content: s.content,
-          parentId: s.parentId,
-          emotion: s.emotion,
-          intensity: s.intensity,
-          emotions: s.emotions,
-        })),
-        hierarchyMeta: sentencesRef.current._hierarchyMeta ? {
-          maxLevel: sentencesRef.current._hierarchyMeta.maxLevel,
-          nodeCount: sentencesRef.current._hierarchyMeta.nodes?.length || 0,
-          dirtyCount: sentencesRef.current._hierarchyMeta.dirtyNodeIds?.length || 0,
-          rootTitle: sentencesRef.current._hierarchyMeta.rootTitle
-        } : null
-      });
-
-      const sentencesStillSame = currentSentencesKey === sentencesKey;
-      const shouldApply = !isDraggingRef.current && sentencesStillSame;
-
-      if (shouldApply) {
-        console.log(`${LOG_PREFIX.LAYOUT} Setting ${laidOut.length} nodes`);
-        if (animateNextRef.current && containerRef.current) {
-          containerRef.current.classList.add('rf-animate-drop');
-        }
-        setNodes(laidOut);
-        if (animateNextRef.current && containerRef.current) {
-          setTimeout(() => {
-            containerRef.current?.classList.remove('rf-animate-drop');
-            animateNextRef.current = false;
-          }, 300);
-        }
-        setEdges(flatStructure.edges);
-      } else {
-        console.log(`${LOG_PREFIX.LAYOUT} Layout not applied (dragging: ${isDraggingRef.current}, sentencesChanged: ${!sentencesStillSame})`);
-      }
-    };
-
-    applyLayout();
-
-    // Cleanup function doesn't need to do anything
-    // Layout will only apply if sentences are still valid
-  }, [sentences, setNodes, setEdges]);
+  // =========================================================================
+  // REACTFLOW HANDLERS
+  // =========================================================================
 
   /**
    * ReactFlow initialization callback
+   * @param {Object} instance
+   * @returns {void}
    */
-  const onInit = useCallback((instance) => {
-    console.log(`${LOG_PREFIX.DRAG} ReactFlow initialized`);
+  const onInit = useCallback(instance => {
+    console.log('[TreeInner] ReactFlow initialized');
     rfRef.current = instance;
   }, []);
 
   /**
    * Node drag start handler
+   * @param {React.DragEvent} event
+   * @param {Object} rfNode - ReactFlow node
+   * @returns {void}
    */
   const onNodeDragStart = useCallback(
-    (event, node) => {
-      console.log(`${LOG_PREFIX.DRAG} Drag start: ${node.id}`);
+    (event, rfNode) => {
+      console.log(`[TreeInner] Drag start: ${rfNode.id}`);
       isDraggingRef.current = true;
-
-      // Close emotion modal when dragging ANY node
+      draggedNodeIdRef.current = rfNode.id;
+      treeChangedRef.current = false;
       setOpenEmotionNodeId(null);
 
-      // Start physics and sync initial position
-      physics.start(node.id);
-      physics.updateDraggedPosition(node.position.x, node.position.y);
+      // Store original position for snap-back
+      originalNodePositionsRef.current[rfNode.id] = {
+        x: rfNode.position.x,
+        y: rfNode.position.y,
+      };
+
+      physics.start(rfNode.id);
+      physics.updateDraggedPosition(rfNode.position.x, rfNode.position.y);
     },
     [physics]
   );
 
   /**
- * Node drag handler (during drag)
- */
+   * Node drag handler (during drag)
+   * @param {React.DragEvent} event
+   * @param {Object} rfNode - ReactFlow node
+   * @returns {void}
+   */
   const onNodeDrag = useCallback(
-    (event, node) => {
-      // Sync physics simulation
-      physics.updateDraggedPosition(node.position.x, node.position.y);
+    (event, rfNode) => {
+      physics.updateDraggedPosition(rfNode.position.x, rfNode.position.y);
 
-      // Check for closest sibling to show reorder indicator
-      const closest = findClosestSibling(node.id, node.position.y);
+      console.log(
+        `${LOG_PREFIX.DRAG} onNodeDrag: ${rfNode.id} at (${rfNode.position.x.toFixed(
+          1
+        )}, ${rfNode.position.y.toFixed(1)})`
+      );
+
+      // Check for reorder (same parent)
+      const closest = findClosestSibling(
+        rfNode.id,
+        rfNode.position.y,
+        nodeMapRef.current
+      );
 
       if (closest) {
-        // Sibling reordering takes priority
+        console.log(
+          `${LOG_PREFIX.DRAG} 🔵 Showing reorder indicator for ${closest.node.id}`
+        );
+
         const screenPos = toScreenPoint({
           x: closest.node.position.x,
           y: closest.node.position.y,
         });
-        const screenSize = toScreenSize({ width: closest.node.width ?? 200, height: closest.node.height ?? 60 });
-
-        console.log(
-          `${LOG_PREFIX.DRAG} 🔵 REORDER INDICATOR ACTIVE:`,
-          `\n  Target: ${closest.node.id}`,
-          `\n  Insert ${closest.insertBefore ? 'BEFORE' : 'AFTER'}`,
-          `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`,
-          `\n  Flow pos: (${closest.node.position.x.toFixed(1)}, ${closest.node.position.y.toFixed(1)})`
-        );
+        const screenSize = toScreenSize({
+          width: closest.node.width ?? 200,
+          height: closest.node.height ?? 60,
+        });
 
         setReorderIndicator({
           x: screenPos.x + screenSize.width / 2,
-          y: screenPos.y + (closest.insertBefore ? 0 : screenSize.height), // top or bottom edge
-          width: screenSize.width, // scale line width with zoom
+          y: screenPos.y + (closest.insertBefore ? 0 : screenSize.height),
+          width: screenSize.width,
           isAbove: closest.insertBefore,
         });
         setReparentTarget(null);
       } else {
-        // Check for reparenting target
+        // Check for reparent (different parent)
         setReorderIndicator(null);
 
-        const target = findReparentTarget(node.id, node.position.x, node.position.y);
+        const target = findReparentTarget(
+          rfNode.id,
+          rfNode.position.x,
+          rfNode.position.y,
+          nodeMapRef.current
+        );
+
         if (target) {
-          const screenPos = toScreenPoint({ x: target.position.x, y: target.position.y });
+          console.log(
+            `${LOG_PREFIX.DRAG} 🟢 Showing reparent indicator for ${target.id}`
+          );
+
+          const screenPos = toScreenPoint({
+            x: target.position.x,
+            y: target.position.y,
+          });
           const screenSize = toScreenSize({
             width: target.width || 200,
             height: target.height || 60,
           });
-          console.log(
-            `${LOG_PREFIX.DRAG} 🟢 REPARENT INDICATOR ACTIVE:`,
-            `\n  Target: ${target.id}`,
-            `\n  Target label: "${target.data.label.substring(0, 30)}..."`,
-            `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`,
-            `\n  Flow pos: (${target.position.x.toFixed(1)}, ${target.position.y.toFixed(1)})`,
-            `\n  Target size: ${target.width}x${target.height}`
-          );
 
           setReparentTarget({
             node: target,
@@ -352,402 +641,320 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         }
       }
     },
-    [physics, findClosestSibling, findReparentTarget, flowToScreenPosition]
+    [
+      physics,
+      findClosestSibling,
+      findReparentTarget,
+      toScreenPoint,
+      toScreenSize,
+    ]
   );
 
   /**
-   * Node drag stop handler
-   */
+ * Node drag stop handler with snap-back logic
+ * @param {React.DragEvent} event
+ * @param {Object} rfNode - ReactFlow node
+ * @returns {void}
+ */
   const onNodeDragStop = useCallback(
-    (event, node) => {
-      console.log(`${LOG_PREFIX.DRAG} Drag stop: ${node.id}`);
+    (event, rfNode) => {
+      console.log(`${LOG_PREFIX.DRAG} onNodeDragStop: ${rfNode.id}`);
       isDraggingRef.current = false;
       setReorderIndicator(null);
       setReparentTarget(null);
-      // Animate the next layout update triggered by this drop
       animateNextRef.current = true;
 
-      // Check for reordering first (tighter threshold)
-      const reorderInfo = checkReorderDrop(node.id, node.position.y);
+      let actionTaken = false;
+
+      // Check for reorder first (same parent, tighter threshold)
+      const reorderInfo = checkReorderDrop(
+        rfNode.id,
+        rfNode.position.y,
+        nodeMapRef.current
+      );
 
       if (reorderInfo) {
-        // This is a reorder operation
-        console.log(`${LOG_PREFIX.DRAG} Reorder detected: applying to sentences`);
+        console.log(
+          `${LOG_PREFIX.DRAG} ✅ REORDER ACTION: ${rfNode.id} ${reorderInfo.insertBefore ? 'before' : 'after'
+          } ${reorderInfo.targetSiblingId}`
+        );
 
-        // Apply reordering to sentences array using ref
-        const updatedSentences = applyReordering(
-          sentencesRef.current,
-          node.id,
+        reorderNode(
+          rfNode.id,
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
-
-        // Prune empty hierarchy branches (no sentence leaves)
-        const pruned = pruneEmptyHierarchyBranches(updatedSentences);
-
-        // Update parent component's state
-        if (onTreeUpdate) {
-          onTreeUpdate(pruned);
-        }
-
-        // Stop physics
-        physics.stop();
-
-        // Re-layout will happen automatically via useEffect when sentences change
+        actionTaken = true;
       } else {
         // Try reparenting (different parent)
-        console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
-        onDropToReparent(node.id, node.position.x, node.position.y);
+        const target = findReparentTarget(
+          rfNode.id,
+          rfNode.position.x,
+          rfNode.position.y,
+          nodeMapRef.current
+        );
 
-        // Stop physics
-        physics.stop();
-
-        // Also prune empty branches after potential reparenting
-        const prunedAfterReparent = pruneEmptyHierarchyBranches(sentencesRef.current);
-        if (onTreeUpdate && prunedAfterReparent !== sentencesRef.current) {
-          onTreeUpdate(prunedAfterReparent);
+        if (target) {
+          console.log(`${LOG_PREFIX.DRAG} ✅ REPARENT ACTION: ${rfNode.id} → ${target.id}`);
+          reparentNode(rfNode.id, target.id);
+          actionTaken = true;
+        }
       }
 
-        // Re-layout after reparent
-        setTimeout(async () => {
-          if (!isDraggingRef.current) {
-            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
-            const laidOut = await runElk(
-              rfRef.current.getNodes(),
-              rfRef.current.getEdges()
-            );
-            if (animateNextRef.current && containerRef.current) {
-              containerRef.current.classList.add('rf-animate-drop');
-            }
-            setNodes(laidOut);
-            if (animateNextRef.current && containerRef.current) {
-              setTimeout(() => {
-                containerRef.current?.classList.remove('rf-animate-drop');
-                animateNextRef.current = false;
-              }, 300);
-            }
-          }
-        }, 50);
+      physics.stop();
+
+      // Snap back if no action taken
+      if (!actionTaken) {
+        const originalPos = originalNodePositionsRef.current[rfNode.id];
+        if (originalPos) {
+          console.log(
+            `${LOG_PREFIX.DRAG} ⬅️ SNAP BACK: ${rfNode.id} to (${originalPos.x.toFixed(
+              1
+            )}, ${originalPos.y.toFixed(1)})`
+          );
+
+          setNodes(nds =>
+            nds.map(n =>
+              n.id === rfNode.id
+                ? {
+                  ...n,
+                  position: originalPos,
+                }
+                : n
+            )
+          );
+        }
       }
+
+      delete originalNodePositionsRef.current[rfNode.id];
     },
-    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, onTreeUpdate]
+    [
+      checkReorderDrop,
+      findReparentTarget,
+      reorderNode,
+      reparentNode,
+      physics,
+      setNodes,
+    ]
   );
+
+  // =========================================================================
+  // LAYOUT RELAYOUT AFTER MODIFICATIONS
+  // =========================================================================
+
+  // Re-apply layout when tree actually changes
+  useEffect(() => {
+    if (treeChangedRef.current && !isDraggingRef.current) {
+      console.log('[TreeInner] Tree changed, re-applying layout');
+      applyLayout();
+      treeChangedRef.current = false;
+    }
+  }, [nodeMap, applyLayout]);
+
+  const getDescendantLeaves = useCallback((nodeId) => {
+    const node = nodeMapRef.current.get(nodeId);
+    if (!node) return [];
+
+    const leaves = [];
+    const queue = [node];
+
+    while (queue.length) {
+      const current = queue.shift();
+
+      // Check if leaf (no children)
+      if (!current.hierarchy.childIds || current.hierarchy.childIds.length === 0) {
+        leaves.push(current);
+      } else {
+        // Add children to queue
+        current.hierarchy.childIds.forEach(childId => {
+          const child = nodeMapRef.current.get(childId);
+          if (child) queue.push(child);
+        });
+      }
+    }
+
+    return leaves;
+  }, []);
 
   /**
    * Edge connection handler
+   * @param {Object} params
+   * @returns {void}
    */
   const onConnect = useCallback(
-    (params) => {
-      console.log(`${LOG_PREFIX.REPARENT} Manual connection: ${params.source} → ${params.target}`);
-      setEdges((eds) => addEdge({ ...params, animated: false }, eds));
+    params => {
+      console.log(
+        `[TreeInner] Manual connection: ${params.source} → ${params.target}`
+      );
+      setEdges(eds => addEdge({ ...params, animated: false }, eds));
     },
     [setEdges]
   );
 
+  // =========================================================================
+  // NODE EDITING & UPDATES
+  // =========================================================================
 
-
-  const applyNodeSentenceEdit = useCallback(
+  /**
+   * Edit node content
+   * @param {string} nodeId
+   * @param {string} newContent
+   * @param {Object} emotionProfile
+   * @returns {void}
+   */
+  const applyNodeEdit = useCallback(
     (nodeId, newContent, emotionProfile) => {
-      console.log(`[TreeInner] Node ${nodeId} content edit: "${newContent}"`);
-      const profile = normalizeEmotionProfile(emotionProfile);
-      const legacy = deriveLegacyFromProfile(profile);
+      console.log(`[TreeInner] Editing node ${nodeId}: "${newContent}"`);
 
-      const current = sentencesRef.current;
-      const originalSentence = current.find(s => s.id === nodeId);
-      const contentChanged = originalSentence && originalSentence.content !== newContent;
+      const updated = new Map(nodeMapRef.current);
+      const node = updated.get(nodeId);
 
-      // Update the sentences array with new content
-      const edited = editSentence(nodeId, newContent, current);
-
-      // Attach emotion profile to the edited sentence
-      const withEmotions = edited.map((s) =>
-        s.id === nodeId
-          ? { ...s, emotions: profile, emotion: legacy.emotion, intensity: legacy.intensity }
-          : s
-      );
-      // Preserve hierarchy metadata
-      if (edited._hierarchyMeta) {
-        withEmotions._hierarchyMeta = edited._hierarchyMeta;
-      }
-
-      // Only mark as dirty if content actually changed
-      const result = contentChanged ? markSentenceAndAncestorsDirty(withEmotions, nodeId) : withEmotions;
-
-      // Use onTreeUpdate to centralize updates and history handling
-      onTreeUpdate(result);
-    }
-  );
-
-  const applyEmotionToNode = useCallback(
-    (nodeId, emotion, intensity) => {
-      console.log(`[TreeInner] Applying emotion to node ${nodeId}: ${emotion} (${intensity})`);
-      // Update node data with emotion
-      setNodes((nds) =>
-        nds.map((n) =>
-          n.id === nodeId
-            ? {
-              ...n,
-              data: {
-                ...n.data, 
-                emotion,
-                intensity,
-              }, 
-            }
-            : n
-        )
-      );
-    });
-
-  // Get all descendant sentence leaf nodes under a given nodeId
-  const getSubtreeLeaves = useCallback((nodeId) => {
-    const sentences = sentencesRef.current;
-    const meta = sentences._hierarchyMeta;
-    if (!meta || !Array.isArray(meta.nodes)) {
-      // No hierarchy → all sentences are considered leaves under root
-      if (nodeId === 'root') return sentences.map(s => ({ id: s.id, content: s.content }));
-      // If nodeId is a sentence itself
-      const sentence = sentences.find(s => s.id === nodeId);
-      return sentence ? [{ id: sentence.id, content: sentence.content }] : [];
-    }
-
-    const nodeMap = new Map(meta.nodes.map(n => [n.id, n]));
-    const sentenceIds = new Set(sentences.map(s => s.id));
-    const resultIds = new Set();
-    const queue = [];
-
-    if (nodeId === 'root') {
-      const topLevel = meta.nodes.filter(n => n.level === meta.maxLevel);
-      queue.push(...topLevel.map(n => n.id));
-    } else {
-      queue.push(nodeId);
-    }
-
-    while (queue.length) {
-      const cur = queue.shift();
-      const node = nodeMap.get(cur);
       if (!node) {
-        // cur might be a sentence ID
-        if (sentenceIds.has(cur)) {
-          resultIds.add(cur);
-        }
-        continue;
-      }
-      for (const cid of node.childIds || []) {
-        if (sentenceIds.has(cid)) {
-          resultIds.add(cid);
-        } else {
-          queue.push(cid);
-        }
-      }
-    }
-
-    return sentences
-      .filter(s => resultIds.has(s.id))
-      .map(s => ({ id: s.id, content: s.content }));
-  }, []);
-
-  // Apply subtree changes: set emotion for all descendants and update leaf contents per map
-  const applySubtreeChanges = useCallback((nodeId, newProfile, leafEditsMap) => {
-    const current = sentencesRef.current;
-    const profile = normalizeEmotionProfile(newProfile);
-    const legacy = deriveLegacyFromProfile(profile);
-    const updated = current.map(s => ({ ...s }));
-    const meta = current._hierarchyMeta ? { ...current._hierarchyMeta } : null;
-    const nodeMap = meta && Array.isArray(meta.nodes) ? new Map(meta.nodes.map(n => [n.id, { ...n }])) : null;
-
-    // Track if any content actually changed
-    let anyContentChanged = false;
-
-    // Collect descendants (groups and sentences)
-    const sentenceIds = new Set(updated.map(s => s.id));
-    const descendantsSentences = new Set();
-    const descendantsGroups = new Set();
-
-    const enqueueChildren = (startId) => {
-      if (!nodeMap) {
-        // No hierarchy → all sentences under root
-        if (startId === 'root') {
-          updated.forEach(s => descendantsSentences.add(s.id));
-        }
+        console.warn(`[TreeInner] Node ${nodeId} not found`);
         return;
       }
-      const queue = [];
-      if (startId === 'root') {
-        const topLevel = meta.nodes.filter(n => n.level === meta.maxLevel);
-        queue.push(...topLevel.map(n => n.id));
-      } else {
-        queue.push(startId);
-      }
-      while (queue.length) {
-        const cur = queue.shift();
-        const node = nodeMap.get(cur);
-        if (!node) {
-          if (sentenceIds.has(cur)) descendantsSentences.add(cur);
-          continue;
-        }
-        descendantsGroups.add(cur);
-        for (const cid of node.childIds || []) {
-          if (sentenceIds.has(cid)) {
-            descendantsSentences.add(cid);
-          } else {
-            queue.push(cid);
-          }
-        }
-      }
-    };
 
-    enqueueChildren(nodeId);
+      // Update content
+      const editedNode = cloneNode(node);
+      const contentChanged = editedNode.content !== newContent;
+      editedNode.content = newContent;
 
-    // Apply emotion to sentences and check for content changes
-    const editedSentenceIds = [];
-    updated.forEach(s => {
-      if (descendantsSentences.has(s.id)) {
-        s.emotions = profile;
-        s.emotion = legacy.emotion;
-        s.intensity = legacy.intensity;
-        if (leafEditsMap && leafEditsMap[s.id]) {
-          if (s.content !== leafEditsMap[s.id]) {
-            anyContentChanged = true;
-          }
-          s.content = leafEditsMap[s.id];
-          editedSentenceIds.push(s.id);
-        }
-      }
-    });
-
-    // Apply emotion to group nodes
-    if (nodeMap) {
-      descendantsGroups.forEach(gid => {
-        const node = nodeMap.get(gid);
-        if (node) {
-          node.emotions = profile;
-          node.emotion = legacy.emotion;
-          node.intensity = legacy.intensity;
-        }
-      });
-      // Also set on target group itself if present
-      const target = nodeMap.get(nodeId);
-      if (target) {
-        target.emotions = profile;
-        target.emotion = legacy.emotion;
-        target.intensity = legacy.intensity;
-      }
-      meta.nodes = Array.from(nodeMap.values());
-    }
-
-    // Root emotion update
-    if (nodeId === 'root') {
-      if (meta) {
-        meta.rootEmotions = profile;
-        meta.rootEmotion = legacy.emotion;
-        meta.rootIntensity = legacy.intensity;
-      }
-    }
-
-    // Mark current subtree and all ancestors as dirty ONLY if content changed
-    if (anyContentChanged && meta) {
-      const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
-      const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
-
-      // Mark all descendant sentences dirty
-      descendantsSentences.forEach(sid => dirtySentenceIds.add(sid));
-      // Mark all descendant group nodes dirty
-      descendantsGroups.forEach(nid => dirtyNodeIds.add(nid));
-      // Mark the selected node itself dirty if it's a group node
-      if (nodeMap && nodeMap.has(nodeId)) {
-        dirtyNodeIds.add(nodeId);
-      }
-      // If selected is a sentence id, mark it dirty as well
-      if (sentenceIds.has(nodeId)) {
-        dirtySentenceIds.add(nodeId);
+      // Update emotion if provided
+      if (emotionProfile) {
+        editedNode.emotion = {
+          profile: emotionProfile,
+          dominantEmotion: emotionProfile.dominantEmotion,
+          dominantIntensity: emotionProfile.dominantIntensity,
+          source: 'manual',
+          timestamp: new Date().toISOString(),
+        };
       }
 
-      // Mark ancestors up to root dirty
-      const markAncestors = (startId) => {
-        if (!nodeMap) {
-          // Without hierarchy meta, we cannot traverse; mark root only if editing root
-          if (startId === 'root') dirtyNodeIds.add('root');
-          return;
-        }
-        let currentId = startId;
-        while (currentId && currentId !== 'root') {
-          let parent = null;
-          for (const node of nodeMap.values()) {
-            if (Array.isArray(node.childIds) && node.childIds.includes(currentId)) {
-              parent = node;
-              break;
-            }
-          }
-          if (parent) {
-            dirtyNodeIds.add(parent.id);
-            currentId = parent.id;
-          } else {
-            // No parent found in hierarchy: mark root
-            dirtyNodeIds.add('root');
-            break;
-          }
-        }
-        // If the start is root itself, ensure root is marked
-        if (startId === 'root') {
-          dirtyNodeIds.add('root');
-        }
+      // Mark as dirty if content changed
+      if (contentChanged) {
+        editedNode.metadata.isDirty = true;
+        editedNode.metadata.modifiedAt = new Date().toISOString();
+        editedNode.metadata.version += 1;
+      }
+
+      updated.set(nodeId, editedNode);
+
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate]
+  );
+
+  /**
+   * Apply emotion to node and descendants
+   * @param {string} nodeId
+   * @param {Object} emotionProfile
+   * @returns {void}
+   */
+  const applyEmotionToSubtree = useCallback(
+    (nodeId, emotionProfile) => {
+      console.log(`[TreeInner] Applying emotion to subtree ${nodeId}`);
+
+      const updated = new Map(nodeMapRef.current);
+      const node = updated.get(nodeId);
+
+      if (!node) return;
+
+      // Update node
+      const updatedNode = cloneNode(node);
+      updatedNode.emotion = {
+        profile: emotionProfile,
+        dominantEmotion: emotionProfile.dominantEmotion,
+        dominantIntensity: emotionProfile.dominantIntensity,
+        source: 'manual',
+        timestamp: new Date().toISOString(),
       };
+      updated.set(nodeId, updatedNode);
 
-      markAncestors(nodeId);
+      // Update all descendants
+      const descendants = getDescendants(node, nodeMapRef.current);
+      descendants.forEach(descendant => {
+        const cloned = cloneNode(descendant);
+        cloned.emotion = updatedNode.emotion;
+        updated.set(descendant.id, cloned);
+      });
 
-      meta.dirtyNodeIds = Array.from(dirtyNodeIds);
-      meta.dirtySentenceIds = Array.from(dirtySentenceIds);
-    }
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate]
+  );
 
-    const result = updated;
-    if (meta) {
-      result._hierarchyMeta = meta;
-    }
+  /**
+   * Delete a node and update hierarchy
+   * @param {string} nodeId
+   * @returns {void}
+   */
+  const deleteNode = useCallback(
+    nodeId => {
+      console.log(`[TreeInner] Deleting node ${nodeId}`);
 
-    onTreeUpdate(result);
-  }, [onTreeUpdate]);
+      const updated = new Map(nodeMapRef.current);
+      const node = updated.get(nodeId);
 
-  // Delete a sentence node and update hierarchy metadata
-  const deleteNodeSentence = useCallback((nodeId) => {
-    console.log(`[TreeInner] Deleting node ${nodeId}`);
-    const current = sentencesRef.current;
-    
-    // Update hierarchy metadata (removes from parent chains, marks dirty)
-    const afterMeta = current._hierarchyMeta
-      ? removeSentenceFromHierarchy(current, nodeId)
-      : current;
+      if (!node) return;
 
-    // Remove the sentence from the list
-    const filtered = current.filter(s => s.id !== nodeId);
-    if (afterMeta && afterMeta._hierarchyMeta) {
-      filtered._hierarchyMeta = afterMeta._hierarchyMeta;
-    }
+      // Remove from parent's childIds
+      if (node.hierarchy.parentId) {
+        const parent = updated.get(node.hierarchy.parentId);
+        if (parent) {
+          const parentClone = cloneNode(parent);
+          parentClone.hierarchy.childIds = parentClone.hierarchy.childIds.filter(
+            id => id !== nodeId
+          );
+          updated.set(node.hierarchy.parentId, parentClone);
+        }
+      }
 
-    // Immediately remove the node and related edges from ReactFlow state
-    setNodes((nds) => nds.filter((n) => n.id !== nodeId));
-    setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
+      // Remove the node
+      updated.delete(nodeId);
 
-    // Push update to parent
-    onTreeUpdate(filtered);
-  }, [onTreeUpdate, setNodes, setEdges]);
-    
-  // Pass emotion handler and position to nodes via data
+      // Remove from ReactFlow
+      setNodes(nds => nds.filter(n => n.id !== nodeId));
+      setEdges(eds =>
+        eds.filter(e => e.source !== nodeId && e.target !== nodeId)
+      );
+
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate, setNodes, setEdges]
+  );
+
+  // =========================================================================
+  // NODE DATA WITH HANDLERS
+  // =========================================================================
+
+  /**
+   * Attach handlers and utilities to all nodes
+   */
   const nodesWithHandlers = useMemo(
     () =>
-      nodes.map((node) => ({
-        ...node,
+      nodes.map(rfNode => ({
+        ...rfNode,
         data: {
-          ...node.data,
-          applyNodeSentenceEdit: applyNodeSentenceEdit,
-          applyEmotionToNode: applyEmotionToNode,
-          getSubtreeLeaves: getSubtreeLeaves,
-          applySubtreeChanges: applySubtreeChanges,
-          deleteNodeSentence: deleteNodeSentence,
-          nodePosition: node.position, // Pass position for screen calculation
+          ...rfNode.data,
+          applyNodeEdit,
+          applyEmotionToSubtree,
+          deleteNode,
+          setOpenEmotionNodeId,
+          getDescendantLeaves,
         },
       })),
-    [nodes, openEmotionNodeId]
+    [
+      nodes,
+      applyNodeEdit,
+      applyEmotionToSubtree,
+      deleteNode,
+      getDescendantLeaves,
+    ]
   );
+
+  // =========================================================================
+  // RENDER
+  // =========================================================================
 
   const controlButtonStyle = {
     width: '36px',
@@ -797,7 +1004,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         <Controls showInteractive={false} position="bottom-right" />
       </ReactFlow>
 
-      {/* Reorder indicator - blue line between siblings */}
+      {/* Reorder Indicator */}
       {reorderIndicator && (
         <div
           style={{
@@ -834,11 +1041,11 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         </div>
       )}
 
-      {/* Reparent indicator - green highlight on target parent */}
+      {/* Reparent Indicator */}
       {reparentTarget && (
         <div
           style={{
-            position: 'fixed', // Changed from absolute to fixed
+            position: 'fixed',
             left: reparentTarget.screenPosition.x,
             top: reparentTarget.screenPosition.y,
             width: reparentTarget.screenSize.width || 200,
@@ -871,51 +1078,52 @@ export function TreeInner({ sentences, onTreeUpdate }) {
               fontSize: 11,
               fontWeight: 600,
               whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
             }}
           >
             Drop to attach here
           </div>
         </div>
       )}
-      {/* Debug: Show all node hitboxes (press 'D' to toggle) */}
-      {showDebugHitboxes && nodes.map((node) => {
-        const screenPos = toScreenPoint({
-          x: node.position.x,
-          y: node.position.y,
-        });
-        const screenSize = toScreenSize({
-          width: node.width || 200,
-          height: node.height || 60,
-        });
 
-        return (
-          <div
-            key={`hitbox-${node.id}`}
-            style={{
-              position: 'fixed',
-              left: screenPos.x,
-              top: screenPos.y,
-              width: screenSize.width,
-              height: screenSize.height,
-              border: '2px dashed rgba(255, 0, 255, 0.5)',
-              backgroundColor: 'rgba(255, 0, 255, 0.05)',
-              pointerEvents: 'none',
-              zIndex: 8888,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: 10,
-              color: 'magenta',
-              fontWeight: 'bold',
-            }}
-          >
-            {node.id}
-            <br />
-            {(node.width).toFixed(0)}x{(node.height).toFixed(0)}
-          </div>
-        );
-      })}
+      {/* Debug Hitboxes */}
+      {showDebugHitboxes &&
+        nodes.map(rfNode => {
+          const screenPos = toScreenPoint({
+            x: rfNode.position.x,
+            y: rfNode.position.y,
+          });
+          const screenSize = toScreenSize({
+            width: rfNode.width || 200,
+            height: rfNode.height || 60,
+          });
+
+          return (
+            <div
+              key={`hitbox-${rfNode.id}`}
+              style={{
+                position: 'fixed',
+                left: screenPos.x,
+                top: screenPos.y,
+                width: screenSize.width,
+                height: screenSize.height,
+                border: '2px dashed rgba(255, 0, 255, 0.5)',
+                backgroundColor: 'rgba(255, 0, 255, 0.05)',
+                pointerEvents: 'none',
+                zIndex: 8888,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: 10,
+                color: 'magenta',
+                fontWeight: 'bold',
+              }}
+            >
+              {rfNode.id}
+              <br />
+              {rfNode.width?.toFixed(0)}x{rfNode.height?.toFixed(0)}
+            </div>
+          );
+        })}
     </div>
   );
 }

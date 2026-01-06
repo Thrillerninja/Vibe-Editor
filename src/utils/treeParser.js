@@ -11,6 +11,12 @@ import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
 import { buildTreeWithHierarchy } from './hierarchyIntegration';
 
 /**
+ * @typedef {import('../types/node.js').TreeNode} TreeNode
+ * @typedef {import('../types/node.js').ReactFlowNode} ReactFlowNode
+ * @typedef {import('../types/node.js').ReactFlowEdge} ReactFlowEdge
+ */
+
+/**
  * Builds text from sentence nodes (SSOT → Text)
  * Reconstructs text using each sentence's trailing delimiter
  * Adds punctuation if missing (e.g., after reordering)
@@ -66,8 +72,8 @@ export function buildTextFromSentences(sentences) {
  * Supports AI-generated hierarchies if present in sentences._hierarchyMeta
  * Otherwise creates a simple 2-level tree (Root → Sentences)
  * 
- * @param {Array} sentences - Array of sentence nodes
- * @returns {Object} Tree structure with root and children
+ * @param {SentenceNode[]} sentences - Array with _hierarchyMeta
+ * @returns {TreeNode} Root node of tree
  */
 export function buildTreeFromSentences(sentences) {
   console.log(`${LOG_PREFIX.PARSER} Building tree from ${sentences.length} sentences...`);
@@ -99,7 +105,7 @@ export function parseTextToHierarchy(text) {
 /**
  * Flattens tree structure into nodes and edges for ReactFlow
  * @param {Object} tree - Hierarchical tree structure
- * @returns {{nodes: Array, edges: Array}} Flattened structure
+ * @returns {{nodes: ReactFlowNode[], edges: ReactFlowEdge[]}} Flattened structure
  */
 export function flattenTree(tree) {
   console.log(`${LOG_PREFIX.PARSER} Flattening tree...`);
