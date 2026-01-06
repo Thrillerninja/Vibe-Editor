@@ -67,49 +67,99 @@ export const NODE_STYLES = {
   },
 };
 
-// Emotion configuration
+// Emotion configuration based on Differential Emotions Scale (DES) by Izard (1997)
+// The DES measures 10 fundamental emotions that are theoretically and empirically distinct
 export const EMOTIONS = {
-  NEUTRAL: 'neutral',
-  POSITIVE: 'positive',
-  NEGATIVE: 'negative',
-  UNCERTAIN: 'uncertain',
-  EMPHASIS: 'emphasis',
+  INTEREST: 'interest',      // Interest, excitement, curiosity
+  JOY: 'joy',                // Enjoyment, happiness, delight
+  SURPRISE: 'surprise',      // Surprise, amazement, astonishment
+  SADNESS: 'sadness',        // Sadness, distress, downheartedness
+  ANGER: 'anger',            // Anger, hostility, rage
+  DISGUST: 'disgust',        // Disgust, revulsion, repugnance
+  CONTEMPT: 'contempt',      // Contempt, scorn, disdain
+  FEAR: 'fear',              // Fear, anxiety, terror
+  SHAME: 'shame',            // Shame, embarrassment, humiliation
+  GUILT: 'guilt',            // Guilt, remorse, regret
 };
+
+// Fixed list of axes for multi-emotion profiles (DES emotions)
+export const EMOTION_AXES = [
+  EMOTIONS.INTEREST,
+  EMOTIONS.JOY,
+  EMOTIONS.SURPRISE,
+  EMOTIONS.SADNESS,
+  EMOTIONS.ANGER,
+  EMOTIONS.DISGUST,
+  EMOTIONS.CONTEMPT,
+  EMOTIONS.FEAR,
+  EMOTIONS.SHAME,
+  EMOTIONS.GUILT,
+];
 
 export const EMOTION_LABELS = {
-  [EMOTIONS.NEUTRAL]: 'Neutral',
-  [EMOTIONS.POSITIVE]: 'Positive',
-  [EMOTIONS.NEGATIVE]: 'Negative',
-  [EMOTIONS.UNCERTAIN]: 'Uncertain',
-  [EMOTIONS.EMPHASIS]: 'Strong Emphasis',
+  [EMOTIONS.INTEREST]: 'Interest',
+  [EMOTIONS.JOY]: 'Joy',
+  [EMOTIONS.SURPRISE]: 'Surprise',
+  [EMOTIONS.SADNESS]: 'Sadness',
+  [EMOTIONS.ANGER]: 'Anger',
+  [EMOTIONS.DISGUST]: 'Disgust',
+  [EMOTIONS.CONTEMPT]: 'Contempt',
+  [EMOTIONS.FEAR]: 'Fear',
+  [EMOTIONS.SHAME]: 'Shame',
+  [EMOTIONS.GUILT]: 'Guilt',
 };
 
-// Emotion colors by intensity (0-100)
+// Emotion colors by intensity (0-100) - DES emotions
 export const EMOTION_COLORS = {
-  [EMOTIONS.NEUTRAL]: {
-    light: '#f3f4f6',
-    medium: '#e5e7eb',
-    strong: '#d1d5db',
+  [EMOTIONS.INTEREST]: {
+    light: '#dbeafe',    // Light blue - curiosity, engagement
+    medium: '#60a5fa',
+    strong: '#2563eb',
   },
-  [EMOTIONS.POSITIVE]: {
-    light: '#d1fae5',
-    medium: '#6ee7b7',
-    strong: '#10b981',
-  },
-  [EMOTIONS.NEGATIVE]: {
-    light: '#fecaca',
-    medium: '#f87171',
-    strong: '#dc2626',
-  },
-  [EMOTIONS.UNCERTAIN]: {
-    light: '#fef3c7',
+  [EMOTIONS.JOY]: {
+    light: '#fef3c7',    // Yellow/gold - happiness, delight
     medium: '#fbbf24',
     strong: '#f59e0b',
   },
-  [EMOTIONS.EMPHASIS]: {
-    light: '#ddd6fe',
-    medium: '#a78bfa',
-    strong: '#7c3aed',
+  [EMOTIONS.SURPRISE]: {
+    light: '#e0e7ff',    // Indigo - astonishment
+    medium: '#a5b4fc',
+    strong: '#6366f1',
+  },
+  [EMOTIONS.SADNESS]: {
+    light: '#dbeafe',    // Soft blue - melancholy
+    medium: '#93c5fd',
+    strong: '#3b82f6',
+  },
+  [EMOTIONS.ANGER]: {
+    light: '#fecaca',    // Red - hostility, rage
+    medium: '#f87171',
+    strong: '#dc2626',
+  },
+  [EMOTIONS.DISGUST]: {
+    light: '#d1fae5',    // Green - revulsion
+    medium: '#6ee7b7',
+    strong: '#10b981',
+  },
+  [EMOTIONS.CONTEMPT]: {
+    light: '#f3e8ff',    // Purple - scorn, disdain
+    medium: '#c084fc',
+    strong: '#9333ea',
+  },
+  [EMOTIONS.FEAR]: {
+    light: '#f3f4f6',    // Gray - anxiety, terror
+    medium: '#9ca3af',
+    strong: '#4b5563',
+  },
+  [EMOTIONS.SHAME]: {
+    light: '#fed7aa',    // Orange - embarrassment
+    medium: '#fb923c',
+    strong: '#ea580c',
+  },
+  [EMOTIONS.GUILT]: {
+    light: '#fecdd3',    // Rose - remorse, regret
+    medium: '#fb7185',
+    strong: '#e11d48',
   },
 };
 

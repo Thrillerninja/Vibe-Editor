@@ -7,8 +7,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { findDirtyRootNodes, buildDirtySubtrees } from './dirtyNodeFinder.js';
 import { buildDirtyRestructurePrompt } from './promptBuilder.js';
 import { parseDirtyRestructureResponse } from './responseValidator.js';
-import { EMOTIONS } from '../../utils/constants.js';
-import { a } from 'framer-motion/client';
+import { EMOTIONS, EMOTION_AXES } from '../../utils/constants.js';
+import {
+    normalizeEmotionProfile,
+    deriveLegacyFromProfile,
+    profileFromLegacy,
+    describeEmotionProfile,
+} from '../../utils/emotionProfiles.js';
 
 // Initialize the Anthropic client
 const getClient = () => {
@@ -76,16 +81,27 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         console.log('[Claude Service] Received dirty subtree restructure:', responseText);
 
         // Parse and validate the response
-        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
-        console.log('[TEST] ROOTPROPS:', { newRootTitle, newRootEmotion, newRootIntensity });
+        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
+        // Derive legacy fields if only profile was provided
+        let resolvedRootEmotion = newRootEmotion;
+        let resolvedRootIntensity = newRootIntensity;
+        let resolvedRootEmotions = newRootEmotions;
+        if (newRootEmotions && (newRootEmotion === undefined || newRootIntensity === undefined)) {
+            const legacy = deriveLegacyFromProfile(newRootEmotions);
+            resolvedRootEmotion = legacy.emotion;
+            resolvedRootIntensity = legacy.intensity;
+            resolvedRootEmotions = legacy.profile;
+        }
+        console.log('[TEST] ROOTPROPS:', { newRootTitle, newRootEmotion: resolvedRootEmotion, newRootIntensity: resolvedRootIntensity, newRootEmotions: resolvedRootEmotions });
         console.log('[Claude Service] Parsed response - subtrees:', restructuredSubtrees?.length, 'newRootTitle:', newRootTitle);
 
         return {
             dirtyRootNodes: dirtyRootNodes.map(n => n.id),
             restructuredSubtrees,
             newRootTitle,
-            newRootEmotion: newRootEmotion,
-            newRootIntensity: newRootIntensity
+            newRootEmotion: resolvedRootEmotion,
+            newRootIntensity: resolvedRootIntensity,
+            newRootEmotions: resolvedRootEmotions,
         };
     } catch (error) {
         console.error('[Claude Service] Error restructuring dirty nodes:', error);
@@ -96,16 +112,33 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
 
 
 export async function evaluateSentenceEmotions(sentences) {
-
     const client = getClient();
-    
+
     console.log('[Claude Service] Evaluating emotions for sentences');
-    const prompt = `For each of the following input sentences i give you, please assign an Emotion and Intensity level from 0 to 100 based on the emotional tone of the sentence.
-    For the emotions YOU MUST ONLY choose one out of this list: ${JSON.stringify(EMOTIONS)}.
-    Respond in JSON format as an array of objects with "id", "emotion", and "intensity" fields. Only respond in plain json format.
-    Sentences:
-    ${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}
-    `;
+    const prompt = `For each input sentence, assign a 10-axis emotion profile using the Differential Emotions Scale (DES) by Izard (1997).
+
+The DES measures these 10 fundamental, distinct emotions:
+1. INTEREST (0-100): Curiosity, excitement, fascination, engagement with content
+2. JOY (0-100): Happiness, delight, pleasure, enjoyment, contentment
+3. SURPRISE (0-100): Amazement, astonishment, unexpectedness
+4. SADNESS (0-100): Sorrow, melancholy, distress, downheartedness, grief
+5. ANGER (0-100): Hostility, rage, frustration, irritation
+6. DISGUST (0-100): Revulsion, repugnance, distaste, aversion
+7. CONTEMPT (0-100): Scorn, disdain, disrespect, superiority
+8. FEAR (0-100): Anxiety, worry, terror, nervousness, apprehension
+9. SHAME (0-100): Embarrassment, humiliation, feeling exposed or inadequate
+10. GUILT (0-100): Remorse, regret, self-blame, moral distress
+
+Rate each emotion independently based on the sentence's content, tone, and implied emotional state.
+Multiple emotions can be present simultaneously with varying intensities.
+
+Return ONLY valid JSON: an array where each item is { "id": "<sentence-id>", "emotions": { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 } }.
+- Use all ten DES emotion keys exactly: ${EMOTION_AXES.join(', ')}.
+- Clamp every value to 0-100.
+- Do not add extra fields or prose.
+
+Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
+
     console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
     try {
         const message = await client.messages.create({
@@ -124,7 +157,7 @@ export async function evaluateSentenceEmotions(sentences) {
         const emotionData = JSON.parse(responseText);
         console.log('[Claude Service] Parsed emotion data:', emotionData);
 
-        return applyEmotionsToSentences(sentences, emotionData); // Array of { id, emotion, intensity }
+        return applyEmotionsToSentences(sentences, emotionData); // Array with emotion profiles
     } catch (error) {
         console.error('[Claude Service] Error evaluating sentence emotions:', error);
         console.error('[Claude Service] Error stack:', error.stack);
@@ -137,13 +170,17 @@ function applyEmotionsToSentences(sentences, emotionData) {
     const hierarchy = sentences._hierarchyMeta;
     const emotionMap = new Map();
     for (const item of emotionData) {
-        emotionMap.set(item.id, { emotion: item.emotion, intensity: item.intensity });
+        const profile = normalizeEmotionProfile(
+            item.emotions ?? profileFromLegacy(item.emotion, item.intensity)
+        );
+        emotionMap.set(item.id, profile);
     }
 
     const newSentences = sentences.map(s => {
         if (emotionMap.has(s.id)) {
-            const { emotion, intensity } = emotionMap.get(s.id);
-            return { ...s, emotion, intensity };
+            const profile = emotionMap.get(s.id);
+            const legacy = deriveLegacyFromProfile(profile);
+            return { ...s, emotions: profile, emotion: legacy.emotion, intensity: legacy.intensity };
         }
         return s;
     });
@@ -158,34 +195,59 @@ function applyEmotionsToSentences(sentences, emotionData) {
  * @param {number} intensity - Emotional intensity (0-99)
  * @returns {Promise<string>} Rewritten sentence
  */
-export async function rewriteSentenceWithEmotion(sentence, emotion, intensity) {
-    const client = getClient();
-    
-    console.log(`[Claude Service] Rewriting sentence with emotion: ${emotion}, intensity: ${intensity}`);
-    
-    // Map intensity to descriptive words
-    let intensityDescription;
-    if (intensity < 25) {
-        intensityDescription = "very subtle and mild";
-    } else if (intensity < 50) {
-        intensityDescription = "moderate";
-    } else if (intensity < 75) {
-        intensityDescription = "strong and noticeable";
-    } else {
-        intensityDescription = "very intense and powerful";
+function coerceEmotionProfile(inputProfile) {
+    if (inputProfile && typeof inputProfile === 'object' && !Array.isArray(inputProfile)) {
+        return normalizeEmotionProfile(inputProfile);
     }
+    if (typeof inputProfile === 'string') {
+        return profileFromLegacy(inputProfile, 0);
+    }
+    return normalizeEmotionProfile();
+}
 
-    const prompt = `Please rewrite the following sentence to convey a ${emotion} emotion with ${intensityDescription} intensity (${intensity}/99).
-Hard Constraints:
+function formatProfileForPrompt(profile) {
+    // Use a deterministic order for clarity in prompts
+    const ordered = {};
+    EMOTION_AXES.forEach((axis) => {
+        ordered[axis] = profile[axis];
+    });
+    return JSON.stringify(ordered);
+}
+
+export async function rewriteSentenceWithEmotion(sentence, emotionProfileInput) {
+    const client = getClient();
+
+    const profile = coerceEmotionProfile(emotionProfileInput);
+    const legacy = deriveLegacyFromProfile(profile);
+    const profileText = describeEmotionProfile(profile);
+    const profileJson = formatProfileForPrompt(profile);
+
+    console.log(`[Claude Service] Rewriting sentence with profile: ${profileText}`);
+
+    const prompt = `Rewrite the sentence to reflect this 10-axis DES emotion profile (0-100 scale): ${profileText}.
+Profile JSON (authoritative, use these exact values): ${profileJson}
+The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
+
+The Differential Emotions Scale (DES) by Izard (1997) includes:
+- INTEREST: curiosity, excitement, engagement
+- JOY: happiness, delight, pleasure
+- SURPRISE: amazement, astonishment
+- SADNESS: sorrow, distress, grief
+- ANGER: hostility, rage, frustration
+- DISGUST: revulsion, distaste
+- CONTEMPT: scorn, disdain
+- FEAR: anxiety, worry, terror
+- SHAME: embarrassment, humiliation
+- GUILT: remorse, regret, self-blame
+
+Hard constraints:
 - Keep the original meaning and information intact.
-- Adjust tone, word choice, and phrasing to match the ${emotion} emotion.
-- The emotional intensity should be ${intensityDescription} (${intensity}/99).
+- Adjust tone, word choice, and phrasing to reflect the emotion profile above.
 - Return only the rewritten sentence, no explanations.
-- Keep the length very similar to the original sentence.
-- NEVER GO MORE THAN 10% LONGER OR SHORTER THAN THE ORIGINAL SENTENCE.
+- Keep the length within 10% of the original.
 
 Original sentence: "${sentence}"`;
-
+    console.log('[Claude Service] Rewrite prompt constructed', prompt);
     try {
         const message = await client.messages.create({
             model: 'claude-3-5-haiku-20241022',
@@ -217,32 +279,37 @@ function stripOuterQuotes(str) {
  * @param {number} numOptions - Number of options to return (default 3)
  * @returns {Promise<string[]>} Array of rewritten sentence options
  */
-export async function rewriteSentenceWithEmotionOptions(sentence, emotion, intensity, numOptions = 3) {
+export async function rewriteSentenceWithEmotionOptions(sentence, emotionProfileInput, numOptions = 3) {
     const client = getClient();
 
-    console.log(`[Claude Service] Rewriting sentence with emotion (multi): ${emotion}, intensity: ${intensity}, options: ${numOptions}`);
+    const profile = coerceEmotionProfile(emotionProfileInput);
+    const legacy = deriveLegacyFromProfile(profile);
+    const profileText = describeEmotionProfile(profile);
+    const profileJson = formatProfileForPrompt(profile);
 
-    let intensityDescription;
-    if (intensity < 25) {
-        intensityDescription = "very subtle and mild";
-    } else if (intensity < 50) {
-        intensityDescription = "moderate";
-    } else if (intensity < 75) {
-        intensityDescription = "strong and noticeable";
-    } else {
-        intensityDescription = "very intense and powerful";
-    }
+    console.log(`[Claude Service] Rewriting sentence with emotion profile (multi): ${profileText}, options: ${numOptions}`);
 
-    const prompt = `Please rewrite the following sentence to convey a ${emotion} emotion with ${intensityDescription} intensity (${intensity}/99).
-Return exactly ${numOptions} distinct options that each meet all constraints.
-Hard Constraints:
-- Keep the original meaning and information intact.
-- Adjust tone, word choice, and phrasing to match the ${emotion} emotion.
-- The emotional intensity should be ${intensityDescription} (${intensity}/99).
-- Return ONLY a JSON array of exactly ${numOptions} strings, no explanations.
-- Keep the length very similar to the original sentence.
-- Critical: Never go more than 10% longer or shorter than the original sentence.
-- Critical: Only use wording/phrasing to change the emotion, do NOT add new information.
+    const prompt = `Rewrite the sentence to match this 10-axis DES emotion profile (0-100 per axis): ${profileText}.
+Profile JSON (authoritative, use these exact values): ${profileJson}
+The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
+
+The Differential Emotions Scale (DES) by Izard (1997) includes:
+- INTEREST: curiosity, excitement, engagement
+- JOY: happiness, delight, pleasure
+- SURPRISE: amazement, astonishment
+- SADNESS: sorrow, distress, grief
+- ANGER: hostility, rage, frustration
+- DISGUST: revulsion, distaste
+- CONTEMPT: scorn, disdain
+- FEAR: anxiety, worry, terror
+- SHAME: embarrassment, humiliation
+- GUILT: remorse, regret, self-blame
+
+Return exactly ${numOptions} options as a pure JSON array of strings (no commentary).
+Hard constraints:
+- Preserve the original meaning and information.
+- Use tone/phrasing to reflect the emotion profile; do NOT add new information.
+- Keep the length within 10% of the original.
 Original sentence: "${sentence}"`;
 
     try {

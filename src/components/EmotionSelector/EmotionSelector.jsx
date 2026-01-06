@@ -19,7 +19,7 @@ export function EmotionSelector({
   isOpen,
   onClose,
   onSelect,
-  currentEmotion = EMOTIONS.NEUTRAL,
+  currentEmotion = EMOTIONS.INTEREST,
   currentIntensity = 0,
   nodeLabel = "",
   nodeScreenPosition = null,

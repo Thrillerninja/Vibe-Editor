@@ -6,8 +6,25 @@
 import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 import { rebuildSentenceOrderFromHierarchy } from './sentenceEditor';
-import { em } from 'framer-motion/client';
-import { evaluateSentenceEmotions } from '../services/claude/claudeApi.js';
+import {
+    deriveLegacyFromProfile,
+    normalizeEmotionProfile,
+    profileFromLegacy,
+    EMPTY_EMOTION_PROFILE,
+} from './emotionProfiles';
+
+const ensureEmotionShape = (payload) => {
+    const profile = normalizeEmotionProfile(
+        payload?.emotions ?? profileFromLegacy(payload?.emotion, payload?.intensity)
+    );
+    const legacy = deriveLegacyFromProfile(profile);
+    return {
+        ...payload,
+        emotions: profile,
+        emotion: legacy.emotion,
+        intensity: legacy.intensity,
+    };
+};
 /**
  * Sorts hierarchy nodes by document order
  * Ensures that nodes appear in the order of their first sentence in the document
@@ -95,7 +112,7 @@ export function sortNodesByDocumentOrder(nodes, sentences) {
  * @param {string} newRootTitle - Optional new root title (if root was dirty)
  * @returns {Array} Updated sentences with restructured hierarchy
  */
-export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees, newRootTitle = null, newRootEmotion = null, newRootIntensity = null) {
+export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restructuredSubtrees, newRootTitle = null, newRootEmotion = null, newRootIntensity = null, newRootEmotions = null) {
     console.log(`${LOG_PREFIX.PARSER} Applying ${restructuredSubtrees.length} subtree restructures`);
 
     if (!sentences._hierarchyMeta) {
@@ -103,9 +120,18 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
         return sentences;
     }
 
-    const updatedSentences = sentences.map(s => ({ ...s }));
+    const updatedSentences = sentences.map(s => ensureEmotionShape({ ...s }));
     const hierarchyMeta = { ...sentences._hierarchyMeta };
-    let nodes = hierarchyMeta.nodes.map(n => ({ ...n }));
+    let nodes = hierarchyMeta.nodes.map(n => ensureEmotionShape({ ...n }));
+    // Persist normalized root shape to hierarchy meta for downstream UI/state consumers
+    const rootShape = ensureEmotionShape({
+        emotions: hierarchyMeta.rootEmotions,
+        emotion: hierarchyMeta.rootEmotion,
+        intensity: hierarchyMeta.rootIntensity,
+    });
+    hierarchyMeta.rootEmotions = rootShape.emotions;
+    hierarchyMeta.rootEmotion = rootShape.emotion;
+    hierarchyMeta.rootIntensity = rootShape.intensity;
 
     // Build a Set of dirty root node IDs for quick lookup
     const dirtyRootSet = new Set(dirtyRootNodeIds);
@@ -152,26 +178,27 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                 // Generate a fresh UUID to avoid collision
                 const freshId = uuidv4();
                 console.warn(`${LOG_PREFIX.PARSER} Replacing colliding ID ${newNode.id} with fresh UUID ${freshId}`);
-
-                newNodesToAdd.push({
+                newNodesToAdd.push(ensureEmotionShape({
                     id: freshId, // Use fresh UUID instead of colliding one
                     type: 'group',
                     level: newNode.level,
                     label: newNode.title,
                     childIds: newNode.childIds,
+                    emotions: newNode.emotions,
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
-                });
+                }));
             } else {
-                newNodesToAdd.push({
+                newNodesToAdd.push(ensureEmotionShape({
                     id: newNode.id, // Use UUID from Claude
                     type: 'group',
                     level: newNode.level,
                     label: newNode.title,
                     childIds: newNode.childIds,
+                    emotions: newNode.emotions,
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
-                });
+                }));
             }
         }
     }
@@ -196,6 +223,13 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     }
     if (newRootEmotion !== undefined && newRootEmotion !== null) {
         hierarchyMeta.rootEmotion = newRootEmotion;
+    }
+    if (newRootEmotions) {
+        const normalized = normalizeEmotionProfile(newRootEmotions);
+        const legacy = deriveLegacyFromProfile(normalized);
+        hierarchyMeta.rootEmotions = normalized;
+        hierarchyMeta.rootEmotion = legacy.emotion;
+        hierarchyMeta.rootIntensity = legacy.intensity;
     }
 
     // CRITICAL: Rebuild sentence order from the new hierarchy to ensure document order
@@ -230,7 +264,7 @@ export function applyDirtyNodeUpdates(sentences, updates) {
         return sentences;
     }
 
-    const updatedSentences = sentences.map(s => ({ ...s }));
+    const updatedSentences = sentences.map(s => ensureEmotionShape({ ...s }));
     const hierarchyMeta = { ...sentences._hierarchyMeta };
     const nodes = hierarchyMeta.nodes.map(n => ({ ...n }));
 
@@ -268,7 +302,7 @@ export function integrateHierarchy(sentences, hierarchy) {
     console.log(`${LOG_PREFIX.PARSER} Hierarchy nodes: ${hierarchy.nodes.length}`);
 
     // Create a copy of sentences with parent information
-    const updatedSentences = sentences.map(s => ({ ...s }));
+    const updatedSentences = sentences.map(s => ensureEmotionShape({ ...s }));
 
     // Validate and store hierarchy nodes separately (they're not sentences)
     const hierarchyNodes = hierarchy.nodes.map(node => {
@@ -277,15 +311,16 @@ export function integrateHierarchy(sentences, hierarchy) {
             console.warn(`${LOG_PREFIX.PARSER} Warning: Node ${node.id} has invalid level ${node.level}, expected >= 2`);
         }
 
-        return {
+        return ensureEmotionShape({
             id: node.id,
             type: 'group',
             level: node.level,
             label: node.title,
             childIds: node.childIds,
+            emotions: node.emotions,
             emotion: node.emotion,
             intensity: node.intensity,
-        };
+        });
     });
 
     // Calculate max level from hierarchy nodes
@@ -298,6 +333,15 @@ export function integrateHierarchy(sentences, hierarchy) {
         nodes: hierarchyNodes,
         maxLevel: maxLevel,
     };
+
+    const rootEmotionShape = ensureEmotionShape({
+        emotions: hierarchy.rootEmotions,
+        emotion: hierarchy.rootEmotion,
+        intensity: hierarchy.rootIntensity,
+    });
+    updatedSentences._hierarchyMeta.rootEmotions = rootEmotionShape.emotions;
+    updatedSentences._hierarchyMeta.rootEmotion = rootEmotionShape.emotion;
+    updatedSentences._hierarchyMeta.rootIntensity = rootEmotionShape.intensity;
 
     console.log(`${LOG_PREFIX.PARSER} Hierarchy integrated:`);
     console.log(`${LOG_PREFIX.PARSER}   - Sentences (Level 1): ${sentences.length}`);
@@ -328,7 +372,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             label: 'Document',
             content: '',
             children: [],
-            emotion: "NEUTRAL",
+            emotion: "INTEREST",
             intensity: 0,
         };
     }
@@ -359,6 +403,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         // The sentence.punctuation field is only used during text reconstruction
         const label = sentence.content;
         const isDirty = dirtySentenceIds.has(sentence.id);
+        const shaped = ensureEmotionShape(sentence);
 
         nodeMap.set(sentence.id, {
             id: sentence.id,
@@ -367,8 +412,9 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             label: label,
             content: sentence.content,
             children: [],
-            emotion: sentence.emotion,
-            intensity: sentence.intensity,
+            emotion: shaped.emotion,
+            emotions: shaped.emotions,
+            intensity: shaped.intensity,
             isDirty: isDirty,
         });
     });
@@ -376,6 +422,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     // Add hierarchy nodes to map
     hierarchyNodes.forEach(node => {
         const isDirty = dirtyNodeIds.has(node.id);
+        const shaped = ensureEmotionShape(node);
 
         nodeMap.set(node.id, {
             id: node.id,
@@ -385,8 +432,9 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
             content: '', // Groups don't have direct content
             children: [],
             isDirty: isDirty,
-            emotion: node.emotion,
-            intensity: node.intensity,
+            emotion: shaped.emotion,
+            emotions: shaped.emotions,
+            intensity: shaped.intensity,
         });
     });
 
@@ -403,6 +451,24 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         });
     });
 
+    // Helper function to recursively collect content from all descendants
+    const collectContent = (node) => {
+        if (node.type === 'sentence') {
+            return node.content || '';
+        }
+        // For grouping nodes, recursively collect from children
+        const childContents = node.children.map(child => collectContent(child)).filter(Boolean);
+        return childContents.join(' ');
+    };
+
+    // Update content for all grouping nodes
+    hierarchyNodes.forEach(node => {
+        const treeNode = nodeMap.get(node.id);
+        if (treeNode && treeNode.type === 'group') {
+            treeNode.content = collectContent(treeNode);
+        }
+    });
+
     // Build root node
     const topLevelNodes = Array.from(nodeMap.values()).filter(
         node => node.level === maxLevel
@@ -412,6 +478,16 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
 
     const rootMetaEmotion = sentences._hierarchyMeta && sentences._hierarchyMeta.rootEmotion;
     const rootMetaIntensity = sentences._hierarchyMeta && sentences._hierarchyMeta.rootIntensity;
+    const rootMetaEmotions = sentences._hierarchyMeta && sentences._hierarchyMeta.rootEmotions;
+    const rootShape = ensureEmotionShape({
+        emotions: rootMetaEmotions,
+        emotion: rootMetaEmotion,
+        intensity: rootMetaIntensity,
+    });
+    // Ensure legacy fields are always populated even when only profiles are provided
+    sentences._hierarchyMeta.rootEmotion = rootShape.emotion;
+    sentences._hierarchyMeta.rootIntensity = rootShape.intensity;
+    sentences._hierarchyMeta.rootEmotions = rootShape.emotions;
 
     const root = {
         id: 'root',
@@ -421,8 +497,9 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
         children: topLevelNodes,
         startIdx: 0,
         isDirty: dirtyNodeIds.has('root'),
-        emotion: rootMetaEmotion !== undefined && rootMetaEmotion !== null ? rootMetaEmotion : "NEUTRAL",
-        intensity: typeof rootMetaIntensity === 'number' ? rootMetaIntensity : 0,
+        emotion: rootShape.emotion,
+        emotions: rootShape.emotions,
+        intensity: rootShape.intensity,
     };
 
     console.log(`${LOG_PREFIX.PARSER} Tree built with hierarchy: root + ${nodeMap.size} nodes`);
@@ -443,18 +520,21 @@ function buildSimpleTree(sentences, buildTextFromSentences) {
         children: sentences.map(sentence => {
             // Use content as-is - punctuation is already included in sentence.content
             // The sentence.punctuation field is only used during text reconstruction
+            const shaped = ensureEmotionShape(sentence);
             return {
                 id: sentence.id,
                 type: 'sentence',
                 label: sentence.content,
                 content: sentence.content,
                 children: [],
-                emotion: sentence.emotion || "NEUTRAL",
-                intensity: sentence.intensity || 0,
+                emotion: shaped.emotion,
+                emotions: shaped.emotions,
+                intensity: shaped.intensity,
             };
         }),
         startIdx: 0,
-        emotion: "NEUTRAL",
+        emotion: "INTEREST",
+        emotions: { ...EMPTY_EMOTION_PROFILE },
         intensity: 0,
     };
 }
@@ -622,15 +702,14 @@ export function createPlaceholderHierarchy(sentences, maxDepth) {
             childIds = [placeholderNodes[placeholderNodes.length - 1].id];
         }
 
-        placeholderNodes.push({
+        placeholderNodes.push(ensureEmotionShape({
             id: placeholderId,
             type: 'group',
             level: level,
             label: `Level ${level} - Awaiting AI generation...`,
             childIds: childIds,
-            emotion: "NEUTRAL",
-            intensity: 0,
-        });
+            emotions: EMPTY_EMOTION_PROFILE,
+        }));
 
         dirtyNodeIds.push(placeholderId);
     }

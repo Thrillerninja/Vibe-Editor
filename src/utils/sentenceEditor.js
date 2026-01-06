@@ -111,6 +111,7 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
                 id: matchingSentence.id, // CRITICAL: Preserve ID to prevent re-animation
                 emotion: matchingSentence.emotion,
                 intensity: matchingSentence.intensity,
+                emotions: matchingSentence.emotions,
                 // Trust the parsed delimiter/punctuation from text (user's input)
                 // Defaults only apply during graph operations (reordering)
             };

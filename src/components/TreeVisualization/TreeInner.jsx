@@ -23,6 +23,7 @@ import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
 import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
+import { normalizeEmotionProfile, deriveLegacyFromProfile } from '../../utils/emotionProfiles';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -162,7 +163,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         content: s.content,
         parentId: s.parentId,
         emotion: s.emotion,
-        intensity: s.intensity
+        intensity: s.intensity,
+        emotions: s.emotions,
       })),
       hierarchyMeta: sentences._hierarchyMeta ? {
         maxLevel: sentences._hierarchyMeta.maxLevel,
@@ -199,6 +201,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
               ...n.data, // New data (label, content, type, etc.)
               // Preserve only emotion metadata from existing IF not already in new data
               emotion: n.data.emotion || existing.data.emotion,
+              emotions: n.data.emotions || existing.data.emotions,
               intensity: n.data.intensity !== undefined ? n.data.intensity : existing.data.intensity,
             },
           };
@@ -217,7 +220,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           content: s.content,
           parentId: s.parentId,
           emotion: s.emotion,
-          intensity: s.intensity
+          intensity: s.intensity,
+          emotions: s.emotions,
         })),
         hierarchyMeta: sentencesRef.current._hierarchyMeta ? {
           maxLevel: sentencesRef.current._hierarchyMeta.maxLevel,
@@ -439,18 +443,34 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
 
   const applyNodeSentenceEdit = useCallback(
-    (nodeId, newContent) => {
+    (nodeId, newContent, emotionProfile) => {
       console.log(`[TreeInner] Node ${nodeId} content edit: "${newContent}"`);
+      const profile = normalizeEmotionProfile(emotionProfile);
+      const legacy = deriveLegacyFromProfile(profile);
+
+      const current = sentencesRef.current;
+      const originalSentence = current.find(s => s.id === nodeId);
+      const contentChanged = originalSentence && originalSentence.content !== newContent;
+
       // Update the sentences array with new content
-      console.log("[newContent]", newContent);
-      const edited =  editSentence(nodeId, newContent, sentencesRef.current);
+      const edited = editSentence(nodeId, newContent, current);
 
-      // Mark the edited sentence and all its ancestors as dirty/modified
-      const marked = markSentenceAndAncestorsDirty(edited, nodeId);
+      // Attach emotion profile to the edited sentence
+      const withEmotions = edited.map((s) =>
+        s.id === nodeId
+          ? { ...s, emotions: profile, emotion: legacy.emotion, intensity: legacy.intensity }
+          : s
+      );
+      // Preserve hierarchy metadata
+      if (edited._hierarchyMeta) {
+        withEmotions._hierarchyMeta = edited._hierarchyMeta;
+      }
 
-      console.log("[edited]", marked);
+      // Only mark as dirty if content actually changed
+      const result = contentChanged ? markSentenceAndAncestorsDirty(withEmotions, nodeId) : withEmotions;
+
       // Use onTreeUpdate to centralize updates and history handling
-      onTreeUpdate(marked);
+      onTreeUpdate(result);
     }
   );
 
@@ -523,11 +543,16 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   }, []);
 
   // Apply subtree changes: set emotion for all descendants and update leaf contents per map
-  const applySubtreeChanges = useCallback((nodeId, newEmotion, newIntensity, leafEditsMap) => {
+  const applySubtreeChanges = useCallback((nodeId, newProfile, leafEditsMap) => {
     const current = sentencesRef.current;
+    const profile = normalizeEmotionProfile(newProfile);
+    const legacy = deriveLegacyFromProfile(profile);
     const updated = current.map(s => ({ ...s }));
     const meta = current._hierarchyMeta ? { ...current._hierarchyMeta } : null;
     const nodeMap = meta && Array.isArray(meta.nodes) ? new Map(meta.nodes.map(n => [n.id, { ...n }])) : null;
+
+    // Track if any content actually changed
+    let anyContentChanged = false;
 
     // Collect descendants (groups and sentences)
     const sentenceIds = new Set(updated.map(s => s.id));
@@ -569,13 +594,17 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
     enqueueChildren(nodeId);
 
-    // Apply emotion to sentences
+    // Apply emotion to sentences and check for content changes
     const editedSentenceIds = [];
     updated.forEach(s => {
       if (descendantsSentences.has(s.id)) {
-        s.emotion = newEmotion;
-        s.intensity = newIntensity;
+        s.emotions = profile;
+        s.emotion = legacy.emotion;
+        s.intensity = legacy.intensity;
         if (leafEditsMap && leafEditsMap[s.id]) {
+          if (s.content !== leafEditsMap[s.id]) {
+            anyContentChanged = true;
+          }
           s.content = leafEditsMap[s.id];
           editedSentenceIds.push(s.id);
         }
@@ -587,15 +616,17 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       descendantsGroups.forEach(gid => {
         const node = nodeMap.get(gid);
         if (node) {
-          node.emotion = newEmotion;
-          node.intensity = newIntensity;
+          node.emotions = profile;
+          node.emotion = legacy.emotion;
+          node.intensity = legacy.intensity;
         }
       });
       // Also set on target group itself if present
       const target = nodeMap.get(nodeId);
       if (target) {
-        target.emotion = newEmotion;
-        target.intensity = newIntensity;
+        target.emotions = profile;
+        target.emotion = legacy.emotion;
+        target.intensity = legacy.intensity;
       }
       meta.nodes = Array.from(nodeMap.values());
     }
@@ -603,13 +634,14 @@ export function TreeInner({ sentences, onTreeUpdate }) {
     // Root emotion update
     if (nodeId === 'root') {
       if (meta) {
-        meta.rootEmotion = newEmotion;
-        meta.rootIntensity = newIntensity;
+        meta.rootEmotions = profile;
+        meta.rootEmotion = legacy.emotion;
+        meta.rootIntensity = legacy.intensity;
       }
     }
 
-    // Mark current subtree and all ancestors as dirty on save
-    if (meta) {
+    // Mark current subtree and all ancestors as dirty ONLY if content changed
+    if (anyContentChanged && meta) {
       const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
       const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
 

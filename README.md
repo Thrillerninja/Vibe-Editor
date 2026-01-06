@@ -31,9 +31,28 @@ Sentences Array (SSOT) + AI Hierarchy Metadata
 
 ### Tree Visualization
 - **Interactive Graph**: Drag, zoom, and explore your document structure
-- **Emotion Tagging**: Apply Plutchik emotions to individual sentences
+- **DES Emotion Profiling**: Track 10 fundamental emotions per sentence using the Differential Emotions Scale
 - **Visual Hierarchy**: See topics, subtopics, and sentence groupings at a glance
 - **Physics Simulation**: Nodes arrange themselves with smooth animations
+
+### Emotion Analysis (DES)
+Vibe-Editor uses the **Differential Emotions Scale (DES)** by Izard (1997) to capture nuanced emotional content in text. The DES measures 10 fundamental emotions that are theoretically and empirically distinct:
+
+1. **Interest** - Curiosity, excitement, engagement
+2. **Joy** - Happiness, delight, enjoyment
+3. **Surprise** - Amazement, astonishment
+4. **Sadness** - Distress, downheartedness
+5. **Anger** - Hostility, rage
+6. **Disgust** - Revulsion, repugnance
+7. **Contempt** - Scorn, disdain
+8. **Fear** - Anxiety, terror
+9. **Shame** - Embarrassment, humiliation
+10. **Guilt** - Remorse, regret
+
+Each sentence and node in the hierarchy receives a 10-dimensional emotion profile (0-100 intensity per emotion), visualized through an interactive radar chart that allows for:
+- Multi-dimensional emotional expression (sentences can exhibit multiple emotions simultaneously)
+- AI-guided sentence rewriting to match target emotion profiles
+- Hierarchical emotion aggregation (parent nodes reflect combined emotions of children)
 
 ## 🏗️ Architecture Highlights
 
@@ -225,6 +244,13 @@ All edge cases are logged to console with detailed diagnostics.
 ## 📖 Documentation
 
 See `ARCHITECTURE.md` for detailed technical documentation.
+
+## 📚 References
+
+Izard, C. E. (1997). *The Maximally Discriminative Facial Movement Coding System (MAX)*. Newark: University of Delaware, Instructional Resources Center.
+
+The Differential Emotions Scale (DES) is a well-validated instrument for measuring discrete emotions. For more information:
+- Izard, C. E., Libero, D. Z., Putnam, P., & Haynes, O. M. (1993). Stability of emotion experiences and their relations to traits of personality. *Journal of Personality and Social Psychology*, 64(5), 847-860.
 
 ## 🤝 Contributing
 
