@@ -15,18 +15,19 @@ export default function EmotionRadar({
   const center = size / 2;
   const padding = 38;
   const radius = center - padding;
+  const minRadius = radius * 0.15; // Start from 15% of the radius
   const axes = EMOTION_AXES;
   const draggingAxis = useRef(null);
 
   const points = useMemo(() => {
     return axes.map((axis, idx) => {
       const angle = (Math.PI * 2 * idx) / axes.length - Math.PI / 2; // start at top
-      const r = (normalized[axis] / 100) * radius;
+      const r = minRadius + ((normalized[axis] / 100) * (radius - minRadius));
       const x = center + r * Math.cos(angle);
       const y = center + r * Math.sin(angle);
       return { axis, angle, x, y };
     });
-  }, [axes, normalized, center, radius]);
+  }, [axes, normalized, center, radius, minRadius]);
 
   const polygonPath = points.map((p) => `${p.x},${p.y}`).join(' ');
 
@@ -39,7 +40,8 @@ export default function EmotionRadar({
     const dy = clientY - (rect.top + center);
     // project onto axis direction
     const proj = dx * Math.cos(angle) + dy * Math.sin(angle);
-    const value = toPct(clamp01(proj / radius) * 100);
+    const normalizedProj = (proj - minRadius) / (radius - minRadius);
+    const value = toPct(clamp01(normalizedProj) * 100);
     const next = { ...normalized, [axis]: value };
     onChange?.(next);
   };
@@ -87,7 +89,7 @@ export default function EmotionRadar({
             key={idx}
             cx={center}
             cy={center}
-            r={radius * r}
+            r={minRadius + (radius - minRadius) * r}
             fill="none"
             stroke="#e5e7eb"
             strokeDasharray="4 4"
@@ -95,18 +97,36 @@ export default function EmotionRadar({
           />
         ))}
 
-        {/* axes */}
-        {points.map((p, idx) => (
-          <line
-            key={p.axis}
-            x1={center}
-            y1={center}
-            x2={p.x + (p.x - center) * 0.05}
-            y2={p.y + (p.y - center) * 0.05}
-            stroke="#d1d5db"
-            strokeWidth={1}
-          />
-        ))}
+        {/* inner circle at minRadius */}
+        <circle
+          cx={center}
+          cy={center}
+          r={minRadius}
+          fill="none"
+          stroke="#d1d5db"
+          strokeWidth={1}
+        />
+
+        {/* axes with color indicators */}
+        {points.map((p, idx) => {
+          const color = EMOTION_COLORS[p.axis]?.strong || '#2563eb';
+          const outerX = center + radius * Math.cos(p.angle);
+          const outerY = center + radius * Math.sin(p.angle);
+          const innerX = center + minRadius * Math.cos(p.angle);
+          const innerY = center + minRadius * Math.sin(p.angle);
+          return (
+            <line
+              key={p.axis}
+              x1={innerX}
+              y1={innerY}
+              x2={outerX}
+              y2={outerY}
+              stroke={color}
+              strokeWidth={2}
+              opacity={0.4}
+            />
+          );
+        })}
 
         {/* filled polygon */}
         <polygon
