@@ -65,6 +65,7 @@ import {
   isContentNode,
 } from '../types/node';
 import { useUserIdentification } from '../hooks/useUserIdentification';
+import { HorizontalDividerHandle, VerticalDividerHandle } from '../components/Deviders';
 
 // ============================================================================
 // CONSTANTS
@@ -433,7 +434,8 @@ export default function Editor() {
   /**
    * Process text and update content nodes
    *
-   * New nodes are created with the correct parent (deepest group if hierarchy exists)
+   * New nodes are created with the correct parent (same parent as last content node
+   * if hierarchy exists, or first group in chain if no content exists yet)
    * to avoid needing reorganization
    *
    * @param {string} newText - Text to process
@@ -481,41 +483,65 @@ export default function Editor() {
             .map((n) => n.id);
         }
 
-        // Find contentParentId by following the chain: Root → L1 → L2 → ... → L(maxDepth-2)
+        // Find the correct parent for NEW content nodes
+        // Strategy: Place them in the same group as the LAST existing content node
         let contentParentId = rootId;
         const targetParentLevel = maxDepth - 2;
 
-        // Only follow if we need intermediate levels
-        if (targetParentLevel > 0) {
+        if (targetParentLevel > 0 && existingContentIdsOrdered.length > 0) {
+          // Get the last existing content node
+          const lastExistingId = existingContentIdsOrdered[existingContentIdsOrdered.length - 1];
+          const lastExistingNode = updated.get(lastExistingId);
+
+          if (lastExistingNode && lastExistingNode.hierarchy.parentId) {
+            // Use the same parent as the last existing content node
+            contentParentId = lastExistingNode.hierarchy.parentId;
+
+            console.log(
+              `[Editor] New content will use same parent as last content node: ${contentParentId.substring(0, 8)} (level ${updated.get(contentParentId)?.hierarchy.level || 0})`
+            );
+          } else {
+            // Fallback: find ANY group at the target parent level
+            const groupAtTargetLevel = Array.from(updated.values()).find(
+              n => isGroupNode(n) && n.hierarchy.level === targetParentLevel
+            );
+
+            if (groupAtTargetLevel) {
+              contentParentId = groupAtTargetLevel.id;
+              console.log(
+                `[Editor] Found group at target level: ${contentParentId.substring(0, 8)}`
+              );
+            } else {
+              console.warn('[Editor] No suitable parent found, will use root');
+            }
+          }
+        } else if (targetParentLevel > 0 && existingContentIdsOrdered.length === 0) {
+          // No existing content - follow the chain from root
           let current = rootId;
-          
-          // Follow the chain downward
+
           while (true) {
             const node = updated.get(current);
             if (!node) break;
-            
-            // Find the first child that's a group at a higher level
+
             const nextGroup = node.hierarchy.childIds
               .map(id => updated.get(id))
               .find(child => isGroupNode(child) && child.hierarchy.level < maxDepth - 1);
-            
+
             if (!nextGroup) {
-              // No more groups in the chain, current is the parent
               contentParentId = current;
               break;
             }
-            
+
             current = nextGroup.id;
-            
-            // Stop if we've reached the parent level
+
             if (nextGroup.hierarchy.level === targetParentLevel) {
               contentParentId = nextGroup.id;
               break;
             }
           }
-          
+
           console.log(
-            `[Editor] Following chain to find parent: ${contentParentId === rootId ? 'root' : contentParentId.substring(0, 8)} (level ${updated.get(contentParentId)?.hierarchy.level || 0})`
+            `[Editor] First content - following chain to: ${contentParentId === rootId ? 'root' : contentParentId.substring(0, 8)}`
           );
         }
 
@@ -565,43 +591,11 @@ export default function Editor() {
 
           // Create new node
           const nodeId = uuidv4();
-
-          // Verify contentParentId is reachable BEFORE creating the node
-          let finalParentId = contentParentId;
-          if (contentParentId !== rootId) {
-            let isReachable = false;
-            
-            for (const topId of topGroupIds) {
-              // Safety: check if topId exists
-              if (!updated.has(topId)) continue;
-              
-              try {
-                const descendants = getDescendants(updated, topId);
-                if (descendants.some(d => d.id === contentParentId)) {
-                  isReachable = true;
-                  break;
-                }
-              } catch (error) {
-                console.warn(`[Editor] Error checking descendants of ${topId.substring(0, 8)}:`, error);
-                continue;
-              }
-            }
-            
-            // If not reachable, fallback to root
-            if (!isReachable) {
-              console.warn(
-                `[Editor] contentParentId ${contentParentId.substring(0, 8)} not reachable - attaching to root`
-              );
-              finalParentId = rootId;
-            }
-          }
-
-          // Now create the node with the correct parent
           const newNode = createContentNode(
             nodeId,
             'sentence',
             sentence,
-            finalParentId,
+            contentParentId,
             { metadata: { isDirty: true } }
           );
 
@@ -609,22 +603,22 @@ export default function Editor() {
           updated.set(nodeId, newNode);
 
           console.log(
-            `[Editor] Created content node ${nodeId.substring(0, 8)} under ${finalParentId === rootId ? 'root' : finalParentId.substring(0, 8)}`
+            `[Editor] Created content node ${nodeId.substring(0, 8)} under ${contentParentId === rootId ? 'root' : contentParentId.substring(0, 8)}`
           );
 
           // Propagate dirty flag up
           markDirtyUpToRoot(nodeId, updated);
 
           // Append to parent's childIds
-          if (finalParentId !== rootId) {
-            const parent = updated.get(finalParentId);
+          if (contentParentId !== rootId) {
+            const parent = updated.get(contentParentId);
             if (parent && isGroupNode(parent)) {
               const patchedParent = cloneNode(parent);
               patchedParent.hierarchy.childIds = [
                 ...patchedParent.hierarchy.childIds,
                 nodeId,
               ];
-              updated.set(finalParentId, patchedParent);
+              updated.set(contentParentId, patchedParent);
             }
           }
 
@@ -804,8 +798,6 @@ export default function Editor() {
   const handleCommitComplete = useCallback(committed => {
     setNodeMap(committed);
   }, []);
-
-
 
   /**
    * Automatically build intermediate group nodes based on maxDepth
@@ -1038,7 +1030,6 @@ export default function Editor() {
       window.removeEventListener('touchend', endDrag);
     };
   }, []);
-
 
   /**
    * Handle maxDepth changes
@@ -1275,7 +1266,7 @@ export default function Editor() {
                   style={{
                     ...floatingButtonStyle,
                     backgroundColor:
-                      hierarchyState !== 'generated' ? '#9ca3af' : '#10b981',
+                      hierarchyState !== 'generated' ? '#0c0c0eff' : '#10b981',
                     color: 'white',
                   }}
                 >
@@ -1393,68 +1384,6 @@ export default function Editor() {
         </div>
       </div>
     </div>
-  );
-}
-
-// ============================================================================
-// HELPER COMPONENTS
-// ============================================================================
-
-/**
- * Vertical divider handle for horizontal panel resizing
- * @param {{onMouseDown: Function}} props
- * @returns {React.ReactElement}
- */
-function VerticalDividerHandle({ onMouseDown }) {
-  return (
-    <button
-      aria-label="Resize panels left and right"
-      title="Drag to resize"
-      onMouseDown={onMouseDown}
-      className="relative group"
-      style={{
-        width: '6px',
-        cursor: 'col-resize',
-        background: 'white',
-        border: 'none',
-        padding: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        className="block h-full bg-gray-300 group-hover:bg-gray-400 transition-colors"
-        style={{ width: '2px', margin: '0 auto' }}
-      />
-    </button>
-  );
-}
-
-/**
- * Horizontal divider handle for vertical panel resizing
- * @param {{onMouseDown: Function}} props
- * @returns {React.ReactElement}
- */
-function HorizontalDividerHandle({ onMouseDown }) {
-  return (
-    <button
-      aria-label="Resize panels top and bottom"
-      title="Drag to resize"
-      onMouseDown={onMouseDown}
-      className="relative group"
-      style={{
-        height: '6px',
-        cursor: 'row-resize',
-        background: 'white',
-        border: 'none',
-        padding: 0,
-      }}
-    >
-      <span
-        aria-hidden
-        className="block w-full bg-gray-300 group-hover:bg-gray-400 transition-colors"
-        style={{ height: '2px', margin: 'auto 0' }}
-      />
-    </button>
   );
 }
 

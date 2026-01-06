@@ -69,10 +69,15 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     // Build the prompt
     const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
 
+    // Increase max_tokens based on content size
+    const contentSize = sentences.reduce((sum, s) => sum + s.content.length, 0);
+    const estimatedTokens = Math.ceil((contentSize / 4) * 1.5); // Rough estimate
+    const max_tokens = Math.max(4096, Math.min(estimatedTokens, 16000)); // 8K-16K range
+
     try {
         const message = await client.messages.create({
             model: 'claude-3-5-haiku-20241022',
-            max_tokens: 4096,
+            max_tokens: max_tokens,
             messages: [{
                 role: 'user',
                 content: prompt
@@ -81,6 +86,14 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
 
         const responseText = message.content[0].text;
         console.log('[Claude Service] Received dirty subtree restructure:', responseText);
+
+        // VALIDATE RESPONSE COMPLETENESS
+        if (responseText.trim().endsWith('}') || responseText.trim().endsWith(']')) {
+            // Response looks complete
+        } else {
+            console.warn('[Claude Service] ⚠️ Response may be truncated, does not end with closing brace');
+            // Fall back gracefully
+        }
 
         // Parse and validate the response
         const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);

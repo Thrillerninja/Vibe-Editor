@@ -5,25 +5,12 @@
  * Handles content editing, emotion profile selection, and subtree modifications.
  * Supports markdown rendering, suggestion cycling, and rewrite options via Claude API.
  *
- * @typedef {Object} Node
- * @property {string} id - Node identifier
- * @property {string} content - Node text content
- * @property {string} label - Display label
- * @property {'root'|'group'|'sentence'} type - Node type
- * @property {Object} emotion - Emotion data
- * @property {Object} emotions - Emotion profile
- * @property {number} intensity - Emotion intensity [0-100]
- * @property {boolean} isDirty - Modified flag
- * @property {Object} [metadata] - Additional metadata
- * @property {string} [author] - Content author
- * @property {string} [timestamp] - Creation timestamp
- *
- * @typedef {Object} LeafEntry
- * @property {string} id - Leaf node ID
- * @property {string} original - Original content
- * @property {string[]} options - Rewrite suggestions
- * @property {number} selectedIdx - Currently selected option
- * @property {string} editedText - Edited content text
+ * Uses the new unified Node emotion system:
+ * - emotion.profile: EmotionProfile (10-axis DES)
+ * - emotion.dominantEmotion: string (primary emotion name)
+ * - emotion.dominantIntensity: number (0-100)
+ * - emotion.source: 'manual' | 'ai' | 'aggregated'
+ * - emotion.timestamp: ISO datetime string
  */
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -31,15 +18,33 @@ import { Handle, Position } from 'reactflow';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
-import {
-  normalizeEmotionProfile,
-  deriveLegacyFromProfile,
-  profileFromLegacy,
-} from '../../utils/emotionProfiles.js';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
 import { EMOTION_COLORS } from '../../utils/constants';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
+import { createEmptyEmotionProfile } from '../../types/node.js';
 import '../../components/TreeVisualization/TreeNode.css';
+
+// ============================================================================
+// TYPE DEFINITIONS & CONSTANTS
+// ============================================================================
+
+/**
+ * @typedef {Object} LeafEntry
+ * @property {string} id - Leaf node ID
+ * @property {string} original - Original content
+ * @property {string[]} options - Rewrite suggestions
+ * @property {number} selectedIdx - Currently selected option index
+ * @property {string} editedText - Edited content text
+ */
+
+/**
+ * @typedef {Object} NodeEmotion
+ * @property {Object} profile - 10-axis emotion profile
+ * @property {string} [dominantEmotion] - Primary emotion name
+ * @property {number} [dominantIntensity] - Intensity 0-100
+ * @property {'manual'|'ai'|'aggregated'} [source] - Assignment source
+ * @property {string} [timestamp] - ISO timestamp
+ */
 
 // ============================================================================
 // EMOTION COLOR UTILITIES
@@ -47,11 +52,15 @@ import '../../components/TreeVisualization/TreeNode.css';
 
 /**
  * Get node background color based on emotion and intensity
+ * Uses the new emotion profile system for consistent color mapping
  *
- * @param {string|null} emotion - Emotion name
- * @param {number} intensity - Intensity [0-100]
- * @param {'root'|'group'|'sentence'} type - Node type
- * @returns {string} CSS color value
+ * @param {string|null} emotion - Emotion name (e.g., 'joy', 'sadness')
+ * @param {number} intensity - Intensity level [0-100]
+ * @param {string} type - Node type ('sentence'|'heading'|'root'|'group')
+ * @returns {string} CSS hex color value
+ *
+ * @example
+ * getEmotionColor('joy', 75, 'sentence') // returns medium-intensity joy color
  */
 function getEmotionColor(emotion, intensity, type) {
   const colors = EMOTION_COLORS[emotion?.toLowerCase?.()];
@@ -68,11 +77,12 @@ function getEmotionColor(emotion, intensity, type) {
 
 /**
  * Get node border color based on emotion
+ * Provides visual contrast for modified state indicator
  *
  * @param {string|null} emotion - Emotion name
  * @param {number} intensity - Intensity [0-100]
- * @param {'root'|'group'|'sentence'} type - Node type
- * @returns {string} CSS color value
+ * @param {string} type - Node type
+ * @returns {string} CSS hex color value
  */
 function getBorderColor(emotion, intensity, type) {
   const colors = EMOTION_COLORS[emotion?.toLowerCase?.()];
@@ -87,7 +97,7 @@ function getBorderColor(emotion, intensity, type) {
  * Parse enumeration pattern from text (e.g., "1. content")
  *
  * @param {string} text - Text to parse
- * @returns {Object|null} { number: string, text: string } or null
+ * @returns {Object|null} { number: string, text: string } or null if not enumerated
  */
 function parseEnumeration(text) {
   const match = text.match(/^(\d+)\.\s+(.*)$/);
@@ -102,15 +112,18 @@ function parseEnumeration(text) {
 
 /**
  * Apply inline formatting elements (bold, italic, links, code, etc.)
- * Processes from end to start to avoid index shifting
+ * Processes from end to start to avoid index shifting during replacement
  *
  * @param {string} content - Base content text
- * @param {Object[]} inlineElements - Array of inline format specs
- * @param {string} inlineElements[].type - Format type (bold, italic, code, link, etc.)
- * @param {number} inlineElements[].start - Start index
- * @param {number} inlineElements[].end - End index
- * @param {string} [inlineElements[].url] - URL for links/images
- * @param {string} [inlineElements[].title] - Title/alt text
+ * @param {Array<{
+ *   type: 'bold'|'italic'|'code'|'strikethrough'|'link'|'email'|'image',
+ *   start: number,
+ *   end: number,
+ *   url?: string,
+ *   alt?: string,
+ *   title?: string,
+ *   email?: string
+ * }>} inlineElements - Array of inline format specifications
  * @returns {string} Markdown-formatted text
  */
 function applyInlineElements(content, inlineElements) {
@@ -166,19 +179,19 @@ function applyInlineElements(content, inlineElements) {
 }
 
 /**
- * Build markdown string from content, structure metadata, and inline elements
+ * Build markdown string from content and structure metadata
  *
  * @param {string} content - Base content text
  * @param {Object} [structure] - Structure metadata
  * @param {number} [structure.headingLevel] - H1-H6 level
- * @param {string} [structure.listType] - 'ordered', 'unordered', 'task'
- * @param {number} [structure.listIndentLevel] - Nesting level
+ * @param {string} [structure.listType] - 'ordered'|'unordered'|'task'
+ * @param {number} [structure.listIndentLevel] - Nesting depth
  * @param {string} [structure.listMarker] - Custom list marker
  * @param {boolean} [structure.taskChecked] - Task checkbox state
- * @param {string} [structure.codeLanguage] - Code block language
- * @param {number} [structure.quoteDepth] - Blockquote nesting
- * @param {Object[]} [inlineElements] - Inline formatting
- * @returns {string} Formatted markdown
+ * @param {string} [structure.codeLanguage] - Language identifier
+ * @param {number} [structure.quoteDepth] - Blockquote nesting level
+ * @param {Array} [inlineElements] - Inline formatting elements
+ * @returns {string} Formatted markdown string
  */
 function buildMarkdownFromStructure(content, structure, inlineElements) {
   let markdown = applyInlineElements(content, inlineElements);
@@ -215,13 +228,14 @@ function buildMarkdownFromStructure(content, structure, inlineElements) {
 }
 
 /**
- * Render node content with full markdown and link support
+ * Render node content with full markdown support
+ * Handles links, lists, code blocks, blockquotes, and all inline formatting
  *
  * @param {string} content - Content text
- * @param {'root'|'group'|'sentence'} type - Node type
+ * @param {string} type - Node type
  * @param {Object} [structure] - Structure metadata
- * @param {Object[]} [inlineElements] - Inline format elements
- * @returns {React.ReactElement} Rendered content
+ * @param {Array} [inlineElements] - Inline format elements
+ * @returns {React.ReactElement} Rendered markdown content
  */
 function renderNodeContent(content, type, structure, inlineElements) {
   const markdown = buildMarkdownFromStructure(
@@ -366,28 +380,28 @@ function renderNodeContent(content, type, structure, inlineElements) {
 /**
  * AnimatedNodeComponent - Renders a single tree node with editing capabilities
  *
- * Double-click to open edit dialog. Supports:
+ * Features:
+ * - Double-click to open edit dialog
  * - Content editing with Claude-powered suggestions
  * - Emotion profile adjustment with visual radar
- * - Subtree editing (for group nodes)
- * - Markdown rendering with links, lists, code blocks
+ * - Subtree editing for group nodes
+ * - Markdown rendering with full link/list/code support
+ * - Dirty state tracking and visual indicators
  *
- * @param {Object} props
- * @param {string} props.id - Node ID
- * @param {Node} props.data - Node data object
- * @param {string} props.data.content - Content text
- * @param {string} props.data.label - Display label
- * @param {'root'|'group'|'sentence'} props.data.type - Node type
- * @param {Object} [props.data.emotions] - Emotion profile
- * @param {Object} [props.data.emotion] - Legacy emotion
- * @param {number} [props.data.intensity] - Legacy intensity
- * @param {boolean} [props.data.isDirty] - Modified flag
- * @param {Function} props.data.applyNodeEdit - Edit handler
- * @param {Function} props.data.applyEmotionToSubtree - Emotion update
- * @param {Function} props.data.deleteNode - Delete handler
- * @param {Function} props.data.setOpenEmotionNodeId - Panel state
- * @param {Function} props.data.getDescendantLeaves - Get leaf nodes
- * @returns {React.ReactElement}
+ * @param {Object} props - Component props
+ * @param {string} props.id - Node UUID
+ * @param {Object} props.data - Node data (new unified Node type)
+ * @param {string} props.data.content - Node text content
+ * @param {string} [props.data.label] - Display label (for groups/root)
+ * @param {string} props.data.type - Node type (sentence|heading|list-item|etc)
+ * @param {NodeEmotion} [props.data.emotion] - Emotion metadata
+ * @param {Object} [props.data.metadata] - Operational metadata
+ * @param {boolean} [props.data.metadata.isDirty] - Needs regeneration
+ * @param {Function} [props.data.applyNodeEdit] - Edit handler
+ * @param {Function} [props.data.applySubtreeChanges] - Subtree update handler
+ * @param {Function} [props.data.deleteNode] - Delete handler
+ * @param {Function} [props.data.getDescendantLeaves] - Get leaf nodes
+ * @returns {React.ReactElement} Rendered node with modal dialog
  */
 export function AnimatedNodeComponent({ id, data }) {
   // =========================================================================
@@ -406,24 +420,26 @@ export function AnimatedNodeComponent({ id, data }) {
   const [previousText, setPreviousText] = useState(
     data.content || data.label || ''
   );
-  const [nodeModified, setNodeModified] = useState(data.isDirty);
-
-  // =========================================================================
-  // STATE: Emotion (Sentence/Current)
-  // =========================================================================
-
-  const initialProfile = normalizeEmotionProfile(
-    data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
+  const [nodeModified, setNodeModified] = useState(
+    data.metadata?.isDirty ?? false
   );
-  const initialLegacy = deriveLegacyFromProfile(initialProfile);
+
+  // =========================================================================
+  // STATE: Emotion (Current Node - New System)
+  // =========================================================================
+
+  // Initialize from new unified emotion structure
+  const initialProfile = data.emotion?.profile ?? createEmptyEmotionProfile();
 
   const [emotionProfile, setEmotionProfile] = useState(initialProfile);
   const [originalEmotionProfile, setOriginalEmotionProfile] =
     useState(initialProfile);
-  const [emotion, setEmotion] = useState(initialLegacy.emotion || 'interest');
-  const [intensity, setIntensity] = useState(initialLegacy.intensity ?? 0);
+  const [emotion, setEmotion] = useState(data.emotion?.dominantEmotion || 'interest');
+  const [intensity, setIntensity] = useState(
+    data.emotion?.dominantIntensity ?? 0
+  );
   const [selectedIntensity, setSelectedIntensity] = useState(
-    initialLegacy.intensity ?? 0
+    data.emotion?.dominantIntensity ?? 0
   );
   const [previousEmotion, setPreviousEmotion] = useState(emotion);
 
@@ -441,16 +457,16 @@ export function AnimatedNodeComponent({ id, data }) {
   const [subtreeEmotionProfile, setSubtreeEmotionProfile] =
     useState(initialProfile);
   const [subtreeEmotion, setSubtreeEmotion] = useState(
-    initialLegacy.emotion || 'interest'
+    data.emotion?.dominantEmotion || 'interest'
   );
   const [subtreeIntensity, setSubtreeIntensity] = useState(
-    initialLegacy.intensity ?? 0
+    data.emotion?.dominantIntensity ?? 0
   );
 
-  /** @type {Object<string, LeafEntry>} */
+  /** @type {[Object<string, LeafEntry>, Function]} */
   const [leafSuggestions, setLeafSuggestions] = useState({});
 
-  /** @type {string[]} */
+  /** @type {[string[], Function]} */
   const [leafOrder, setLeafOrder] = useState([]);
 
   // =========================================================================
@@ -472,33 +488,31 @@ export function AnimatedNodeComponent({ id, data }) {
   // =========================================================================
 
   /**
-   * Sync isDirty flag from data
+   * Sync isDirty flag from data.metadata
+   * Watches for external changes to dirty state
    */
   useEffect(() => {
-    setNodeModified(data.isDirty);
-  }, [data.isDirty]);
+    setNodeModified(data.metadata?.isDirty ?? false);
+  }, [data.metadata?.isDirty]);
 
   /**
    * Sync emotion profile from data changes
+   * Updates all emotion-related state when node emotion data changes
    */
   useEffect(() => {
-    const profile = normalizeEmotionProfile(
-      data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
-    );
-    const legacy = deriveLegacyFromProfile(profile);
+    const profile = data.emotion?.profile ?? createEmptyEmotionProfile();
 
     setEmotionProfile(profile);
     setOriginalEmotionProfile(profile);
-    setEmotion(legacy.emotion || 'interest');
-    setIntensity(legacy.intensity ?? 0);
-    setPreviousEmotion(legacy.emotion || 'interest');
+    setEmotion(data.emotion?.dominantEmotion || 'interest');
+    setIntensity(data.emotion?.dominantIntensity ?? 0);
+    setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
+    setPreviousEmotion(data.emotion?.dominantEmotion || 'interest');
     setPreviousText(data.content || data.label || '');
     setSubtreeEmotionProfile(profile);
-    setSubtreeEmotion(legacy.emotion || 'interest');
-    setSubtreeIntensity(
-      typeof legacy.intensity === 'number' ? legacy.intensity : 0
-    );
-  }, [data.emotions, data.emotion, data.intensity]);
+    setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
+    setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
+  }, [data.emotion, data.content]);
 
   // =========================================================================
   // HANDLERS: Sentence Editing
@@ -507,28 +521,32 @@ export function AnimatedNodeComponent({ id, data }) {
   /**
    * Handle sentence content save
    * Reverts emotion to original if text didn't change
+   * Creates new emotion object for new unified system
    */
   const handleSave = () => {
     const textChanged = nodeText !== previousText;
     const finalProfile = textChanged ? emotionProfile : originalEmotionProfile;
-    const legacy = deriveLegacyFromProfile(finalProfile);
 
-    setIntensity(legacy.intensity);
-    setEmotion(legacy.emotion);
-    setEmotionProfile(finalProfile);
+    // Create new emotion object with metadata
+    const newEmotion = {
+      profile: finalProfile,
+      dominantEmotion: emotion,
+      dominantIntensity: intensity,
+      source: 'manual',
+      timestamp: new Date().toISOString(),
+    };
 
     if (typeof data.applyNodeEdit === 'function') {
-      data.applyNodeEdit(id, nodeText, finalProfile);
+      data.applyNodeEdit(id, nodeText, newEmotion);
     }
 
     setSuggestions([]);
     setCurrentSuggestionIndex(0);
     setIsDialogOpen(false);
 
-    if (nodeText.length === 0) {
-      if (typeof data.deleteNode === 'function') {
-        data.deleteNode(id);
-      }
+    // Delete node if text is empty
+    if (nodeText.length === 0 && typeof data.deleteNode === 'function') {
+      data.deleteNode(id);
     }
   };
 
@@ -537,38 +555,38 @@ export function AnimatedNodeComponent({ id, data }) {
    * Reverts all changes to original state
    */
   const handleCancel = () => {
-    const legacy = deriveLegacyFromProfile(originalEmotionProfile);
-
     setEmotionProfile(originalEmotionProfile);
-    setEmotion(legacy.emotion);
-    setSelectedIntensity(legacy.intensity);
+    setEmotion(data.emotion?.dominantEmotion || 'interest');
+    setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
     setNodeText(previousText);
     setSuggestions([]);
     setCurrentSuggestionIndex(0);
     setLeafSuggestions({});
     setLeafOrder([]);
     setSubtreeEmotionProfile(originalEmotionProfile);
-    setSubtreeEmotion(legacy.emotion);
-    setSubtreeIntensity(legacy.intensity);
+    setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
+    setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
     setIsDialogOpen(false);
   };
 
   /**
-   * Set emotion intensity for sentence edit
+   * Update emotion intensity for sentence
+   * Updates the profile with new intensity value
    *
-   * @param {number} inputIntensity - Intensity [0-100]
+   * @param {number} inputIntensity - New intensity [0-100]
    */
   const setNodeIntensity = (inputIntensity) => {
     setSelectedIntensity(inputIntensity);
-    const next = normalizeEmotionProfile({
+    const next = {
       ...emotionProfile,
       [emotion]: inputIntensity,
-    });
+    };
     setEmotionProfile(next);
   };
 
   /**
-   * Fetch rewrite suggestions for current emotion profile
+   * Fetch Claude-powered rewrite suggestions
+   * Updates emotion profile and fetches 3 alternatives
    */
   const fetchRewriteOptions = async () => {
     if (isNodeRewriting) return;
@@ -595,7 +613,7 @@ export function AnimatedNodeComponent({ id, data }) {
   };
 
   /**
-   * Show previous suggestion variant
+   * Cycle to previous suggestion
    */
   const showPrevSuggestion = () => {
     if (!suggestions || suggestions.length === 0) return;
@@ -607,7 +625,7 @@ export function AnimatedNodeComponent({ id, data }) {
   };
 
   /**
-   * Show next suggestion variant
+   * Cycle to next suggestion
    */
   const showNextSuggestion = () => {
     if (!suggestions || suggestions.length === 0) return;
@@ -622,23 +640,22 @@ export function AnimatedNodeComponent({ id, data }) {
   // =========================================================================
 
   /**
-   * Set emotion intensity for subtree edit
+   * Update emotion intensity for subtree
    *
-   * @param {number} inputIntensity - Intensity [0-100]
+   * @param {number} inputIntensity - New intensity [0-100]
    */
   const setSubtreeNodeIntensity = (inputIntensity) => {
     setSubtreeIntensity(inputIntensity);
-    const next = normalizeEmotionProfile({
-      ...emotionProfile,
+    const next = {
+      ...subtreeEmotionProfile,
       [subtreeEmotion]: inputIntensity,
-    });
-    setEmotionProfile(next);
+    };
+    setSubtreeEmotionProfile(next);
   };
 
   /**
-   * Load rewrite options for all leaf nodes under this group
-   *
-   * @param {Object} profileUpdate - Updated emotion profile
+   * Load rewrite options for all descendant leaf nodes
+   * Fetches Claude suggestions for each leaf using subtree emotion profile
    */
   const fetchSubtreeRewriteOptions = async () => {
     if (isNodeRewriting) return;
@@ -667,8 +684,7 @@ export function AnimatedNodeComponent({ id, data }) {
               original: leaf.content,
               options: opts || [],
               selectedIdx: opts && opts.length > 0 ? 0 : -1,
-              editedText:
-                opts && opts.length > 0 ? opts[0] : leaf.content,
+              editedText: opts && opts.length > 0 ? opts[0] : leaf.content,
             };
           } catch (e) {
             console.error('Failed to get options for leaf', leaf.id, e);
@@ -696,7 +712,7 @@ export function AnimatedNodeComponent({ id, data }) {
   };
 
   /**
-   * Rotate to previous suggestion for leaf node
+   * Cycle leaf node to previous suggestion variant
    *
    * @param {string} leafId - Leaf node ID
    */
@@ -717,7 +733,7 @@ export function AnimatedNodeComponent({ id, data }) {
   };
 
   /**
-   * Rotate to next suggestion for leaf node
+   * Cycle leaf node to next suggestion variant
    *
    * @param {string} leafId - Leaf node ID
    */
@@ -868,7 +884,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     }}
                   >
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {data.type !== 'sentence' && data.label && (
+                      {data.type !== 'sentence' && data.content && (
                         <div>
                           <strong>Title:</strong> {data.label}
                         </div>
@@ -880,24 +896,21 @@ export function AnimatedNodeComponent({ id, data }) {
                       )}
                       <div>
                         <strong>Emotion:</strong>{' '}
-                        {data.type === 'sentence'
-                          ? emotion
-                          : subtreeEmotion}
+                        {data.type === 'sentence' ? emotion : subtreeEmotion}
                       </div>
                       <div>
                         <strong>Intensity:</strong>{' '}
-                        {data.type === 'sentence'
-                          ? intensity
-                          : subtreeIntensity}
+                        {data.type === 'sentence' ? intensity : subtreeIntensity}
                       </div>
-                      {data.author && (
+                      {data.emotion?.source && (
                         <div>
-                          <strong>Author:</strong> {data.author}
+                          <strong>Author:</strong> {data.emotion.source}
                         </div>
                       )}
-                      {data.timestamp && (
+                      {data.emotion?.timestamp && (
                         <div>
-                          <strong>Timestamp:</strong> {data.timestamp}
+                          <strong>Timestamp:</strong>{' '}
+                          {new Date(data.emotion.timestamp).toLocaleString()}
                         </div>
                       )}
                     </div>
@@ -1043,10 +1056,10 @@ export function AnimatedNodeComponent({ id, data }) {
           }}
         >
           {renderNodeContent(
-            data.label,
+            data.label || data.content,
             data.type,
             data.structure,
-            data.inlineElements
+            data.formatting
           )}
         </div>
 
@@ -1070,10 +1083,10 @@ export function AnimatedNodeComponent({ id, data }) {
 // ============================================================================
 
 /**
- * Sentence editing tab content
+ * SentenceEditingTab - Content and emotion editing for leaf nodes
  *
- * @param {Object} props - Component props
- * @returns {React.ReactElement}
+ * @param {Object} props - All editing state and handlers
+ * @returns {React.ReactElement} Editing interface
  */
 function SentenceEditingTab({
   isNodeRewriting,
@@ -1097,8 +1110,6 @@ function SentenceEditingTab({
   id,
   data,
 }) {
-  const legacy = deriveLegacyFromProfile(emotionProfile);
-
   return (
     <div style={{ padding: '20px 24px 16px 24px', background: '#fff' }}>
       {/* Delete Button */}
@@ -1138,7 +1149,7 @@ function SentenceEditingTab({
           <button
             onClick={showPrevSuggestion}
             disabled={isNodeRewriting}
-            title="Previous option"
+            title="Previous suggestion"
             style={{
               width: 28,
               height: 28,
@@ -1156,7 +1167,7 @@ function SentenceEditingTab({
           <button
             onClick={showNextSuggestion}
             disabled={isNodeRewriting}
-            title="Next option"
+            title="Next suggestion"
             style={{
               width: 28,
               height: 28,
@@ -1194,7 +1205,7 @@ function SentenceEditingTab({
             fetchRewriteOptions();
           }}
           disabled={isNodeRewriting}
-          title="Generate 3 rewrite options using current emotion profile"
+          title="Generate 3 rewrite suggestions using current emotion profile"
           style={{
             position: 'absolute',
             top: 0,
@@ -1232,9 +1243,15 @@ function SentenceEditingTab({
           profile={emotionProfile}
           onChange={next => {
             setEmotionProfile(next);
-            const newLegacy = deriveLegacyFromProfile(next);
-            setEmotion(newLegacy.emotion);
-            setSelectedIntensity(newLegacy.intensity);
+            // Update dominant emotion from profile
+            const emotions = Object.entries(next).filter(
+              ([_, intensity]) => intensity > 0
+            );
+            if (emotions.length > 0) {
+              emotions.sort((a, b) => b[1] - a[1]);
+              setEmotion(emotions[0][0]);
+              setSelectedIntensity(emotions[0][1]);
+            }
           }}
           size={360}
           label="Emotion profile"
@@ -1282,10 +1299,10 @@ function SentenceEditingTab({
 }
 
 /**
- * Subtree/group editing tab content
+ * SubtreeEditingTab - Group node editing with leaf rewriting
  *
- * @param {Object} props - Component props
- * @returns {React.ReactElement}
+ * @param {Object} props - All editing state and handlers
+ * @returns {React.ReactElement} Subtree editing interface
  */
 function SubtreeEditingTab({
   isNodeRewriting,
@@ -1317,7 +1334,7 @@ function SubtreeEditingTab({
             fetchSubtreeRewriteOptions();
           }}
           disabled={isNodeRewriting}
-          title="Generate 3 rewrite options for each sentence using current emotion profile"
+          title="Generate suggestions for all descendant sentences using this emotion profile"
           style={{
             position: 'absolute',
             top: 0,
@@ -1355,9 +1372,14 @@ function SubtreeEditingTab({
           profile={subtreeEmotionProfile}
           onChange={next => {
             setSubtreeEmotionProfile(next);
-            const legacy = deriveLegacyFromProfile(next);
-            setSubtreeEmotion(legacy.emotion);
-            setSubtreeIntensity(legacy.intensity);
+            const emotions = Object.entries(next).filter(
+              ([_, intensity]) => intensity > 0
+            );
+            if (emotions.length > 0) {
+              emotions.sort((a, b) => b[1] - a[1]);
+              setSubtreeEmotion(emotions[0][0]);
+              setSubtreeIntensity(emotions[0][1]);
+            }
           }}
           size={360}
           label="Subtree emotion profile"
@@ -1374,9 +1396,7 @@ function SubtreeEditingTab({
 
               const currentText =
                 entry.editedText ??
-                (entry.options &&
-                entry.options.length > 0 &&
-                entry.selectedIdx >= 0
+                (entry.options?.length > 0 && entry.selectedIdx >= 0
                   ? entry.options[entry.selectedIdx]
                   : entry.original);
 
@@ -1416,7 +1436,7 @@ function SubtreeEditingTab({
                       ◀
                     </button>
 
-                    <div style={{ fontSize: 12, color: '#555' }}>
+                    <div style={{ fontSize: 12, color: '#555', flex: 1 }}>
                       {entry.options && entry.options.length > 0
                         ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}`
                         : 'No options'}
@@ -1468,6 +1488,19 @@ function SubtreeEditingTab({
         </div>
       )}
 
+      {leafOrder.length === 0 && (
+        <div
+          style={{
+            padding: '20px',
+            textAlign: 'center',
+            color: '#999',
+            fontSize: 14,
+          }}
+        >
+          No descendant nodes to edit. Click the refresh button to load suggestions.
+        </div>
+      )}
+
       {/* Save/Cancel Buttons */}
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
         <button
@@ -1490,9 +1523,7 @@ function SubtreeEditingTab({
             const e = leafSuggestions[k];
             const chosen =
               e.editedText ??
-              (e.options &&
-              e.options.length > 0 &&
-              e.selectedIdx >= 0
+              (e.options?.length > 0 && e.selectedIdx >= 0
                 ? e.options[e.selectedIdx]
                 : e.original);
             return chosen !== e.original;
@@ -1512,9 +1543,7 @@ function SubtreeEditingTab({
                   const e = leafSuggestions[k];
                   const chosen =
                     e.editedText ??
-                    (e.options &&
-                    e.options.length > 0 &&
-                    e.selectedIdx >= 0
+                    (e.options?.length > 0 && e.selectedIdx >= 0
                       ? e.options[e.selectedIdx]
                       : e.original);
 
@@ -1528,12 +1557,17 @@ function SubtreeEditingTab({
                   ? subtreeEmotionProfile
                   : originalEmotionProfile;
 
+                // Create new emotion object with metadata
+                const newEmotion = {
+                  profile: finalProfile,
+                  dominantEmotion: subtreeEmotion,
+                  dominantIntensity: subtreeIntensity,
+                  source: 'AI',
+                  timestamp: new Date().toISOString(),
+                };
+
                 if (typeof data.applySubtreeChanges === 'function') {
-                  data.applySubtreeChanges(
-                    id,
-                    normalizeEmotionProfile({ ...finalProfile }),
-                    edits
-                  );
+                  data.applySubtreeChanges(id, newEmotion, edits);
                 }
 
                 setIsDialogOpen(false);
@@ -1556,3 +1590,5 @@ function SubtreeEditingTab({
     </div>
   );
 }
+
+export default AnimatedNodeComponent;
