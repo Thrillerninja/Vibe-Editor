@@ -50,7 +50,13 @@ export default function EmotionRadar({
 
   const handlePointerDown = (idx, e) => {
     e.preventDefault();
+    e.stopPropagation();
     draggingAxis.current = idx;
+
+    // Immediate update
+    const pt = e.touches ? e.touches[0] : e;
+    updateAxisValue(idx, pt.clientX, pt.clientY);
+
     const move = (ev) => {
       const pt = ev.touches ? ev.touches[0] : ev;
       updateAxisValue(idx, pt.clientX, pt.clientY);
@@ -94,6 +100,7 @@ export default function EmotionRadar({
             stroke="#e5e7eb"
             strokeDasharray="4 4"
             strokeWidth={1}
+            style={{ pointerEvents: 'none' }}
           />
         ))}
 
@@ -105,6 +112,7 @@ export default function EmotionRadar({
           fill="none"
           stroke="#d1d5db"
           strokeWidth={1}
+          style={{ pointerEvents: 'none' }}
         />
 
         {/* axes with color indicators */}
@@ -114,17 +122,34 @@ export default function EmotionRadar({
           const outerY = center + radius * Math.sin(p.angle);
           const innerX = center + minRadius * Math.cos(p.angle);
           const innerY = center + minRadius * Math.sin(p.angle);
+          const isEditable = onChange !== null && onChange !== undefined;
           return (
-            <line
-              key={p.axis}
-              x1={innerX}
-              y1={innerY}
-              x2={outerX}
-              y2={outerY}
-              stroke={color}
-              strokeWidth={2}
-              opacity={0.4}
-            />
+            <g key={p.axis}>
+              {/* Visible rail */}
+              <line
+                x1={innerX}
+                y1={innerY}
+                x2={outerX}
+                y2={outerY}
+                stroke={color}
+                strokeWidth={2}
+                opacity={0.4}
+                style={{ pointerEvents: 'none' }}
+              />
+               {/* Invisible click handler */}
+               <line
+                x1={innerX}
+                y1={innerY}
+                x2={outerX}
+                y2={outerY}
+                stroke="transparent"
+                strokeWidth={24}
+                strokeLinecap="round"
+                onMouseDown={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
+                onTouchStart={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
+                style={{ cursor: isEditable ? 'pointer' : 'default' }}
+              />
+            </g>
           );
         })}
 
@@ -134,6 +159,7 @@ export default function EmotionRadar({
           fill="#2563eb22"
           stroke="#2563eb"
           strokeWidth={2}
+          style={{ pointerEvents: 'none' }}
         />
 
         {/* handles */}
