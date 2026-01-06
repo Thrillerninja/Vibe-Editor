@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { EMOTION_AXES, EMOTION_COLORS } from '../../utils/constants';
 import { normalizeEmotionProfile } from '../../utils/emotionProfiles';
 
@@ -18,6 +18,7 @@ export default function EmotionRadar({
   const minRadius = radius * 0.15; // Start from 15% of the radius
   const axes = EMOTION_AXES;
   const draggingAxis = useRef(null);
+  const [hoveredAxis, setHoveredAxis] = useState(null);
 
   const points = useMemo(() => {
     return axes.map((axis, idx) => {
@@ -78,9 +79,6 @@ export default function EmotionRadar({
 
   return (
     <div style={{ width: size, margin: '0 auto' }}>
-      <div style={{ fontSize: 14, fontWeight: 500, color: '#374151', marginBottom: 6, textAlign: 'center' }}>
-        {label}
-      </div>
       <svg
         ref={svgRef}
         width={size}
@@ -136,8 +134,8 @@ export default function EmotionRadar({
                 opacity={0.4}
                 style={{ pointerEvents: 'none' }}
               />
-               {/* Invisible click handler */}
-               <line
+              {/* Invisible click handler */}
+              <line
                 x1={innerX}
                 y1={innerY}
                 x2={outerX}
@@ -171,30 +169,68 @@ export default function EmotionRadar({
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={8}
+                r={hoveredAxis === p.axis ? 10 : 8}
                 fill={color}
                 stroke="#fff"
                 strokeWidth={2}
                 onMouseDown={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
                 onTouchStart={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
-                style={{ cursor: isEditable ? 'pointer' : 'default' }}
+                onMouseEnter={() => setHoveredAxis(p.axis)}
+                onMouseLeave={() => setHoveredAxis(null)}
+                style={{ cursor: isEditable ? 'pointer' : 'default', transition: 'r 0.2s ease' }}
               />
               <text
                 x={center + (radius + 14) * Math.cos(p.angle)}
                 y={center + (radius + 14) * Math.sin(p.angle)}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                style={{ fontSize: 13, fontWeight: 500, fill: '#111827' }}
+                style={{ fontSize: 13, fontWeight: 500, fill: '#111827', pointerEvents: 'none' }}
               >
                 {p.axis}
               </text>
             </g>
           );
         })}
+
+        {/* Tooltip */}
+        {hoveredAxis && (() => {
+          const p = points.find((pt) => pt.axis === hoveredAxis);
+          if (!p) return null;
+          // Position tooltip above the point
+          return (
+            <g
+              transform={`translate(${p.x}, ${p.y - 24})`}
+              style={{ pointerEvents: 'none', transition: 'all 0.2s ease' }}
+            >
+              {/* Tooltip Background */}
+              <rect
+                x="-16"
+                y="-15"
+                width="32"
+                height="22"
+                rx="6"
+                fill="#1f2937"
+                filter="drop-shadow(0 2px 4px rgba(0,0,0,0.1))"
+              />
+              {/* Tooltip Arrow */}
+              <polygon points="-4,7 4,7 0,11" fill="#1f2937" />
+              {/* Tooltip Text */}
+              <text
+                x="0"
+                y="-2"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#f9fafb"
+                fontSize="11"
+                fontWeight="600"
+              >
+                {Math.round(normalized[p.axis])}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
-      <div style={{ fontSize: 13, color: '#4b5563', marginTop: 8, textAlign: 'center' }}>
-        {axes.map((axis) => `${axis}: ${normalized[axis]}`).join(' · ')}
-      </div>
+
     </div>
   );
 }
