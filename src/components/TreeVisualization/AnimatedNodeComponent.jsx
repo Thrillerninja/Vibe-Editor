@@ -63,7 +63,7 @@ export function AnimatedNodeComponent({ id, data }) {
   const [subtreeIntensity, setSubtreeIntensity] = useState(initialLegacy.intensity ?? 0);
   const [leafSuggestions, setLeafSuggestions] = useState({}); // id -> { original, options, selectedIdx }
   const [leafOrder, setLeafOrder] = useState([]);
-  const [activeTab, setActiveTab] = useState('information');
+  // const [activeTab, setActiveTab] = useState('information'); // Removed
   const emotionColor = getEmotionColor(emotion, intensity, data.type);
   const border = getBorderColor(emotion, intensity, data.type);
   const [previousEmotion, setPreviousEmotion] = useState(emotion);
@@ -297,221 +297,145 @@ export function AnimatedNodeComponent({ id, data }) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Tabs header - simplified underline style */}
-        {!isNodeRewriting && (
-          <div
-            style={{
-              padding: '0 16px',
-              borderBottom: '1px solid #e5e7eb',
-              background: '#ffffff',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 16,
-              height: 52,
-              boxSizing: 'border-box',
-            }}
-          >
-            <div style={{ display: 'flex', gap: 16 }}>
-              {['information', 'editing'].map((key) => {
-                const label = key === 'information' ? 'Information' : 'Editing';
-                const active = activeTab === key;
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setActiveTab(key)}
-                    style={{
-                      appearance: 'none',
-                      background: 'transparent',
-                      border: 'none',
-                      padding: '12px 4px',
-                      margin: 0,
-                      cursor: 'pointer',
-                      color: active ? '#111827' : '#6b7280',
-                      fontSize: 14,
-                      fontWeight: active ? 600 : 500,
-                      position: 'relative',
-                      outline: 'none',
-                    }}
-                  >
-                    <span>{label}</span>
-                    <span
-                      aria-hidden="true"
-                      style={{
-                        position: 'absolute',
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        height: 2,
-                        backgroundColor: active ? '#000000' : 'transparent',
-                        borderRadius: 2,
-                        transition: 'background-color 120ms ease',
-                      }}
-                    />
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ flex: 1 }} />
-            <button
-              onClick={handleCancel}
-              disabled={isNodeRewriting}
-              style={{
-                appearance: 'none',
-                background: 'transparent',
-                border: 'none',
-                color: '#6b7280',
-                padding: '8px 10px',
-                cursor: 'pointer',
-                fontSize: 13,
-                fontWeight: 500,
-              }}
-            >
-              Close
-            </button>
-          </div>
-        )}
+
 
         {/* Scrollable content area */}
         {!isNodeRewriting && (
           <div style={{ overflowY: 'auto', background: '#fff', maxHeight: 'calc(72vh - 52px)' }}>
-            {/* Information Tab */}
-            {activeTab === 'information' && (
-              <div style={{
-                padding: "24px 24px 16px 24px",
-                background: "#fff"
-              }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {data.type !== 'sentence' && data.label && (
-                    <div><strong>Title:</strong> {data.label}</div>
-                  )}
-                  {data.content && (
-                    <div><strong>Content:</strong> {data.content}</div>
-                  )}
-                  <div><strong>Emotion:</strong> {data.type === 'sentence' ? emotion : subtreeEmotion}</div>
-                  <div><strong>Intensity:</strong> {data.type === 'sentence' ? intensity : subtreeIntensity}</div>
-                  {data.author && <div><strong>Author:</strong> {data.author}</div>}
-                  {data.timestamp && <div><strong>Timestamp:</strong> {data.timestamp}</div>}
-                </div>
-                <div style={{ marginTop: 20 }}>
-                  <EmotionRadar
-                    profile={data.type === 'sentence' ? emotionProfile : subtreeEmotionProfile}
-                    onChange={null}
-                    size={340}
-                    label="Current Emotion Profile"
-                  />
-                </div>
-              </div>
-            )}
+
 
             {/* Editing Tab: Sentence editing */}
-            {activeTab === 'editing' && data.type === "sentence" && (
-              <div style={{ padding: "20px 24px 16px 24px", background: "#fff" }}>
+            {data.type === "sentence" && (
+              <div style={{ padding: "20px 24px 16px 24px", background: "#fff", display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
-                {suggestions.length > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <button
-                      onClick={showPrevSuggestion}
-                      disabled={isNodeRewriting}
-                      title="Previous option"
-                      style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        background: '#f8f8f8',
-                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                      }}
-                    >
-                      ◀
-                    </button>
-                    <div style={{ fontSize: 12, color: '#555' }}>
-                      Option {currentSuggestionIndex + 1} / {suggestions.length}
+                <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flex: 1 }}>
+                  {/* Left Column: Text */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                    <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 36 }}>
+                      <div style={{ fontWeight: 600 }}>Edit Content</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {(data.author || data.timestamp) && (
+                          <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
+                            {[data.author && `by ${data.author}`, data.timestamp].filter(Boolean).join(' • ')}
+                          </span>
+                        )}
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fetchRewriteOptions();
+                            }}
+                            disabled={isNodeRewriting}
+                            title="Generate 3 rewrite options using current emotion profile"
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: '50%',
+                              border: 'none',
+                              background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                              color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 18,
+                              transition: 'all 0.2s ease',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                            }}
+                            onMouseOver={(e) => {
+                              if (!isNodeRewriting) {
+                                e.currentTarget.style.background = '#374151';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                              }
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.background = '#111827';
+                              e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                          >
+                            ↻
+                          </button>
+                          {JSON.stringify(emotionProfile) !== JSON.stringify(originalEmotionProfile) && nodeText === previousText && (
+                            <div className="modified-indicator" style={{ top: -4, right: -4, width: 14, height: 14, fontSize: 10, lineHeight: '14px', background: '#ef4444' }}>
+                              !
+                            </div>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                    <button
-                      onClick={showNextSuggestion}
-                      disabled={isNodeRewriting}
-                      title="Next option"
+                    {suggestions.length > 0 && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                        <button
+                          onClick={showPrevSuggestion}
+                          disabled={isNodeRewriting}
+                          title="Previous option"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 4,
+                            border: '1px solid #ccc',
+                            background: '#f8f8f8',
+                            cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          ◀
+                        </button>
+                        <div style={{ fontSize: 12, color: '#555' }}>
+                          Option {currentSuggestionIndex + 1} / {suggestions.length}
+                        </div>
+                        <button
+                          onClick={showNextSuggestion}
+                          disabled={isNodeRewriting}
+                          title="Next option"
+                          style={{
+                            width: 28,
+                            height: 28,
+                            borderRadius: 4,
+                            border: '1px solid #ccc',
+                            background: '#f8f8f8',
+                            cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    )}
+                    <textarea
+                      value={nodeText}
+                      onChange={(e) => setNodeText(e.target.value)}
                       style={{
-                        width: 28,
-                        height: 28,
-                        borderRadius: 4,
-                        border: '1px solid #ccc',
-                        background: '#f8f8f8',
-                        cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                        width: "100%",
+                        flex: 1,
+                        minHeight: 320,
+                        padding: 10,
+                        borderRadius: 6,
+                        border: "1px solid #bbb",
+                        marginBottom: 16,
+                        color: "#000000",
+                        resize: "none"
                       }}
-                    >
-                      ▶
-                    </button>
+                    />
                   </div>
-                )}
-                <textarea
-                  value={nodeText}
-                  onChange={(e) => setNodeText(e.target.value)}
-                  style={{
-                    width: "100%",
-                    minHeight: 120,
-                    padding: 10,
-                    borderRadius: 6,
-                    border: "1px solid #bbb",
-                    marginBottom: 16,
-                    color: "#000000",
-                    resize: "vertical"
-                  }}
-                />
-                <div style={{ marginBottom: 16, position: 'relative' }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fetchRewriteOptions();
-                    }}
-                    disabled={isNodeRewriting}
-                    title="Generate 3 rewrite options using current emotion profile"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      border: 'none',
-                      background: isNodeRewriting ? '#e5e7eb' : '#111827',
-                      color: isNodeRewriting ? '#9ca3af' : '#ffffff',
-                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 18,
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                      zIndex: 10
-                    }}
-                    onMouseOver={(e) => {
-                      if (!isNodeRewriting) {
-                        e.currentTarget.style.background = '#374151';
-                        e.currentTarget.style.transform = 'scale(1.1)';
-                      }
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = '#111827';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    ↻
-                  </button>
-                  <EmotionRadar
-                    profile={emotionProfile}
-                    onChange={(next) => {
-                      setEmotionProfile(next);
-                      const legacy = deriveLegacyFromProfile(next);
-                      setEmotion(legacy.emotion);
-                      setSelectedIntensity(legacy.intensity);
-                    }}
-                    size={360}
-                    label="Emotion profile"
-                  />
+
+                  {/* Right Column: Emotion */}
+                  <div style={{ width: 340, flexShrink: 0, paddingTop: 28 }}>
+                    <div style={{ position: 'relative' }}>
+                      <EmotionRadar
+                        profile={emotionProfile}
+                        onChange={(next) => {
+                          setEmotionProfile(next);
+                          const legacy = deriveLegacyFromProfile(next);
+                          setEmotion(legacy.emotion);
+                          setSelectedIntensity(legacy.intensity);
+                        }}
+                        size={340}
+                        label="Emotion profile"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid #eee' }}>
                   <button
                     title="Delete this sentence"
                     onClick={(e) => {
@@ -569,133 +493,151 @@ export function AnimatedNodeComponent({ id, data }) {
               </div>
             )}
 
-            {/* Close button for non-editable nodes */}
             {/* Editing Tab: Subtree editing */}
-            {activeTab === 'editing' && data.type !== "sentence" && (
-              <div style={{ padding: "20px 24px", background: "#fff" }}>
+            {data.type !== "sentence" && (
+              <div style={{ padding: "20px 24px", background: "#fff", display: 'flex', flexDirection: 'column', height: '100%' }}>
 
-                <div style={{ marginBottom: 16, position: 'relative' }}>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fetchSubtreeRewriteOptions();
-                    }}
-                    disabled={isNodeRewriting}
-                    title="Generate 3 rewrite options for each sentence using current emotion profile"
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      right: 0,
-                      width: 36,
-                      height: 36,
-                      borderRadius: '50%',
-                      border: 'none',
-                      background: isNodeRewriting ? '#e5e7eb' : '#111827',
-                      color: isNodeRewriting ? '#9ca3af' : '#ffffff',
-                      cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 18,
-                      transition: 'all 0.2s ease',
-                      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-                      zIndex: 10
-                    }}
-                    onMouseOver={(e) => {
-                      if (!isNodeRewriting) {
-                        e.currentTarget.style.background = '#374151';
-                        e.currentTarget.style.transform = 'scale(1.1)';
-                      }
-                    }}
-                    onMouseOut={(e) => {
-                      e.currentTarget.style.background = '#111827';
-                      e.currentTarget.style.transform = 'scale(1)';
-                    }}
-                  >
-                    ↻
-                  </button>
-                  <EmotionRadar
-                    profile={subtreeEmotionProfile}
-                    onChange={(next) => {
-                      setSubtreeEmotionProfile(next);
-                      const legacy = deriveLegacyFromProfile(next);
-                      setSubtreeEmotion(legacy.emotion);
-                      setSubtreeIntensity(legacy.intensity);
-                    }}
-                    size={360}
-                    label="Subtree emotion profile"
-                  />
-                </div>
-
-                {/* Leaf suggestions list */}
-                {leafOrder.length > 0 && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                      {leafOrder.map(leafId => {
-                        const entry = leafSuggestions[leafId];
-                        if (!entry) return null;
-                        const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
-                        return (
-                          <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                              <button
-                                onClick={() => rotateLeafPrev(leafId)}
-                                disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
-                                title="Previous option"
-                                style={{
-                                  width: 28,
-                                  height: 28,
-                                  borderRadius: 4,
-                                  border: '1px solid #ccc',
-                                  background: '#f8f8f8',
-                                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                ◀
-                              </button>
-                              <div style={{ fontSize: 12, color: '#555' }}>
-                                {entry.options && entry.options.length > 0 ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}` : 'No options'}
-                              </div>
-                              <button
-                                onClick={() => rotateLeafNext(leafId)}
-                                disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
-                                title="Next option"
-                                style={{
-                                  width: 28,
-                                  height: 28,
-                                  borderRadius: 4,
-                                  border: '1px solid #ccc',
-                                  background: '#f8f8f8',
-                                  cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                                }}
-                              >
-                                ▶
-                              </button>
+                <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flex: 1, minHeight: 0 }}>
+                  {/* Left Column: List */}
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflowY: 'auto' }}>
+                    <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 36 }}>
+                      <div style={{ fontWeight: 600 }}>{data.label || 'Subtree Content'}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {(data.author || data.timestamp) && (
+                          <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
+                            {[data.author && `by ${data.author}`, data.timestamp].filter(Boolean).join(' • ')}
+                          </span>
+                        )}
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fetchSubtreeRewriteOptions();
+                            }}
+                            disabled={isNodeRewriting}
+                            title="Generate 3 rewrite options for each sentence using current emotion profile"
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: '50%',
+                              border: 'none',
+                              background: isNodeRewriting ? '#e5e7eb' : '#111827',
+                              color: isNodeRewriting ? '#9ca3af' : '#ffffff',
+                              cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 18,
+                              transition: 'all 0.2s ease',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                            }}
+                            onMouseOver={(e) => {
+                              if (!isNodeRewriting) {
+                                e.currentTarget.style.background = '#374151';
+                                e.currentTarget.style.transform = 'scale(1.1)';
+                              }
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.background = '#111827';
+                              e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                          >
+                            ↻
+                          </button>
+                          {JSON.stringify(subtreeEmotionProfile) !== JSON.stringify(originalEmotionProfile) && (
+                            <div className="modified-indicator" style={{ top: -4, right: -4, width: 14, height: 14, fontSize: 10, lineHeight: '14px', background: '#ef4444' }}>
+                              !
                             </div>
-                            <textarea
-                              value={currentText}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, editedText: val } }));
-                              }}
-                              style={{
-                                width: '100%',
-                                minHeight: 100,
-                                padding: 8,
-                                borderRadius: 6,
-                                border: '1px solid #bbb',
-                                color: '#000000',
-                                resize: 'vertical'
-                              }}
-                            />
-                          </div>
-                        );
-                      })}
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    {/* Leaf suggestions list */}
+                    {leafOrder.length > 0 && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {leafOrder.map(leafId => {
+                          const entry = leafSuggestions[leafId];
+                          if (!entry) return null;
+                          const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
+                          return (
+                            <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <button
+                                  onClick={() => rotateLeafPrev(leafId)}
+                                  disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                                  title="Previous option"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 4,
+                                    border: '1px solid #ccc',
+                                    background: '#f8f8f8',
+                                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                  }}
+                                >
+                                  ◀
+                                </button>
+                                <div style={{ fontSize: 12, color: '#555' }}>
+                                  {entry.options && entry.options.length > 0 ? `Option ${entry.selectedIdx + 1} / ${entry.options.length}` : 'No options'}
+                                </div>
+                                <button
+                                  onClick={() => rotateLeafNext(leafId)}
+                                  disabled={isNodeRewriting || !(entry.options && entry.options.length > 0)}
+                                  title="Next option"
+                                  style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 4,
+                                    border: '1px solid #ccc',
+                                    background: '#f8f8f8',
+                                    cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                  }}
+                                >
+                                  ▶
+                                </button>
+                              </div>
+                              <textarea
+                                value={currentText}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setLeafSuggestions(prev => ({ ...prev, [leafId]: { ...entry, editedText: val } }));
+                                }}
+                                style={{
+                                  width: '100%',
+                                  minHeight: 100,
+                                  padding: 8,
+                                  borderRadius: 6,
+                                  border: '1px solid #bbb',
+                                  color: '#000000',
+                                  resize: 'vertical'
+                                }}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Right Column: Emotion */}
+                  <div style={{ width: 340, flexShrink: 0, paddingTop: 28 }}>
+                    <div style={{ position: 'relative' }}>
+                      <EmotionRadar
+                        profile={subtreeEmotionProfile}
+                        onChange={(next) => {
+                          setSubtreeEmotionProfile(next);
+                          const legacy = deriveLegacyFromProfile(next);
+                          setSubtreeEmotion(legacy.emotion);
+                          setSubtreeIntensity(legacy.intensity);
+                        }}
+                        size={340}
+                        label="Subtree emotion profile"
+                      />
                     </div>
                   </div>
-                )}
+                </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid #eee' }}>
                   <button
                     onClick={handleCancel}
                     disabled={isNodeRewriting}
