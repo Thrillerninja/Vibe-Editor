@@ -12,6 +12,8 @@
  * - Claude creates a COMPLETE hierarchy from level 2 up to level N
  */
 
+import { v4 as uuidv4 } from 'uuid';
+
 /**
  * Build a prompt for restructuring dirty subtrees
  * @param {Array} dirtySubtrees - Array of subtree information
@@ -201,8 +203,8 @@ Notice in Example 2:
 }
 
 **Key takeaway**:
-- Every grouping node MUST include a 10-axis DES **"emotions"** object (no extra keys).
-- ALWAYS order nodes in arrays by document position (earliest sentence first).
+- **YOU MUST ADD AN "emotion" PROPERTY with the value "POSITIVE", "NEGATIVE", or "NEUTRAL" to ALL nodes**
+- **ALWAYS order nodes in the array by document position (earliest sentence first)!**
 
 ═══════════════════════════════════════════════════════════════════
 ⚠️ FINAL CHECKLIST BEFORE RESPONDING
@@ -219,7 +221,7 @@ For EACH subtree in your response, verify:
 ✓ Generated new UUIDs for all grouping nodes
 ✓ Sentences appear in order when reading tree left-to-right
 ✓ **newNodes array is sorted by document order (within each level, nodes ordered by their first sentence's position)**
-✓  **ALL grouping nodes (level 2+) have an "emotions" object (DES 10-axis)**
+✓ **ALL grouping nodes (level 2+) have an "emotion" property with value "POSITIVE", "NEGATIVE", or "NEUTRAL"**
 
 ${isRootDirty ? `
 ═══════════════════════════════════════════════════════════════════
@@ -257,7 +259,8 @@ Only generate NEW UUIDs for the grouping nodes (id field), NOT for childIds at l
 RESPONSE FORMAT
 ═══════════════════════════════════════════════════════════════════
 
-Return valid JSON only (no markdown):
+Return ONLY valid JSON. DO NOT wrap your response in markdown code fences (no \`\`\`json).
+Start directly with the opening brace { and end with the closing brace }.
 
 {${isRootDirty ? `
   "newRootTitle": "Document Title",
@@ -267,26 +270,13 @@ Return valid JSON only (no markdown):
       "rootNodeId": "id-from-input",
       "newNodes": [
         // For topLevel=2, just level 2:
-        {
-          "id": "NEW-UUID",
-          "level": 2,
-          "title": "Topic",
-          "emotions": {
-            "interest": 0,
-            "joy": 0,
-            "surprise": 0,
-            "sadness": 0,
-            "anger": 0,
-            "disgust": 0,
-            "contempt": 0,
-            "fear": 0,
-            "shame": 0,
-            "guilt": 0
-          },
-          "childIds": ["exact-sentence-ids"]
-        },
-        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "emotions": { "...": 0 }, "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
-        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "emotions": { "...": 0 }, "childIds": ["NEW-UUID-3"]},
+        {"id": "NEW-UUID", "level": 2, "title": "Topic", "emotion": "EMOTION_TYPE", "childIds": ["exact-sentence-ids"]},
+
+        // For topLevel=4, ALL levels 2, 3, and 4:
+        {"id": "NEW-UUID-1", "level": 2, "title": "Subtopic A", "emotion": "EMOTION_TYPE", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-2", "level": 2, "title": "Subtopic B", "emotion": "EMOTION_TYPE", "childIds": ["sentence-ids"]},
+        {"id": "NEW-UUID-3", "level": 3, "title": "Topic", "emotion": "EMOTION_TYPE", "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
+        {"id": "NEW-UUID-4", "level": 4, "title": "Section", "emotion": "EMOTION_TYPE", "childIds": ["NEW-UUID-3"]},
         ...
       ]
     }
@@ -294,4 +284,5 @@ Return valid JSON only (no markdown):
 }
 
 Remember: Check each subtree's topLevel and create ALL levels from 2 to topLevel!`;
+
 }

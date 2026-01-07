@@ -38,6 +38,8 @@ import posthog from '../../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
 import { runElk } from '../../utils/layoutEngine';
 import { useFlowScreenConverters } from '../../utils/coords';
+import { mergeNodes } from '../../utils/nodeMerge';
+import { evaluateSentenceEmotions, evaluateHierarchyNodeEmotions } from '../../services/claude';
 
 // Hooks
 import { useReparenting } from '../../hooks/useReparenting';
@@ -91,7 +93,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /** @type {React.MutableRefObject<HTMLDivElement>} */
   const containerRef = useRef(null);
 
-  
+
   // =========================================================================
   //    Drag State
   // =========================================================================
@@ -293,8 +295,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   const reorderNode = useCallback(
     (nodeId, targetSiblingId, insertBefore) => {
       console.log(
-        `[TreeInner] Reorder START: ${nodeId.substring(0, 8)} ${
-          insertBefore ? 'BEFORE' : 'AFTER'
+        `[TreeInner] Reorder START: ${nodeId.substring(0, 8)} ${insertBefore ? 'BEFORE' : 'AFTER'
         } ${targetSiblingId.substring(0, 8)}`
       );
 
@@ -447,65 +448,65 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @returns {{nodes: Array, edges: Array}}
    */
   const buildFlowStructure = useCallback(() => {
-  const flowNodes = [];
-  const flowEdges = [];
+    const flowNodes = [];
+    const flowEdges = [];
 
-  const visited = new Set();
-  const orderedIds = [];
+    const visited = new Set();
+    const orderedIds = [];
 
-  const dfs = (id) => {
-    if (visited.has(id)) return;
-    visited.add(id);
+    const dfs = (id) => {
+      if (visited.has(id)) return;
+      visited.add(id);
 
-    const node = nodeMap.get(id);
-    if (!node) return;
+      const node = nodeMap.get(id);
+      if (!node) return;
 
-    orderedIds.push(id);
+      orderedIds.push(id);
 
-    const children = node.hierarchy.childIds ?? [];
-    for (const childId of children) dfs(childId);
-  };
+      const children = node.hierarchy.childIds ?? [];
+      for (const childId of children) dfs(childId);
+    };
 
-  dfs(rootId);
+    dfs(rootId);
 
-  // include any disconnected/orphan nodes deterministically
-  for (const id of nodeMap.keys()) {
-    if (!visited.has(id)) orderedIds.push(id);
-  }
-
-  for (const id of orderedIds) {
-    const node = nodeMap.get(id);
-    if (!node) continue;
-
-    flowNodes.push({
-      id: node.id,
-      data: {
-        label: node.content,
-        content: node.content,
-        type: node.type,
-        level: node.hierarchy.level,
-        emotion: node.emotion,
-        metadata: node.metadata,
-        isDirty: node.metadata.isDirty,
-        structure: node.structure,
-      },
-      position: { x: 0, y: 0 },
-      type: 'animatedNode',
-      style: { width: 'auto', height: 'auto' },
-    });
-
-    if (node.hierarchy.parentId && nodeMap.has(node.hierarchy.parentId)) {
-      flowEdges.push({
-        id: `${node.hierarchy.parentId}-${node.id}`,
-        source: node.hierarchy.parentId,
-        target: node.id,
-        animated: false,
-      });
+    // include any disconnected/orphan nodes deterministically
+    for (const id of nodeMap.keys()) {
+      if (!visited.has(id)) orderedIds.push(id);
     }
-  }
 
-  return { nodes: flowNodes, edges: flowEdges };
-}, [nodeMap, rootId]);
+    for (const id of orderedIds) {
+      const node = nodeMap.get(id);
+      if (!node) continue;
+
+      flowNodes.push({
+        id: node.id,
+        data: {
+          label: node.content,
+          content: node.content,
+          type: node.type,
+          level: node.hierarchy.level,
+          emotion: node.emotion,
+          metadata: node.metadata,
+          isDirty: node.metadata.isDirty,
+          structure: node.structure,
+        },
+        position: { x: 0, y: 0 },
+        type: 'animatedNode',
+        style: { width: 'auto', height: 'auto' },
+      });
+
+      if (node.hierarchy.parentId && nodeMap.has(node.hierarchy.parentId)) {
+        flowEdges.push({
+          id: `${node.hierarchy.parentId}-${node.id}`,
+          source: node.hierarchy.parentId,
+          target: node.id,
+          animated: false,
+        });
+      }
+    }
+
+    return { nodes: flowNodes, edges: flowEdges };
+  }, [nodeMap, rootId]);
 
   /**
    * Apply layout to nodes using ELK algorithm
@@ -528,7 +529,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       if (runId !== layoutRunIdRef.current) return; // discard stale result
       if (isDraggingRef.current) return;
-      
+
       if (!isDraggingRef.current) {
         if (animateNextRef.current && containerRef.current) {
           containerRef.current.classList.add('rf-animate-drop');
@@ -689,7 +690,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     (event, rfNode) => {
       console.log(`${LOG_PREFIX.DRAG} Drag stop: ${rfNode.id}`);
       isDraggingRef.current = false;
-        setReorderIndicator(null);
+      setReorderIndicator(null);
       animateNextRef.current = true;
 
       // // Only allow reordering for leaf nodes
@@ -712,14 +713,62 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
-
-        
       } else {
-        console.log(`${LOG_PREFIX.DRAG} No reorder target found`);
+
+        // If we dropped on another node, MERGE instead of reparenting.
+        const target = findReparentTarget(node.id, node.position.x, node.position.y);
+
+        if (target) {
+          const current = sentencesRef.current;
+          const meta = current?._hierarchyMeta;
+
+          const targetIsSentence = current.some(s => s.id === target.id);
+          const targetIsGroup = !!meta?.nodes?.some(n => n.id === target.id);
+
+          // kein echter mergebarer Node → normaler Reorder
+          if (!targetIsSentence && !targetIsGroup) {
+            console.log('[TreeInner] Non-mergeable target ignored:', target.id);
+          }
+        } else {
+          // 1) Merge + prune
+          let updatedSentences = mergeNodes(current, node.id, target.id);
+          let pruned = pruneEmptyHierarchyBranches(updatedSentences);
+
+          // 2) UI SOFORT aktualisieren
+          onTreeUpdate?.(pruned);
+          physics.stop();
+
+          // 3) AI-Update IM HINTERGRUND (blockiert NICHT)
+          (async () => {
+            try {
+              let refreshed = pruned;
+
+              if (targetIsSentence) {
+                refreshed = await evaluateSentenceEmotions(pruned);
+              } else if (targetIsGroup) {
+                const { updatedHierarchyMeta } =
+                  await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
+
+                const withMeta = pruned.map(s => ({ ...s }));
+                withMeta._hierarchyMeta = updatedHierarchyMeta;
+                refreshed = withMeta;
+              }
+
+              // 4) Ergebnis nachreichen
+              onTreeUpdate?.(refreshed);
+            } catch (err) {
+              console.warn('[TreeInner] Emotion refresh failed:', err);
+            }
+          })();
+
+          return; // extrem wichtig: verhindert Reorder danach
+        }
       }
-        physics.stop();
+
+      console.log(`${LOG_PREFIX.DRAG} No reorder/ merge target found`);
+      physics.stop();
     },
-    [checkReorderDrop, physics, onTreeUpdate, isLeafNode]
+    [checkReorderDrop, physics, onTreeUpdate, findReparentTarget, isLeafNode]
   );
 
   /**

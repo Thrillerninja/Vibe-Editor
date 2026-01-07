@@ -6,7 +6,8 @@
   width: 18px;
   height: 18px;
 
-  background: #000; /* red */
+  background: #000;
+  /* red */
   color: white;
 
   font-size: 11px;
@@ -15,7 +16,7 @@
   text-align: center;
 
   border-radius: 999px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
 
   pointer-events: auto;
   cursor: default;
@@ -24,71 +25,30 @@
 
 
 
-.animated-border {
-  position: relative;
-  border-radius: 8px;
-}
-
-.animated-border::before {
-  content: "";
+.animated-border-svg {
   position: absolute;
-
-  /* 5px border thickness */
-  inset: -5px;
-  border-radius: inherit;
+  inset: -6px;
+  width: calc(100% + 12px);
+  height: calc(100% + 12px);
   pointer-events: none;
-
-  background:
-    /* top edge */
-    repeating-linear-gradient(
-      90deg,
-      #000 0 9px,
-      transparent 9px 18px
-    ),
-    /* right edge */
-    repeating-linear-gradient(
-      180deg,
-      #000 0 9px,
-      transparent 9px 18px
-    ),
-    /* bottom edge */
-    repeating-linear-gradient(
-      270deg,
-      #000 0 9px,
-      transparent 9px 18px
-    ),
-    /* left edge */
-    repeating-linear-gradient(
-      0deg,
-      #000 0 9px,
-      transparent 9px 18px
-    );
-
-  /* 5px stroke on all sides */
-  background-size:
-    100% 5px,   /* top */
-    5px 100%,   /* right */
-    100% 5px,   /* bottom */
-    5px 100%;   /* left */
-
-  background-position:
-    0 0,
-    100% 0,
-    100% 100%,
-    0 100%;
-
-  background-repeat: no-repeat;
-
-  animation: border-walk 1.2s linear infinite;
+  /* Ensure it sits nicely around the node */
+  z-index: 1;
 }
 
-@keyframes border-walk {
+.animated-border-rect {
+  fill: none;
+  stroke: #000;
+  stroke-width: 3;
+  stroke-dasharray: 10 6;
+  animation: marching-ants 1s linear infinite;
+  rx: 30px;
+  /* node-radius (24) + padding (6) */
+  ry: 30px;
+}
+
+@keyframes marching-ants {
   to {
-    background-position:
-      18px 0,                  /* top → right */
-      100% 18px,               /* right ↓ */
-      calc(100% - 18px) 100%,  /* bottom ← */
-      0 calc(100% - 18px);     /* left ↑ */
+    stroke-dashoffset: -16;
   }
 }
 

@@ -61,6 +61,11 @@ import { isGroupNode, isContentNode } from '../../types/node';
  * @param {React.Ref} ref - Imperative handle for addCommit
  * @returns {React.ReactElement}
  */
+
+// Responsive git-style history graph.
+// Props:
+// - className: optional container class
+// - onRevertComplete(data): function(data) called when a revert is confirmed
 const HistoryGraph = forwardRef(
   (
     {
@@ -126,6 +131,18 @@ const HistoryGraph = forwardRef(
      * @type {[number, Function]}
      */
     const [containerWidth, setContainerWidth] = useState(0);
+
+    /**
+     * SVG ref for measurements
+     * @type {React.MutableRefObject<SVGSVGElement>}
+     */
+    const svgRef = useRef(null);
+
+    /**
+     * Scrollable container ref
+     * @type {React.MutableRefObject<HTMLDivElement>}
+     */
+    const scrollContainerRef = useRef(null);
 
 
     // =========================================================================
@@ -267,7 +284,7 @@ const HistoryGraph = forwardRef(
      */
     function getContentNodesInOrder(nodeMap, rootId) {
       console.log('[DEBUG getContentNodesInOrder] Starting traversal from root:', rootId);
-      
+
       const root = nodeMap.get(rootId);
       if (!root) {
         console.log('[DEBUG getContentNodesInOrder] Root not found!');
@@ -282,10 +299,10 @@ const HistoryGraph = forwardRef(
       while (queue.length > 0) {
         const nodeId = queue.shift();
         const node = nodeMap.get(nodeId);
-        
-        console.log(`[DEBUG getContentNodesInOrder] Processing node ${nodeId}:`, 
-                    node ? `${node.hierarchy.role} - "${node.content?.substring(0, 30)}"` : 'NOT FOUND');
-        
+
+        console.log(`[DEBUG getContentNodesInOrder] Processing node ${nodeId}:`,
+          node ? `${node.hierarchy.role} - "${node.content?.substring(0, 30)}"` : 'NOT FOUND');
+
         if (!node) continue;
 
         if (isContentNode(node)) {
@@ -418,7 +435,7 @@ const HistoryGraph = forwardRef(
         );
 
         if (parentHasOtherChildren) {
-          // Create new branch
+          // Create a new branch
           branchId = Math.max(...h.map(c => c.branchId), 0) + 1;
         }
 
@@ -617,57 +634,6 @@ const HistoryGraph = forwardRef(
       setIsCommitPreviewOpen(false);
     };
 
-    // =========================================================================
-    // RESPONSIVE LAYOUT
-    // =========================================================================
-
-    /**
-     * Track container width for responsive SVG
-     */
-    React.useEffect(() => {
-      const container = rootRef.current;
-      if (!container) return;
-
-      const updateWidth = () => {
-        try {
-          const w = container.getBoundingClientRect().width || 0;
-          setContainerWidth(w);
-        } catch (err) {
-          // Ignore measurement errors
-        }
-      };
-
-      // Use ResizeObserver if available
-      let observer;
-      if (typeof ResizeObserver !== 'undefined') {
-        observer = new ResizeObserver(entries => {
-          if (entries?.[0]?.contentRect?.width) {
-            setContainerWidth(entries[0].contentRect.width);
-          } else {
-            updateWidth();
-          }
-        });
-
-        try {
-          observer.observe(container);
-        } catch (err) {
-          // Fallback to window resize
-          window.addEventListener('resize', updateWidth);
-        }
-      } else {
-        window.addEventListener('resize', updateWidth);
-      }
-
-      updateWidth();
-
-      return () => {
-        if (observer?.disconnect) {
-          observer.disconnect();
-        } else {
-          window.removeEventListener('resize', updateWidth);
-        }
-      };
-    }, [history.length]);
 
     // =========================================================================
     // VISUALIZATION LAYOUT
@@ -785,6 +751,57 @@ const HistoryGraph = forwardRef(
       };
     }, [history, laneColors, xStep, yStep, yOffset, xOffset]);
 
+    const n = history.length;
+
+    React.useEffect(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+
+      // Helper to update width from the container element
+      const updateWidth = () => {
+        try {
+          const w = container.getBoundingClientRect().width || 0;
+          setContainerWidth(w);
+        } catch {
+          // defensive: ignore measurement errors
+        }
+      };
+
+      // If ResizeObserver exists, use it for accurate updates. Otherwise fall back to window resize.
+      let observer;
+      if (typeof ResizeObserver !== 'undefined') {
+        observer = new ResizeObserver((entries) => {
+          if (entries && entries[0] && typeof entries[0].contentRect !== 'undefined') {
+            setContainerWidth(entries[0].contentRect.width);
+          } else {
+            // fallback to manual measurement
+            updateWidth();
+          }
+        });
+        try {
+          observer.observe(container);
+        } catch {
+          // If observe throws, fallback to window resize
+          window.addEventListener('resize', updateWidth);
+        }
+      } else {
+        window.addEventListener('resize', updateWidth);
+      }
+
+      // set initial width synchronously
+      updateWidth();
+
+      return () => {
+        if (observer && typeof observer.disconnect === 'function') {
+          observer.disconnect();
+        } else {
+          window.removeEventListener('resize', updateWidth);
+        }
+      };
+    }, [n]);
+
+
+
     // =========================================================================
     // TOOLTIP HELPERS
     // =========================================================================
@@ -818,52 +835,12 @@ const HistoryGraph = forwardRef(
     // EARLY RETURN: Empty state
     // =========================================================================
 
-    const n = history.length;
+    // If there is no data (n === 0) show placeholder before performing rendering below
     if (n === 0) {
       return (
         <div className={`w-full ${className}`}>
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-medium text-gray-700">Edit history</div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-                <button
-                  onClick={handleUndo}
-                  disabled={!canUndo}
-                  className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                  title="Undo (go to previous edit)"
-                  aria-label="Undo"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                  </svg>
-                </button>
-                <button
-                  onClick={handleRedo}
-                  disabled={!canRedo}
-                  className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                  title="Redo (go to next edit)"
-                  aria-label="Redo"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-                <button
-                  onClick={handleCommit}
-                  disabled={!canCommit}
-                  className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                  title="Commit current changes"
-                  aria-label="Commit"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                </button>
-              </div>
-              <div className="text-xs text-gray-500">Edits: 0</div>
-            </div>
           </div>
           <div className="flex items-center justify-center text-sm text-gray-500 p-4">No history yet</div>
         </div>
@@ -954,13 +931,11 @@ const HistoryGraph = forwardRef(
         </div>
 
         {/* Scrollable Graph Container */}
-        <div
-          // ref={scrollContainerRef}
-          className="flex-1 overflow-x-auto p-2"
-        >
+        <div ref={scrollContainerRef} className="flex-1 overflow-x-auto p-2">
           <div className="flex items-start gap-3">
             <div style={{ width: finalSvgWidth, height: svgHeight, position: 'relative' }}>
               <svg
+                ref={svgRef}
                 width={finalSvgWidth}
                 height={svgHeight}
                 viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
@@ -970,7 +945,6 @@ const HistoryGraph = forwardRef(
                     <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
                   </pattern>
                 </defs>
-
                 {/* Lane background lines */}
                 {laneYs.map((y, li) => (
                   <line key={li} x1={0} y1={y} x2={finalSvgWidth} y2={y} stroke="#f3f4f6" strokeWidth={1.6} />
@@ -1095,9 +1069,19 @@ const HistoryGraph = forwardRef(
               <div
                 className="absolute inset-0 bg-black opacity-40"
                 onClick={cancelRevert} />
-              <div className="relative bg-white rounded-lg shadow-lg max-w-3xl w-full max-h-[90vh] flex flex-col">
+              <div
+                className="relative max-w-3xl w-full max-h-[90vh] flex flex-col"
+                style={{
+                  background: "rgba(255, 255, 255, 0.9)",
+                  backdropFilter: "saturate(180%) blur(20px)",
+                  WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                  borderRadius: "24px",
+                  border: "1px solid rgba(255, 255, 255, 0.5)",
+                  boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)"
+                }}
+              >
                 {/* Header */}
-                <div className="p-4 border-b border-gray-200">
+                <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="text-sm font-semibold text-gray-900">
@@ -1122,13 +1106,46 @@ const HistoryGraph = forwardRef(
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+                <div className="p-4 flex justify-end gap-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                   <button onClick={cancelRevert}
-                    className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      color: '#374151',
+                      border: 'none',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)'}
+                  >
                     Cancel
                   </button>
                   <button onClick={confirmRevert}
-                    className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: '#ef4444',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '12px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '13px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = '#dc2626';
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ef4444';
+                      e.currentTarget.style.transform = 'translateY(0)';
+                    }}
+                  >
                     Restore
                   </button>
                 </div>
@@ -1140,20 +1157,31 @@ const HistoryGraph = forwardRef(
         {/* Commit Preview Modal */}
         {isCommitPreviewOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
             <div
-              className="absolute inset-0 bg-black opacity-40"
-              onClick={cancelCommitPreview} />
-            <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
-              <div className="p-4 border-b border-gray-200">
+              className="relative max-w-xl w-full max-h-[80vh] flex flex-col"
+              style={{
+                background: "rgba(255, 255, 255, 0.9)",
+                backdropFilter: "saturate(180%) blur(20px)",
+                WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                borderRadius: "24px",
+                border: "1px solid rgba(255, 255, 255, 0.5)",
+                boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)"
+              }}
+            >
+              <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                 <div className="text-sm font-semibold text-gray-900">
                   Commit preview
+
                 </div>
                 <div className="text-xs text-gray-600 mt-1">
                   Review changes before committing
+
                 </div>
                 <div className="mt-4">
                   <label htmlFor="commit-title" className="block text-xs font-medium text-gray-700 mb-1">
                     Commit title:
+
                   </label>
                   <input
                     id="commit-title"
@@ -1165,25 +1193,53 @@ const HistoryGraph = forwardRef(
                   />
                 </div>
               </div>
-
-              {/* Diff View */}
               <div className="flex-1 overflow-auto p-4">
                 <span className="text-xs text-gray-500">
                   Changes since last commit:
+
                 </span>
                 <div className="mt-2">
                   <DiffView diff={commitDiff} />
                 </div>
               </div>
-
-              {/* Footer */}
-              <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <div className="p-4 flex justify-end gap-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                 <button onClick={cancelCommitPreview}
-                  className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">
-                  Cancel
-                </button>
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: 'rgba(0,0,0,0.05)',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)'}
+                >Cancel</button>
                 <button onClick={handleConfirmCommit}
-                  className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#111827',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                  }}
+                >
                   Commit
                 </button>
               </div>
@@ -1193,7 +1249,5 @@ const HistoryGraph = forwardRef(
       </div>
     );
   });
-
-HistoryGraph.displayName = 'HistoryGraph';
 
 export default HistoryGraph;

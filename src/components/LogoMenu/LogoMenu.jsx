@@ -111,10 +111,11 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                         width: '44px',
                         height: '44px',
                         borderRadius: '50%',
-                        background: 'rgba(255,255,255,0.95)',
-                        border: '1px solid #e5e7eb',
-                        boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-                        backdropFilter: 'saturate(180%) blur(4px)',
+                        background: "rgba(255, 255, 255, 0.9)",
+                        backdropFilter: "saturate(180%) blur(20px)",
+                        WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                        border: "1px solid rgba(255, 255, 255, 0.5)",
+                        boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)",
                         cursor: 'pointer',
                         padding: 0,
                         display: 'flex',
@@ -141,19 +142,20 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                 <div style={{
                     height: '44px',
                     padding: '0 20px',
-                    borderRadius: '22px', // Fully rounded
-                    background: 'rgba(255,255,255,0.95)',
-                    border: '1px solid #e5e7eb',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-                    backdropFilter: 'saturate(180%) blur(4px)',
+                    borderRadius: '24px', // Fully rounded
+                    background: "rgba(255, 255, 255, 0.9)",
+                    backdropFilter: "saturate(180%) blur(20px)",
+                    WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                    border: "1px solid rgba(255, 255, 255, 0.5)",
+                    boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)",
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     gap: '6px',
                     userSelect: 'none'
                 }}>
-                    <span style={{ fontSize: '18px', fontWeight: 300, color: '#111827' }}>Vibe</span>
-                    <span style={{ fontSize: '18px', fontWeight: 600, color: '#111827' }}>Editor</span>
+                    <span style={{ fontSize: '18px', fontWeight: 400, color: '#111827' }}>Vibe</span>
+                    <span style={{ fontSize: '18px', fontWeight: 700, color: '#111827' }}>Editor</span>
                 </div>
             </div>
 
@@ -181,7 +183,10 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                     left: 0,
                     width: '300px',
                     height: '100vh',
-                    backgroundColor: '#fafafa',
+                    background: "rgba(255, 255, 255, 0.85)",
+                    backdropFilter: "saturate(180%) blur(20px)",
+                    WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                    borderRight: "1px solid rgba(255, 255, 255, 0.5)",
                     boxShadow: '2px 0 20px rgba(0,0,0,0.1)',
                     zIndex: 45,
                     transform: isMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
@@ -285,7 +290,7 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
 
 
                 {/* VIEW SECTION */}
-                {/* <div style={sectionStyle}>
+                <div style={sectionStyle}>
                     <div style={sectionTitleStyle}>View</div>
                     <button
                         onClick={() => {
@@ -298,7 +303,7 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                     >
                         📊 Analytics
                     </button>
-                </div> */}
+                </div>
 
                 {/* SPACER */}
                 <div style={{ flexGrow: 1 }}></div>

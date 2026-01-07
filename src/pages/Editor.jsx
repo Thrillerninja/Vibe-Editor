@@ -45,6 +45,8 @@ import { v4 as uuidv4 } from 'uuid';
 // Components
 import { HistoryGraph, TreeVisualization, EmotionsLegend } from '../components';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
+import DepthRecommendationSnackbar from '../components/DepthRecommendation/DepthRecommendationSnackbar';
+import DepthChangeConfirmationModal from '../components/DepthRecommendation/DepthChangeConfirmationModal';
 import RichTextEditor from '../components/RichTextEditor/RichTextEditor';
 
 // Utils & Services
@@ -54,6 +56,8 @@ import {
   EMOTION_COLORS,
   EMOTION_LABELS,
 } from '../utils/constants';
+import { shouldShowRecommendation } from '../utils/depthRecommendation';
+
 import {
   createRootNode,
   createContentNode,
@@ -179,6 +183,47 @@ export default function Editor() {
    * @type {[boolean, Function]}
    */
   const [isGenerating, setIsGenerating] = useState(false);
+
+  /**
+   * Show depth recommendation snackbar
+   * @type {[boolean, Function]}
+   */
+  const [showDepthRecommendation, setShowDepthRecommendation] = useState(false);
+
+  /**
+   * Recommended depth based on content analysis
+   * @type {[number, Function]}
+   */
+  const [recommendedDepth, setRecommendedDepth] = useState(3);
+
+  /**
+   * Show depth change confirmation modal
+   * @type {[boolean, Function]}
+   */
+  const [showDepthConfirmation, setShowDepthConfirmation] = useState(false);
+  useEffect(() => {
+    const contentNodes = Array.from(nodeMap.values()).filter(isContentNode);
+    const result = shouldShowRecommendation(contentNodes.length, maxDepth, lastRecommendedDepthRef.current);
+
+    if (result.shouldShow) {
+      setRecommendedDepth(result.recommendedDepth);
+      setShowDepthRecommendation(true);
+      lastRecommendedDepthRef.current = result.recommendedDepth;
+
+      // Log recommendation event
+      posthog.capture('depth_recommendation_shown', {
+        current_depth: maxDepth,
+        recommended_depth: result.recommendedDepth,
+        content_node_count: contentNodes.length,
+      });
+    }
+  }, [nodeMap, maxDepth]);
+
+  /**
+   * Last recommended depth to avoid repeated prompts
+   * @type {React.MutableRefObject<number|null>}
+   */
+  const lastRecommendedDepthRef = useRef(null);
 
   // =========================================================================
   // TEXT EDITING STATE (DEBOUNCED)
@@ -415,6 +460,45 @@ export default function Editor() {
       setIsGenerating(false);
     }
   };
+
+
+  // =========================================================================
+  // DEPTH CHANGE HANDLING
+  // ========================================================================
+
+  // Handle dismissing the depth recommendation
+  const handleDismissRecommendation = useCallback(() => {
+      setShowDepthRecommendation(false);
+      lastRecommendedDepthRef.current = recommendedDepth;
+
+      posthog.capture('depth_recommendation_dismissed', {
+          current_depth: maxDepth,
+          recommended_depth: recommendedDepth,
+      });
+  }, [maxDepth, recommendedDepth]);
+
+  // Handle accepting the depth recommendation
+  const handleAcceptRecommendation = useCallback(() => {
+      setShowDepthRecommendation(false);
+      setShowDepthConfirmation(true);
+  }, []);
+
+  // Handle confirming the depth change in modal
+  const handleConfirmDepthChange = useCallback(() => {
+      setShowDepthConfirmation(false);
+      lastRecommendedDepthRef.current = recommendedDepth;
+      setMaxDepth(recommendedDepth);
+
+      posthog.capture('depth_recommendation_accepted', {
+          old_depth: maxDepth,
+          new_depth: recommendedDepth,
+      });
+  }, [maxDepth, recommendedDepth]);
+
+  const handleCancelDepthChange = useCallback(() => {
+      setShowDepthConfirmation(false);
+      // Maybe reshown the snackbar? Or just close. Let's just close for now.
+  }, []);
 
   // =========================================================================
   // TEXT EDITING: DEBOUNCED NODE CREATION
@@ -1303,6 +1387,25 @@ export default function Editor() {
     <div className="flex flex-col h-screen bg-gray-50">
       <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} />
 
+      {/* Depth Recommendation Snackbar */}
+      <DepthRecommendationSnackbar
+          isVisible={showDepthRecommendation}
+          recommendedDepth={recommendedDepth}
+          currentDepth={maxDepth}
+          onAccept={handleAcceptRecommendation}
+          onDismiss={handleDismissRecommendation}
+      />
+
+      {/* Depth Change Confirmation Modal */}
+      <DepthChangeConfirmationModal
+          isOpen={showDepthConfirmation}
+          currentDepth={maxDepth}
+          newDepth={recommendedDepth}
+          onConfirm={handleConfirmDepthChange}
+          onCancel={handleCancelDepthChange}
+      />
+
+      {/* Main Content Area */}
       <div
         ref={horizontalContainerRef}
         className="flex flex-col h-screen select-none"
