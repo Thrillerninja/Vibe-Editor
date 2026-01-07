@@ -10,6 +10,9 @@ import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../uti
 import { EMOTIONS, EMOTION_COLORS, EMOTION_LABELS } from '../utils/constants';
 import { hasDirtyNodes, clearDirtyFlags } from '../utils/dirtyTracking';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
+import DepthRecommendationSnackbar from '../components/DepthRecommendation/DepthRecommendationSnackbar';
+import DepthChangeConfirmationModal from '../components/DepthRecommendation/DepthChangeConfirmationModal';
+import { shouldShowRecommendation } from '../utils/depthRecommendation';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -36,6 +39,12 @@ export default function Editor() {
     const [maxDepth, setMaxDepth] = useState(3);
     const [isGenerating, setIsGenerating] = useState(false);
     const [hierarchyState, setHierarchyState] = useState('none'); // 'none', 'generated', 'needs-full-regen', 'has-dirty-nodes'
+
+    // Depth recommendation state
+    const [showDepthRecommendation, setShowDepthRecommendation] = useState(false);
+    const [recommendedDepth, setRecommendedDepth] = useState(3);
+    const [showDepthConfirmation, setShowDepthConfirmation] = useState(false);
+    const lastRecommendedDepthRef = useRef(null);
 
     // When maxDepth changes, create placeholder hierarchy (even before initial generation)
     useEffect(() => {
@@ -104,6 +113,57 @@ export default function Editor() {
             setHierarchyState('generated');
         }
     }, [sentences]);
+
+    // Check for depth recommendations when sentence count changes
+    useEffect(() => {
+        const result = shouldShowRecommendation(sentences.length, maxDepth, lastRecommendedDepthRef.current);
+
+        if (result.shouldShow) {
+            setRecommendedDepth(result.recommendedDepth);
+            setShowDepthRecommendation(true);
+
+            // Log recommendation event
+            posthog.capture('depth_recommendation_shown', {
+                current_depth: maxDepth,
+                recommended_depth: result.recommendedDepth,
+                sentence_count: sentences.length,
+            });
+        }
+    }, [sentences.length, maxDepth]);
+
+    // Handle dismissing the depth recommendation
+    const handleDismissRecommendation = useCallback(() => {
+        setShowDepthRecommendation(false);
+        lastRecommendedDepthRef.current = recommendedDepth;
+
+        posthog.capture('depth_recommendation_dismissed', {
+            current_depth: maxDepth,
+            recommended_depth: recommendedDepth,
+        });
+    }, [maxDepth, recommendedDepth]);
+
+    // Handle accepting the depth recommendation
+    const handleAcceptRecommendation = useCallback(() => {
+        setShowDepthRecommendation(false);
+        setShowDepthConfirmation(true);
+    }, []);
+
+    // Handle confirming the depth change in modal
+    const handleConfirmDepthChange = useCallback(() => {
+        setShowDepthConfirmation(false);
+        lastRecommendedDepthRef.current = recommendedDepth;
+        setMaxDepth(recommendedDepth);
+
+        posthog.capture('depth_recommendation_accepted', {
+            old_depth: maxDepth,
+            new_depth: recommendedDepth,
+        });
+    }, [maxDepth, recommendedDepth]);
+
+    const handleCancelDepthChange = useCallback(() => {
+        setShowDepthConfirmation(false);
+        // Maybe reshown the snackbar? Or just close. Let's just close for now.
+    }, []);
 
     // Split state for horizontal divider
     const [leftPct, setLeftPct] = useState(50);
@@ -361,6 +421,24 @@ export default function Editor() {
     return (
         <div className="flex flex-col h-screen bg-gray-50">
             <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} />
+
+            {/* Depth Recommendation Snackbar */}
+            <DepthRecommendationSnackbar
+                isVisible={showDepthRecommendation}
+                recommendedDepth={recommendedDepth}
+                currentDepth={maxDepth}
+                onAccept={handleAcceptRecommendation}
+                onDismiss={handleDismissRecommendation}
+            />
+
+            {/* Depth Change Confirmation Modal */}
+            <DepthChangeConfirmationModal
+                isOpen={showDepthConfirmation}
+                currentDepth={maxDepth}
+                newDepth={recommendedDepth}
+                onConfirm={handleConfirmDepthChange}
+                onCancel={handleCancelDepthChange}
+            />
 
             {/* Main Content Area */}
             <div
