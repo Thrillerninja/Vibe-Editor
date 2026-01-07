@@ -1,5 +1,6 @@
 // src/components/RichTextEditor/plugins/ToolbarPlugin.jsx
 import React, { useCallback, useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
   FORMAT_TEXT_COMMAND,
@@ -42,6 +43,8 @@ export default function ToolbarPlugin() {
   // Links
   const [linkUrl, setLinkUrl] = useState('');
   const [showLinkInput, setShowLinkInput] = useState(false);
+  // Ref to BlockTypes Portal
+  const blockMenuRef = useRef(null);
 
   useEffect(() => {
     return editor.registerUpdateListener(({ editorState }) => {
@@ -72,7 +75,12 @@ export default function ToolbarPlugin() {
 
   useEffect(() => {
     const handleClick = (e) => {
-      if (blockTypeRef.current && !blockTypeRef.current.contains(e.target)) {
+      // Check if click is on the button or inside the menu
+      const isButtonClick = blockTypeRef.current && blockTypeRef.current.contains(e.target);
+      const isMenuClick = blockMenuRef.current && blockMenuRef.current.contains(e.target);
+      
+      // Only close if neither button nor menu were clicked
+      if (!isButtonClick && !isMenuClick) {
         setShowBlockMenu(false);
       }
     };
@@ -85,6 +93,7 @@ export default function ToolbarPlugin() {
   };
 
   const formatBlock = (type) => {
+    console.log('Format block called with type:', type); // Debug log
     if (blockType === type) return;
 
     editor.update(() => {
@@ -147,13 +156,12 @@ export default function ToolbarPlugin() {
     border: 'none',
     cursor: 'pointer',
     width: '100%',
-    textAlign: 'left',
     transition: 'background-color 0.15s ease',
   };
 
   return (
     <div
-      className="flex items-center min-w-[235px] max-w-[420px] gap-1 flex-wrap flex-1"
+      className="flex items-center min-w-[235px] max-w-[405px] gap-1 flex-wrap flex-1"
       style={{
         padding: '0px 14px',
         backgroundColor: 'rgba(255,255,255,0.95)',
@@ -166,47 +174,49 @@ export default function ToolbarPlugin() {
         width: 'fit-content',
       }}
     >
-      {/* Undo/Redo */}
-      <button
-        onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
-        style={toolbarButtonStyle}
-        title="Undo (Ctrl+Z)"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M3 7v6h6M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      <div className='flex flex-row'>
+        {/* Undo/Redo */}
+        <button
+          onClick={() => editor.dispatchCommand(UNDO_COMMAND, undefined)}
+          style={toolbarButtonStyle}
+          title="Undo (Ctrl+Z)"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 7v6h6M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
-      <button
-        onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
-        style={toolbarButtonStyle}
-        title="Redo (Ctrl+Y)"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M21 7v6h-6M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.3" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+        <button
+          onClick={() => editor.dispatchCommand(REDO_COMMAND, undefined)}
+          style={toolbarButtonStyle}
+          title="Redo (Ctrl+Y)"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 7v6h-6M3 17a9 9 0 019-9 9 9 0 016 2.3l3 2.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
 
       <div style={separatorStyle} />
 
       {/* Block Type */}
-      <div style={{ position: 'relative', overflow: 'visible' }} ref={blockTypeRef}>
+      <div ref={blockTypeRef}>
         <button
           onClick={() => setShowBlockMenu(!showBlockMenu)}
           style={{
@@ -240,164 +250,180 @@ export default function ToolbarPlugin() {
           </span>
         </button>
 
-        {showBlockMenu && (
-          <div style={blockMenuStyle}>
-            {BLOCK_TYPES.map(([type, label]) => (
-              <button
-                key={type}
-                onClick={() => formatBlock(type)}
-                style={{
-                  ...menuItemStyle,
-                  backgroundColor: blockType === type ? '#f0f9ff' : 'transparent',
-                  color: blockType === type ? '#0369a1' : '#374151',
-                  fontWeight: blockType === type ? 600 : 400,
-                }}
-                onMouseEnter={(e) => {
-                  if (blockType !== type) {
-                    e.currentTarget.style.backgroundColor = '#f9fafb';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor =
-                    blockType === type ? '#f0f9ff' : 'transparent';
-                }}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        )}
+        {showBlockMenu && blockTypeRef.current &&
+          createPortal(
+            <div
+              ref={blockMenuRef}
+              style={{
+                ...blockMenuStyle,
+                position: 'fixed',
+                top: `${blockTypeRef.current.getBoundingClientRect().bottom + 4}px`,
+                left: `${blockTypeRef.current.getBoundingClientRect().left}px`,
+                width: blockTypeRef.current.getBoundingClientRect().width,
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {BLOCK_TYPES.map(([type, label]) => (
+                <button
+                  key={type}
+                  onClick={() => formatBlock(type)}
+                  style={{
+                    ...menuItemStyle,
+                    backgroundColor: blockType === type ? '#f0f9ff' : 'transparent',
+                    color: blockType === type ? '#0369a1' : '#374151',
+                    fontWeight: blockType === type ? 600 : 400,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (blockType !== type) {
+                      e.currentTarget.style.backgroundColor = '#f9fafb';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor =
+                      blockType === type ? '#f0f9ff' : 'transparent';
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          , document.body
+          )}
       </div>
 
       <div style={separatorStyle} />
 
-      {/* Text Formatting */}
-      <button
-        onClick={() => formatText('bold')}
-        style={{
-          ...toolbarButtonStyle,
-          backgroundColor: activeFormats.bold ? '#e0e7ff' : 'transparent',
-          color: activeFormats.bold ? '#4f46e5' : '#374151',
-        }}
-        title="Bold (Ctrl+B)"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.bold
-            ? '#e0e7ff'
-            : '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.bold
-            ? '#e0e7ff'
-            : 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6V4zm0 8h10a4 4 0 0 1 0 8H6v-8z" />
-        </svg>
-      </button>
+      <div className='flex flex-row'>
+        {/* Text Formatting */}
+        <button
+          onClick={() => formatText('bold')}
+          style={{
+            ...toolbarButtonStyle,
+            backgroundColor: activeFormats.bold ? '#e0e7ff' : 'transparent',
+            color: activeFormats.bold ? '#4f46e5' : '#374151',
+          }}
+          title="Bold (Ctrl+B)"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.bold
+              ? '#e0e7ff'
+              : '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.bold
+              ? '#e0e7ff'
+              : 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M6 4h8a4 4 0 0 1 4 4 4 4 0 0 1-4 4H6V4zm0 8h10a4 4 0 0 1 0 8H6v-8z" />
+          </svg>
+        </button>
 
-      <button
-        onClick={() => formatText('italic')}
-        style={{
-          ...toolbarButtonStyle,
-          backgroundColor: activeFormats.italic ? '#e0e7ff' : 'transparent',
-          color: activeFormats.italic ? '#4f46e5' : '#374151',
-        }}
-        title="Italic (Ctrl+I)"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.italic
-            ? '#e0e7ff'
-            : '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.italic
-            ? '#e0e7ff'
-            : 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4h-8z" />
-        </svg>
-      </button>
+        <button
+          onClick={() => formatText('italic')}
+          style={{
+            ...toolbarButtonStyle,
+            backgroundColor: activeFormats.italic ? '#e0e7ff' : 'transparent',
+            color: activeFormats.italic ? '#4f46e5' : '#374151',
+          }}
+          title="Italic (Ctrl+I)"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.italic
+              ? '#e0e7ff'
+              : '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.italic
+              ? '#e0e7ff'
+              : 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M10 4v3h2.21l-3.42 8H6v3h8v-3h-2.21l3.42-8H18V4h-8z" />
+          </svg>
+        </button>
 
-      <button
-        onClick={() => formatText('underline')}
-        style={{
-          ...toolbarButtonStyle,
-          backgroundColor: activeFormats.underline ? '#e0e7ff' : 'transparent',
-          color: activeFormats.underline ? '#4f46e5' : '#374151',
-        }}
-        title="Underline (Ctrl+U)"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.underline
-            ? '#e0e7ff'
-            : '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = activeFormats.underline
-            ? '#e0e7ff'
-            : 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3M4 21h16" strokeLinecap="round" />
-        </svg>
-      </button>
+        <button
+          onClick={() => formatText('underline')}
+          style={{
+            ...toolbarButtonStyle,
+            backgroundColor: activeFormats.underline ? '#e0e7ff' : 'transparent',
+            color: activeFormats.underline ? '#4f46e5' : '#374151',
+          }}
+          title="Underline (Ctrl+U)"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.underline
+              ? '#e0e7ff'
+              : '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = activeFormats.underline
+              ? '#e0e7ff'
+              : 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M6 3v7a6 6 0 0 0 6 6 6 6 0 0 0 6-6V3M4 21h16" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
 
       <div style={separatorStyle} />
 
-      {/* Lists */}
-      <button
-        onClick={() =>
-          editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
-        }
-        style={toolbarButtonStyle}
-        title="Bullet List"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <line x1="9" y1="6" x2="20" y2="6" strokeLinecap="round" />
-          <line x1="9" y1="12" x2="20" y2="12" strokeLinecap="round" />
-          <line x1="9" y1="18" x2="20" y2="18" strokeLinecap="round" />
-          <line x1="5" y1="6" x2="5" y2="6.01" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="5" y1="12" x2="5" y2="12.01" strokeLinecap="round" strokeLinejoin="round" />
-          <line x1="5" y1="18" x2="5" y2="18.01" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      <div className='flex flex-row'>
+        {/* Lists */}
+        <button
+          onClick={() =>
+            editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined)
+          }
+          style={toolbarButtonStyle}
+          title="Bullet List"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <line x1="9" y1="6" x2="20" y2="6" strokeLinecap="round" />
+            <line x1="9" y1="12" x2="20" y2="12" strokeLinecap="round" />
+            <line x1="9" y1="18" x2="20" y2="18" strokeLinecap="round" />
+            <line x1="5" y1="6" x2="5" y2="6.01" strokeLinecap="round" strokeLinejoin="round" />
+            <line x1="5" y1="12" x2="5" y2="12.01" strokeLinecap="round" strokeLinejoin="round" />
+            <line x1="5" y1="18" x2="5" y2="18.01" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
 
-      <button
-        onClick={() =>
-          editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
-        }
-        style={toolbarButtonStyle}
-        title="Numbered List"
-        onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = '#f3f4f6';
-          e.currentTarget.style.transform = 'scale(1.05)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.backgroundColor = 'transparent';
-          e.currentTarget.style.transform = 'scale(1)';
-        }}
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M10 6h11M10 12h11M10 18h11" strokeLinecap="round" />
-          <path d="M4 6h1v4M4 13h2M6 13v-2c0-1-1-2-2-2s-2 1-2 2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+        <button
+          onClick={() =>
+            editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined)
+          }
+          style={toolbarButtonStyle}
+          title="Numbered List"
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+            e.currentTarget.style.transform = 'scale(1.05)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+            e.currentTarget.style.transform = 'scale(1)';
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M10 6h11M10 12h11M10 18h11" strokeLinecap="round" />
+            <path d="M4 6h1v4M4 13h2M6 13v-2c0-1-1-2-2-2s-2 1-2 2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
 
       <div style={separatorStyle} />
 

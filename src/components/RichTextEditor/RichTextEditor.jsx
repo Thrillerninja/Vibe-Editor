@@ -240,8 +240,8 @@ export default function RichTextEditor({
     <LexicalComposer initialConfig={editorConfig}>
       <div className="flex flex-col h-full overflow-hidden">
         {/* Toolbar Section */}
-          <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 flex-shrink-0">
-            <div className="w-[200px] h-12 flex-shrink-0" />
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-3 flex-shrink-0 flex-wrap">
+            <div className="w-[200px] h-11 flex-shrink-0" />
             <ToolbarPlugin />
           </div>
 
