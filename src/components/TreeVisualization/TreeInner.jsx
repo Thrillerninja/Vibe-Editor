@@ -714,61 +714,18 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           reorderInfo.insertBefore
         );
       } else {
-
-        // If we dropped on another node, MERGE instead of reparenting.
-        const target = findReparentTarget(node.id, node.position.x, node.position.y);
+        // If we dropped on another node, try reparenting
+        const target = findReparentTarget(rfNode.id, rfNode.position.x, rfNode.position.y);
 
         if (target) {
-          const current = sentencesRef.current;
-          const meta = current?._hierarchyMeta;
-
-          const targetIsSentence = current.some(s => s.id === target.id);
-          const targetIsGroup = !!meta?.nodes?.some(n => n.id === target.id);
-
-          // kein echter mergebarer Node → normaler Reorder
-          if (!targetIsSentence && !targetIsGroup) {
-            console.log('[TreeInner] Non-mergeable target ignored:', target.id);
-          }
-        } else {
-          // 1) Merge + prune
-          let updatedSentences = mergeNodes(current, node.id, target.id);
-          let pruned = pruneEmptyHierarchyBranches(updatedSentences);
-
-          // 2) UI SOFORT aktualisieren
-          onTreeUpdate?.(pruned);
-          physics.stop();
-
-          // 3) AI-Update IM HINTERGRUND (blockiert NICHT)
-          (async () => {
-            try {
-              let refreshed = pruned;
-
-              if (targetIsSentence) {
-                refreshed = await evaluateSentenceEmotions(pruned);
-              } else if (targetIsGroup) {
-                const { updatedHierarchyMeta } =
-                  await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
-
-                const withMeta = pruned.map(s => ({ ...s }));
-                withMeta._hierarchyMeta = updatedHierarchyMeta;
-                refreshed = withMeta;
-              }
-
-              // 4) Ergebnis nachreichen
-              onTreeUpdate?.(refreshed);
-            } catch (err) {
-              console.warn('[TreeInner] Emotion refresh failed:', err);
-            }
-          })();
-
-          return; // extrem wichtig: verhindert Reorder danach
+          reparentNode(rfNode.id, target.id);
+          animateNextRef.current = true;
         }
       }
 
-      console.log(`${LOG_PREFIX.DRAG} No reorder/ merge target found`);
       physics.stop();
     },
-    [checkReorderDrop, physics, onTreeUpdate, findReparentTarget, isLeafNode]
+    [checkReorderDrop, physics, onTreeUpdate, reparentNode, findReparentTarget]
   );
 
   /**

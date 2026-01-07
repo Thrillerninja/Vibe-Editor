@@ -22,7 +22,7 @@ export function EmotionsLegend() {
                 zIndex: 35,
                 fontSize: '13px',
                 color: '#111827',
-                width: isExpanded ? '260px' : 'auto',
+                width: 'auto',
                 cursor: 'pointer',
                 transition: 'width 0.3s ease'
             }}

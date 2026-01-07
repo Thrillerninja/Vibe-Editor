@@ -908,7 +908,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
 
               {/* Editing Tab: Sentence editing */}
-              {data.type === "information" && (
+              {activeTab === "information" && (
                 <div style={{ padding: "20px 24px 16px 24px", background: "transparent", display: 'flex', flexDirection: 'column', height: '100%' }}>
 
                   <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flex: 1 }}>
@@ -917,9 +917,9 @@ export function AnimatedNodeComponent({ id, data }) {
                       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 36 }}>
                         <div style={{ fontWeight: 600 }}>Edit Content</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          {(data.author || data.timestamp) && (
+                          {(data.emotion?.source || data.emotion?.timestamp) && (
                             <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
-                              {[data.author && `by ${data.author}`, data.timestamp].filter(Boolean).join(' • ')}
+                              {[data.emotion.source && `by ${data.emotion.source}`, data.emotion.timestamp].filter(Boolean).join(' • ')}
                             </span>
                           )}
                           <div style={{ position: 'relative' }}>
@@ -1148,9 +1148,9 @@ export function AnimatedNodeComponent({ id, data }) {
                       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 36 }}>
                         <div style={{ fontWeight: 600 }}>{data.label || 'Subtree Content'}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                          {(data.author || data.timestamp) && (
+                          {(data.emotion?.source || data.emotion?.timestamp) && (
                             <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
-                              {[data.author && `by ${data.author}`, data.timestamp].filter(Boolean).join(' • ')}
+                              {[data.emotion?.source && `by ${data.emotion?.source}`, data.emotion?.timestamp].filter(Boolean).join(' • ')}
                             </span>
                           )}
                           <div style={{ position: 'relative' }}>
