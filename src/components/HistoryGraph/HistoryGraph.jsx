@@ -493,9 +493,8 @@ const HistoryGraph = forwardRef(({
         if (!entry) return null;
 
         // Compute diff between current state and the commit we want to revert to
-        const currentState = headIndex != null ? history[headIndex]?.data : [];
         const revertToState = entry.data;
-        const diff = computeSentenceDiff(currentState, revertToState);
+        const diff = computeSentenceDiff(sentences, revertToState);
 
         return (
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
