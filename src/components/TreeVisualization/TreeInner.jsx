@@ -404,41 +404,45 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           const targetIsSentence = current.some(s => s.id === target.id);
           const targetIsGroup = !!meta?.nodes?.some(n => n.id === target.id);
 
-          // Kein echter mergebarer Node → abbrechen, Reorder zulassen
+          // kein echter mergebarer Node → normaler Reorder
           if (!targetIsSentence && !targetIsGroup) {
             console.log('[TreeInner] Non-mergeable target ignored:', target.id);
-            // NICHT returnen → normaler Reorder läuft weiter
           } else {
-            console.log('[TreeInner] Merge:', node.id, '→', target.id);
-
-            let updatedSentences = mergeNodes(
-              current,
-              node.id,
-              target.id
-            );
-
+            // 1) Merge + prune
+            let updatedSentences = mergeNodes(current, node.id, target.id);
             let pruned = pruneEmptyHierarchyBranches(updatedSentences);
 
-            try {
-              if (targetIsSentence) {
-                pruned = await evaluateSentenceEmotions(pruned);
-              } else if (targetIsGroup) {
-                const { updatedHierarchyMeta } =
-                  await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
-
-                const withMeta = pruned.map(s => ({ ...s }));
-                withMeta._hierarchyMeta = updatedHierarchyMeta;
-                pruned = withMeta;
-              }
-            } catch (err) {
-              console.warn('[TreeInner] Emotion refresh failed:', err);
-            }
-
+            // 2) UI SOFORT aktualisieren
             onTreeUpdate?.(pruned);
             physics.stop();
-            return; // ⬅ wichtig: Reorder verhindern
+
+            // 3) AI-Update IM HINTERGRUND (blockiert NICHT)
+            (async () => {
+              try {
+                let refreshed = pruned;
+
+                if (targetIsSentence) {
+                  refreshed = await evaluateSentenceEmotions(pruned);
+                } else if (targetIsGroup) {
+                  const { updatedHierarchyMeta } =
+                    await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
+
+                  const withMeta = pruned.map(s => ({ ...s }));
+                  withMeta._hierarchyMeta = updatedHierarchyMeta;
+                  refreshed = withMeta;
+                }
+
+                // 4) Ergebnis nachreichen
+                onTreeUpdate?.(refreshed);
+              } catch (err) {
+                console.warn('[TreeInner] Emotion refresh failed:', err);
+              }
+            })();
+
+            return; // extrem wichtig: verhindert Reorder danach
           }
         }
+
 
         // Fallback: existing (disabled) reparent behaviour
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
