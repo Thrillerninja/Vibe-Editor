@@ -309,7 +309,8 @@ CRITICAL: You must ALWAYS provide exactly ${numOptions} rewritten versions, even
 
 Return exactly ${numOptions} options as a pure JSON array of strings (no commentary, no explanations, no apologies).
 Hard constraints:
-- NEVER INCREASE OR DECREASE THE LENGTH OF ANY SENTENCE. THIS IS THE MOST IMPORTANT HOLY ASSIGNMENT!!!! ONLY SWITCH ADJECTIVES; PROPOSITIONS ETC: FOR MORE SUITABLE SYNONYMS THAT BETTER FIT THE NEW PROFILE
+- NEVER INCREASE OR DECREASE THE LENGTH OF ANY SENTENCE. THIS IS THE MOST IMPORTANT HOLY ASSIGNMENT!!!! ONLY SWITCH ADJECTIVES; PROPOSITIONS ETC: FOR MORE SUITABLE SYNONYMS AND SLIGHT REPHRASING SO THAT IT BETTER FIT THE NEW PROFILE
+- Try to avoid including the names of the respective emotions in the rewritten sentences whenever possible.
 - Preserve the original meaning and information.
 - Use ONLY tone/phrasing to reflect the emotion profile; do NOT add new information. BASICALLY just switch words, adjectives etc. to adjust the tone
 - Even for simple sentences like "Test" or "Hello", provide variations that reflect the emotion.
