@@ -22,11 +22,26 @@ const EXAMPLE_TEXT =
 
 export default function Editor() {
     const historyGraphRef = useRef(null);
-    const initialCommitAdded = useRef(false);
+    const isInitialized = useRef(false);
     useUserIdentification();
 
     // SSOT: Store sentences as the primary data structure
     const [sentences, setSentences] = useState([]);
+
+    useEffect(() => {
+        if (isInitialized.current) {
+            return;
+        }
+        const savedSentences = localStorage.getItem('sentences');
+        if (savedSentences) {
+            setSentences(JSON.parse(savedSentences));
+        }
+        isInitialized.current = true;
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('sentences', JSON.stringify(sentences));
+    }, [sentences]);
 
     // Derived state: text is built from sentences
     const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
@@ -79,14 +94,6 @@ export default function Editor() {
         }
     }, [sentences.length, maxDepth]); // Only depend on length and maxDepth, not _hierarchyMeta
 
-    // Add initial commit on mount
-    useEffect(() => {
-        if (!initialCommitAdded.current && historyGraphRef.current) {
-            historyGraphRef.current.addCommit([], "Initial state");
-            initialCommitAdded.current = true;
-        }
-    }, []);
-
     // Update hierarchy state based on current sentences
     useEffect(() => {
         if (sentences.length === 0) {
@@ -116,7 +123,6 @@ export default function Editor() {
     const verticalContainerRef = useRef(null);
     const topPanelRef = useRef(null); // Ref for the top panel
     const draggingVerticalRef = useRef(false);
-
 
     const addCommit = useCallback((newSentences, title, options = {}) => {
         historyGraphRef.current?.addCommit(newSentences, title, options);

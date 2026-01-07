@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import React, {useRef, useState, useMemo, useImperativeHandle, forwardRef, useEffect} from 'react';
 import { deepCloneSentences } from '../../utils/deepClone';
 import { computeSentenceDiff, hasChanges } from '../../utils/diffUtils';
 import { clearDirtyFlags } from '../../utils/dirtyTracking';
@@ -23,6 +23,43 @@ const HistoryGraph = forwardRef(({
   const [redoStack, setRedoStack] = useState([]);
   const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
   const [commitTitle, setCommitTitle] = useState('');
+  const isHistoryInitialized = useRef(false);
+
+  useEffect(() => {
+    if (isHistoryInitialized.current) {
+      return;
+    }
+    const savedHistory = localStorage.getItem('history');
+    const savedHeadIndex = localStorage.getItem('headIndex');
+    const savedRedoStack = localStorage.getItem('redoStack');
+    // parsed values
+    const parsedHistory = savedHistory ? JSON.parse(savedHistory) : null;
+    const parsedHeadIndex = savedHeadIndex ? JSON.parse(savedHeadIndex) : null;
+    const parsedRedoStack = savedRedoStack ? JSON.parse(savedRedoStack) : null;
+
+    if (savedHistory) {
+      setHistory(parsedHistory);
+    }
+    if (savedHeadIndex) {
+      setHeadIndex(parsedHeadIndex);
+    }
+    if (savedRedoStack) {
+      setRedoStack(parsedRedoStack);
+    }
+    if (parsedHeadIndex === -1 || parsedHeadIndex === null || (parsedHistory && parsedHistory.length <= 0)) {
+      setHeadIndex(-1);
+      setRedoStack([]);
+      setHistory([]);
+      addCommit([], 'Initial commit');
+    }
+    isHistoryInitialized.current = true;
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('history', JSON.stringify(history));
+    localStorage.setItem('headIndex', JSON.stringify(headIndex));
+    localStorage.setItem('redoStack', JSON.stringify(redoStack));
+  }, [history, headIndex, redoStack]);
 
   const commitDiff = useMemo(() => {
     const oldSentences = (headIndex !== null && history[headIndex]) ? history[headIndex].data : [];
