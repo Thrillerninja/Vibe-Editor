@@ -344,6 +344,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           emotion: node.emotion,
           metadata: node.metadata,
           isDirty: node.metadata.isDirty,
+          structure: node.structure, // Add this line
         },
         position: { x: 0, y: 0 },
         type: 'animatedNode',

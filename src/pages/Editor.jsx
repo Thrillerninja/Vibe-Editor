@@ -423,10 +423,20 @@ export default function Editor() {
           patched.metadata.modifiedAt = new Date().toISOString();
           updated.set(id, patched);
           console.log(
-            `[Editor] Marked on dirty path: ${id.substring(0, 8)} (${isContentNode(node) ? 'content' : 'group'})`
+            `[Editor] Marked dirty: ${id.substring(0, 8)}`
           );
         }
       });
+
+      // Explicitly mark root as dirty
+      const root = updated.get(rootId);
+      if (root && !root.metadata.isDirty) {
+        const patchedRoot = cloneNode(root);
+        patchedRoot.metadata.isDirty = true;
+        patchedRoot.metadata.modifiedAt = new Date().toISOString();
+        updated.set(rootId, patchedRoot);
+        console.log(`[Editor] Marked root dirty: ${rootId.substring(0, 8)}`);
+      }
     },
     [rootId]
   );
@@ -567,6 +577,16 @@ export default function Editor() {
 
         // Update or create content nodes
         const newContentIds = sentences.map((sentence, index) => {
+          // Check if this is a list item and extract the marker
+          const listMatch = sentence.match(/^(\d+\.|[a-zA-Z]\.) (.+)$/);
+          let content = sentence;
+          let listMarker = null;
+
+          if (listMatch) {
+            listMarker = listMatch[1]; // "1.", "2.", "a.", etc.
+            content = listMatch[2]; // The actual content after the marker
+          }
+
           if (index < existingContentIdsOrdered.length) {
             const nodeId = existingContentIdsOrdered[index];
             const existingNode = updated.get(nodeId);
@@ -574,15 +594,20 @@ export default function Editor() {
             if (existingNode && existingNode.content !== sentence) {
               const updatedNode = cloneNode(existingNode);
               updatedNode.content = sentence;
+
+              // Store list marker in metadata or structure
+              if (listMarker) {
+                updatedNode.structure = {
+                  type: 'list-item',
+                  marker: listMarker,
+                  content: content
+                };
+              }
+
               updatedNode.metadata.isDirty = true;
               updatedNode.metadata.modifiedAt = new Date().toISOString();
               updated.set(nodeId, updatedNode);
 
-              console.log(
-                `[Editor] Updated content node ${nodeId.substring(0, 8)}`
-              );
-
-              // Propagate dirty flag up
               markDirtyUpToRoot(nodeId, updated);
             }
 
@@ -593,10 +618,17 @@ export default function Editor() {
           const nodeId = uuidv4();
           const newNode = createContentNode(
             nodeId,
-            'sentence',
+            listMarker ? 'list-item' : 'sentence',
             sentence,
             contentParentId,
-            { metadata: { isDirty: true } }
+            {
+              metadata: { isDirty: true },
+              structure: listMarker ? {
+                type: 'list-item',
+                marker: listMarker,
+                content: content
+              } : undefined
+            }
           );
 
           newNode.hierarchy.level = contentLevel;
@@ -652,7 +684,8 @@ export default function Editor() {
         // Root children must be:
         // - top-level groups only (if any groups exist)
         // - otherwise all content nodes
-        const newRoot = cloneNode(root);
+        const updatedRoot = updated.get(rootId) || root; // Get the potentially-marked root
+        const newRoot = cloneNode(updatedRoot);
         newRoot.hierarchy.childIds =
           topGroupIds.length > 0 ? topGroupIds : newContentIds;
         updated.set(rootId, newRoot);
@@ -731,6 +764,7 @@ export default function Editor() {
         console.log('[Editor] Debounce timer fired - processing text');
         processTextToNodes(newText);
       }, 500);
+      console.log(nodeMap.entries);
     },
     [text, processTextToNodes]
   );
@@ -1040,7 +1074,7 @@ export default function Editor() {
    */
   useEffect(() => {
     const root = nodeMap.get(rootId);
-    if (!root || hierarchyState !== 'generated') return;
+    if (!root) return;
 
     // Get all groups sorted by level
     const groupNodes = Array.from(nodeMap.values())
@@ -1083,7 +1117,7 @@ export default function Editor() {
           i + 1,
           currentParent,
           [],
-          { metadata: { isDirty: false } }  // ✅ Don't mark dirty
+          { metadata: { isDirty: false } }
         );
         updated.set(newGroupId, newGroup);
         newGroupIds.push(newGroupId);
@@ -1270,14 +1304,14 @@ export default function Editor() {
                   }}
                 >
                   {isGenerating ? (
-                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                   ) : (
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
                   )}
                 </button>
               </div>
@@ -1344,10 +1378,47 @@ function parseTextToSentences(text) {
     const trimmed = line.trim();
     if (!trimmed) return;
 
-    const parts = trimmed.split(/(?<=[.!?])\s+/);
-    sentences.push(
-      ...parts.filter(part => part.trim()).map(part => part.trim())
-    );
+    // Split on sentence punctuation, but preserve numbered lists
+    const parts = [];
+    let current = '';
+    let i = 0;
+
+    while (i < trimmed.length) {
+      const char = trimmed[i];
+      current += char;
+
+      // Check for sentence ending punctuation
+      if (char === '.' || char === '!' || char === '?') {
+        // Look for following whitespace
+        let spaceStart = i + 1;
+        while (spaceStart < trimmed.length && /\s/.test(trimmed[spaceStart])) {
+          spaceStart++;
+        }
+
+        // If we have whitespace and more content after
+        if (spaceStart > i + 1 && spaceStart < trimmed.length) {
+          // Check if this is NOT a list marker
+          // List markers: "1.", "2.", "a.", "A.", etc. at the start of current segment
+          const currentTrimmed = current.trim();
+          const isListMarker = /^[0-9]+\.$|^[a-zA-Z]\.$/.test(currentTrimmed);
+
+          if (!isListMarker) {
+            // This is a sentence ending, split here
+            parts.push(current.trim());
+            current = '';
+            i = spaceStart - 1; // Position before next content (will be incremented)
+          }
+        }
+      }
+      i++;
+    }
+
+    // Add remaining content
+    if (current.trim()) {
+      parts.push(current.trim());
+    }
+
+    sentences.push(...parts.filter(part => part.length > 0));
   });
 
   return sentences.filter(s => s.length > 0);

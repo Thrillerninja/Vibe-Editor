@@ -186,7 +186,7 @@ function applyInlineElements(content, inlineElements) {
  * @param {number} [structure.headingLevel] - H1-H6 level
  * @param {string} [structure.listType] - 'ordered'|'unordered'|'task'
  * @param {number} [structure.listIndentLevel] - Nesting depth
- * @param {string} [structure.listMarker] - Custom list marker
+ * @param {string} [structure.marker] - Custom list marker (e.g., "3.")
  * @param {boolean} [structure.taskChecked] - Task checkbox state
  * @param {string} [structure.codeLanguage] - Language identifier
  * @param {number} [structure.quoteDepth] - Blockquote nesting level
@@ -203,7 +203,7 @@ function buildMarkdownFromStructure(content, structure, inlineElements) {
     } else if (structure.listType) {
       const indent = '  '.repeat(structure.listIndentLevel || 0);
       let marker =
-        structure.listMarker ||
+        structure.marker ||
         (structure.listType === 'ordered' ? '1.' : '-');
 
       if (structure.listType === 'task') {
@@ -238,6 +238,80 @@ function buildMarkdownFromStructure(content, structure, inlineElements) {
  * @returns {React.ReactElement} Rendered markdown content
  */
 function renderNodeContent(content, type, structure, inlineElements) {
+  // Special handling for list items with custom markers
+  if (structure?.marker) {
+    const markdown = applyInlineElements(content, inlineElements);
+    
+    return (
+      <div
+        style={{
+          width: '100%',
+          lineHeight: 1.4,
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '0.5em',
+        }}
+      >
+        <span
+          style={{
+            flexShrink: 0,
+            fontFamily: 'monospace',
+            fontWeight: 500,
+            color: '#4b5563',
+          }}
+        >
+          {structure.marker}
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <ReactMarkdown
+            components={{
+              p: ({ children }) => <span>{children}</span>,
+              a: ({ children, href }) => (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={e => e.stopPropagation()}
+                  style={{
+                    color: '#2563eb',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {children}
+                </a>
+              ),
+              strong: ({ children }) => (
+                <strong style={{ fontWeight: 700 }}>{children}</strong>
+              ),
+              em: ({ children }) => (
+                <em style={{ fontStyle: 'italic' }}>{children}</em>
+              ),
+              code: ({ children }) => (
+                <code
+                  style={{
+                    backgroundColor: '#f3f4f6',
+                    padding: '2px 4px',
+                    borderRadius: '2px',
+                    fontSize: '0.9em',
+                    fontFamily: 'monospace',
+                  }}
+                >
+                  {children}
+                </code>
+              ),
+            }}
+            skipHtml
+          >
+            {markdown}
+          </ReactMarkdown>
+        </div>
+      </div>
+    );
+  }
+
+  // Original markdown rendering for non-list items
   const markdown = buildMarkdownFromStructure(
     content,
     structure,
