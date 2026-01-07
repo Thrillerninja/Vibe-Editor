@@ -38,6 +38,30 @@ function getBorderColor(emotion, intensity, type) {
 }
 
 /**
+ * Gets significant emotions from profile (above threshold)
+ * Returns array of {emotion, intensity, color} sorted by intensity descending
+ */
+function getSignificantEmotions(profile, threshold = 30) {
+  const normalized = normalizeEmotionProfile(profile);
+  const significant = [];
+
+  for (const emotion of EMOTION_AXES) {
+    const intensity = normalized[emotion] || 0;
+    if (intensity >= threshold) {
+      const colors = EMOTION_COLORS[emotion];
+      // Choose color based on intensity
+      const color = colors ?
+        (intensity >= 66 ? colors.strong : intensity >= 33 ? colors.medium : colors.light) :
+        '#e5e7eb';
+      significant.push({ emotion, intensity, color });
+    }
+  }
+
+  // Sort by intensity descending
+  return significant.sort((a, b) => b.intensity - a.intensity);
+}
+
+/**
  * AnimatedNodeComponent - Renders a single node in the tree
  */
 export function AnimatedNodeComponent({ id, data }) {
@@ -794,26 +818,30 @@ export function AnimatedNodeComponent({ id, data }) {
     document.body
   ) : null;
 
+  // Get significant emotions for badge display, excluding the dominant one
+  const significantEmotions = getSignificantEmotions(emotionProfile, 1)
+    .filter(e => e.emotion !== emotion);
+
   return (
     <>
       <motion.div
-        className={nodeModified ? "animated-border" : ""}
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
         style={{
           padding: 12,
-          borderRadius: 8,
+          borderRadius: 24,
           color: "black",
           textAlign: "center",
           cursor: "pointer",
-          width: 200,
+          width: 220,
           background: emotionColor,
-          border: nodeModified ? `2px solid ${border}` : '2px solid transparent',
+          border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
           position: 'relative',
           fontFamily:
             '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
           userSelect: 'none',
-          transition: 'box-shadow 0.2s',
+          transition: 'box-shadow 0.2s, transform 0.2s',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
         }}
       >
         <Handle type="target" position={Position.Left} />
@@ -824,7 +852,7 @@ export function AnimatedNodeComponent({ id, data }) {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '8px 32px 8px 8px',
+            padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
             textAlign: 'center',
             fontSize: 13,
             fontWeight: data.type === 'root' ? 600 : 500,
@@ -837,8 +865,72 @@ export function AnimatedNodeComponent({ id, data }) {
           {data.label}{"\n"}
         </div>
         {nodeModified && (
-          <div className="modified-indicator" title="This node has been modified.">
-            !
+          <>
+            <div className="modified-indicator" title="This node has been modified.">
+              !
+            </div>
+            {/* SVG based animated border for proper rounded corners */}
+            <svg className="animated-border-svg">
+              <rect
+                x="3" y="3"
+                width="calc(100% - 6px)"
+                height="calc(100% - 6px)"
+                className="animated-border-rect"
+              />
+            </svg>
+          </>
+        )}
+        {/* Emotion badges - show additional emotions */}
+        {significantEmotions.length > 0 && (
+          <div
+            style={{
+              position: 'absolute',
+              bottom: -20,
+              right: -20,
+              display: 'flex',
+              gap: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              pointerEvents: 'none',
+              zIndex: 10,
+            }}
+            title={significantEmotions
+              .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
+              .join('\n')}
+          >
+            {significantEmotions.slice(0, 3).map((emotionData, idx) => (
+              <div
+                key={emotionData.emotion}
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  backgroundColor: emotionData.color,
+                  border: '4px solid #fff',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                }}
+              />
+            ))}
+            {significantEmotions.length > 3 && (
+              <div
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: '50%',
+                  backgroundColor: '#9ca3af',
+                  border: '4px solid #fff',
+                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: 16,
+                  fontWeight: 700,
+                  color: '#fff',
+                }}
+              >
+                +{significantEmotions.length - 3}
+              </div>
+            )}
           </div>
         )}
       </motion.div>
