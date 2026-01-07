@@ -136,11 +136,11 @@ const HistoryGraph = forwardRef(({
 
   const handleConfirmCommit = () => {
     if (hasChanges(commitDiff)) {
-        // If there are changes, clear all dirty flags and commit
-        let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
-        cleaned = clearDirtyFlags(cleaned);
-        addCommit(cleaned, commitTitle || 'Manual commit', { isManual: true });
-        onCommitComplete(cleaned);
+      // If there are changes, clear all dirty flags and commit
+      let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
+      cleaned = clearDirtyFlags(cleaned);
+      addCommit(cleaned, commitTitle || 'Manual commit', { isManual: true });
+      onCommitComplete(cleaned);
     }
     setIsCommitPreviewOpen(false);
     setCommitTitle('');
@@ -435,9 +435,9 @@ const HistoryGraph = forwardRef(({
               viewBox={`0 0 ${finalSvgWidth} ${svgHeight}`}
             >
               <defs>
-                  <pattern id="stripes" patternUnits="userSpaceOnUse" width="4" height="4">
-                      <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
-                  </pattern>
+                <pattern id="stripes" patternUnits="userSpaceOnUse" width="4" height="4">
+                  <path d="M-1,1 l2,-2 M0,4 l4,-4 M3,5 l2,-2" style={{ stroke: '#ffffff', strokeWidth: 1, opacity: 0.7 }} />
+                </pattern>
               </defs>
               {/* background horizontal lane lines */}
               {laneYs.map((y, li) => (
@@ -496,35 +496,35 @@ const HistoryGraph = forwardRef(({
 
       {/* Custom tooltip rendered absolutely within the container */}
       {tooltip.visible && tooltip.node && (
-          <div
-              className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
-              style={{
-                  left: tooltip.x,
-                  top: tooltip.y,
-                  transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -120%)`,
-                  marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
-                  whiteSpace: 'normal',
-              }}
-              role="status"
-              aria-hidden={false}
-          >
-              <div className="flex items-start gap-2">
+        <div
+          className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
+          style={{
+            left: tooltip.x,
+            top: tooltip.y,
+            transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -120%)`,
+            marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
+            whiteSpace: 'normal',
+          }}
+          role="status"
+          aria-hidden={false}
+        >
+          <div className="flex items-start gap-2">
             <span style={{
-                width: 10,
-                height: 10,
-                borderRadius: 6,
-                background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
-                display: 'inline-block',
-                marginTop: 3
+              width: 10,
+              height: 10,
+              borderRadius: 6,
+              background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
+              display: 'inline-block',
+              marginTop: 3
             }} aria-hidden />
-                  <div>
-                      <div
-                          className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
-                      <div
-                          className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
-                  </div>
-              </div>
+            <div>
+              <div
+                className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
+              <div
+                className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
+            </div>
           </div>
+        </div>
       )}
 
       {/* Custom confirmation modal for revert */}
@@ -541,9 +541,19 @@ const HistoryGraph = forwardRef(({
           <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
             {/* backdrop */}
             <div className="absolute inset-0 bg-black opacity-40" onClick={cancelRevert} />
-            <div className="relative bg-white rounded-lg shadow-lg max-w-3xl w-full max-h-[90vh] flex flex-col">
+            <div
+              className="relative max-w-3xl w-full max-h-[90vh] flex flex-col"
+              style={{
+                background: "rgba(255, 255, 255, 0.9)",
+                backdropFilter: "saturate(180%) blur(20px)",
+                WebkitBackdropFilter: "saturate(180%) blur(20px)",
+                borderRadius: "24px",
+                border: "1px solid rgba(255, 255, 255, 0.5)",
+                boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)"
+              }}
+            >
               {/* Header */}
-              <div className="p-4 border-b border-gray-200">
+              <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="text-sm font-semibold text-gray-900">Restore this edit?</div>
@@ -562,13 +572,46 @@ const HistoryGraph = forwardRef(({
               </div>
 
               {/* Footer */}
-              <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <div className="p-4 flex justify-end gap-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
                 <button onClick={cancelRevert}
-                  className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: 'rgba(0,0,0,0.05)',
+                    color: '#374151',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)'}
+                >
                   Cancel
                 </button>
                 <button onClick={confirmRevert}
-                  className="px-3 py-1.5 rounded-md text-sm bg-red-600 text-white hover:bg-red-700">
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#ef4444',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '12px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    fontSize: '13px',
+                    transition: 'all 0.2s ease',
+                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                  }}
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.backgroundColor = '#dc2626';
+                    e.currentTarget.style.transform = 'translateY(-1px)';
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.backgroundColor = '#ef4444';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                  }}
+                >
                   Restore
                 </button>
               </div>
@@ -579,36 +622,79 @@ const HistoryGraph = forwardRef(({
 
       {isCommitPreviewOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
-            <div className="relative bg-white rounded-lg shadow-lg max-w-xl w-full max-h-[80vh] flex flex-col">
-                <div className="p-4 border-b border-gray-200">
-                    <div className="text-sm font-semibold text-gray-900">Commit preview</div>
-                    <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
-                    <div className="mt-4">
-                        <label htmlFor="commit-title" className="block text-xs font-medium text-gray-700 mb-1">Commit title:</label>
-                        <input
-                            id="commit-title"
-                            type="text"
-                            value={commitTitle}
-                            onChange={(e) => setCommitTitle(e.target.value)}
-                            placeholder="Commit title (optional)"
-                            className="w-full p-2 border border-gray-300 rounded-md text-sm text-gray-900"
-                        />
-                    </div>
-                </div>
-                <div className="flex-1 overflow-auto p-4">
-                    <span className="text-xs text-gray-500">Changes since last commit:</span>
-                    <div className="mt-2">
-                        <DiffView diff={commitDiff} />
-                    </div>
-                </div>
-                <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
-                    <button onClick={cancelCommitPreview}
-                        className="px-3 py-1.5 rounded-md text-sm bg-gray-100 text-gray-800 hover:bg-gray-200">Cancel</button>
-                    <button onClick={handleConfirmCommit}
-                        className="px-3 py-1.5 rounded-md text-sm bg-black text-white hover:bg-gray-800">Commit</button>
-                </div>
+          <div className="absolute inset-0 bg-black opacity-40" onClick={cancelCommitPreview} />
+          <div
+            className="relative max-w-xl w-full max-h-[80vh] flex flex-col"
+            style={{
+              background: "rgba(255, 255, 255, 0.9)",
+              backdropFilter: "saturate(180%) blur(20px)",
+              WebkitBackdropFilter: "saturate(180%) blur(20px)",
+              borderRadius: "24px",
+              border: "1px solid rgba(255, 255, 255, 0.5)",
+              boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)"
+            }}
+          >
+            <div className="p-4" style={{ borderBottom: "1px solid rgba(0,0,0,0.06)" }}>
+              <div className="text-sm font-semibold text-gray-900">Commit preview</div>
+              <div className="text-xs text-gray-600 mt-1">Review changes before committing</div>
+              <div className="mt-4">
+                <label htmlFor="commit-title" className="block text-xs font-medium text-gray-700 mb-1">Commit title:</label>
+                <input
+                  id="commit-title"
+                  type="text"
+                  value={commitTitle}
+                  onChange={(e) => setCommitTitle(e.target.value)}
+                  placeholder="Commit title (optional)"
+                  className="w-full p-2 border border-gray-300 rounded-md text-sm text-gray-900"
+                />
+              </div>
             </div>
+            <div className="flex-1 overflow-auto p-4">
+              <span className="text-xs text-gray-500">Changes since last commit:</span>
+              <div className="mt-2">
+                <DiffView diff={commitDiff} />
+              </div>
+            </div>
+            <div className="p-4 flex justify-end gap-2" style={{ borderTop: "1px solid rgba(0,0,0,0.06)" }}>
+              <button onClick={cancelCommitPreview}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: 'rgba(0,0,0,0.05)',
+                  color: '#374151',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  transition: 'all 0.2s ease'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)'}
+              >Cancel</button>
+              <button onClick={handleConfirmCommit}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#111827',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontWeight: 500,
+                  fontSize: '13px',
+                  transition: 'all 0.2s ease',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                }}
+              >Commit</button>
+            </div>
+          </div>
         </div>
       )}
     </div>
