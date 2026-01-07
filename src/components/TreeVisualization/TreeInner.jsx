@@ -175,7 +175,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
-  const { checkReorderDrop, findClosestSibling } = useReordering();
+  const { checkReorderDrop, findClosestSibling, isLeafNode } = useReordering();
   const {
     flowToScreenPosition,
     setCenter,
@@ -283,8 +283,8 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   );
 
   /**
-   * Reorder a node relative to a sibling (same parent)
-   * Validates and updates hierarchy
+   * Reorder a node relative to a sibling
+   * Validates and updates hierarchy, marks affected nodes as dirty
    *
    * @param {string} nodeId - Node to reorder
    * @param {string} targetSiblingId - Target sibling
@@ -313,49 +313,55 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         return false;
       }
 
-      const sameParent = node.hierarchy.parentId === sibling.hierarchy.parentId;
-      console.log(
-        `[TreeInner] Same parent? ${sameParent} (${node.hierarchy.parentId} vs ${sibling.hierarchy.parentId})`
-      );
+      const targetParentId = sibling.hierarchy.parentId;
+      const oldParentId = node.hierarchy.parentId;
 
-      if (!sameParent) {
-        console.error('[TreeInner] ❌ Different parents - not reordering');
+      // ===== REMOVE FROM OLD PARENT =====
+      if (oldParentId) {
+        const oldParent = updated.get(oldParentId);
+        if (oldParent) {
+          const oldParentClone = cloneNode(oldParent);
+          oldParentClone.hierarchy.childIds = oldParentClone.hierarchy.childIds.filter(
+            (id) => id !== nodeId
+          );
+          oldParentClone.metadata.isDirty = true;
+          oldParentClone.metadata.modifiedAt = new Date().toISOString();
+          updated.set(oldParentId, oldParentClone);
+
+          // Mark all ancestors as dirty
+          let currentParentId = oldParentId;
+          while (currentParentId) {
+            const parent = updated.get(currentParentId);
+            if (!parent) break;
+            const parentClone = cloneNode(parent);
+            parentClone.metadata.isDirty = true;
+            parentClone.metadata.modifiedAt = new Date().toISOString();
+            updated.set(currentParentId, parentClone);
+            currentParentId = parent.hierarchy.parentId;
+          }
+
+          // Remove parent if it has no leaves attached
+          if (oldParentClone.hierarchy.childIds.length === 0) {
+            deleteNode(oldParentId);
+            updated.delete(oldParentId);
+            console.log(`[TreeInner] Removed empty parent: ${oldParentId.substring(0, 8)}`);
+          }
+        }
+      }
+
+      // ===== ADD TO NEW PARENT =====
+      const newParent = updated.get(targetParentId);
+      if (!newParent) {
+        console.error(`[TreeInner] ❌ Target parent ${targetParentId} not found`);
         return false;
       }
 
-      const parentId = node.hierarchy.parentId;
-      const parent = updated.get(parentId);
-
-      if (!parent) {
-        console.error(`[TreeInner] ❌ Parent ${parentId} not found`);
-        return false;
-      }
-
-      console.log(
-        `[TreeInner] Parent found: ${parentId.substring(0, 8)}, current children: [${parent.hierarchy.childIds
-          .slice(0, 3)
-          .map((id) => id.substring(0, 8))
-          .join(', ')}]`
-      );
-
-      // ===== PERFORM REORDER =====
-      const parentClone = cloneNode(parent);
-      const childIds = [...parentClone.hierarchy.childIds];
-
-      const nodeIndex = childIds.indexOf(nodeId);
-      if (nodeIndex === -1) {
-        console.error(`[TreeInner] ❌ Node not in parent's children`);
-        return false;
-      }
-
-      console.log(`[TreeInner] Node at index ${nodeIndex}, removing...`);
-      childIds.splice(nodeIndex, 1);
+      const newParentClone = cloneNode(newParent);
+      const childIds = [...newParentClone.hierarchy.childIds];
 
       const siblingIndex = childIds.indexOf(targetSiblingId);
       if (siblingIndex === -1) {
-        console.error(
-          `[TreeInner] ❌ Sibling not in parent's children after removal`
-        );
+        console.error(`[TreeInner] ❌ Sibling not in target parent's children`);
         return false;
       }
 
@@ -365,26 +371,40 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       childIds.splice(insertIndex, 0, nodeId);
+      newParentClone.hierarchy.childIds = childIds;
+      newParentClone.metadata.isDirty = true;
+      newParentClone.metadata.modifiedAt = new Date().toISOString();
+      updated.set(targetParentId, newParentClone);
 
-      console.log(
-        `[TreeInner] New order: [${childIds
-          .slice(0, 3)
-          .map((id) => id.substring(0, 8))
-          .join(', ')}]`
-      );
+      // Mark all ancestors of new parent as dirty
+      let currentParentId = targetParentId;
+      while (currentParentId) {
+        const parent = updated.get(currentParentId);
+        if (!parent) break;
+        const parentClone = cloneNode(parent);
+        parentClone.metadata.isDirty = true;
+        parentClone.metadata.modifiedAt = new Date().toISOString();
+        updated.set(currentParentId, parentClone);
+        currentParentId = parent.hierarchy.parentId;
+      }
 
-      // ===== UPDATE PARENT =====
-      parentClone.hierarchy.childIds = childIds;
-      parentClone.metadata.modifiedAt = new Date().toISOString();
-      updated.set(parentId, parentClone);
-
-      // ===== MARK NODE DIRTY =====
+      // ===== UPDATE NODE =====
       const nodeClone = cloneNode(node);
+      nodeClone.hierarchy.parentId = targetParentId;
+      nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
       nodeClone.metadata.isDirty = true;
       nodeClone.metadata.modifiedAt = new Date().toISOString();
       updated.set(nodeId, nodeClone);
 
-      console.log('[TreeInner] ✅ Reorder complete: parent and node updated');
+      // ===== MARK SIBLING AND AFFECTED NODES AS DIRTY =====
+      const siblingClone = cloneNode(sibling);
+      siblingClone.metadata.isDirty = true;
+      siblingClone.metadata.modifiedAt = new Date().toISOString();
+      updated.set(targetSiblingId, siblingClone);
+
+      console.log(
+        `[TreeInner] ✅ Reorder complete: moved to parent ${targetParentId.substring(0, 8)}`
+      );
 
       treeChangedRef.current = true;
       onTreeUpdate(updated);
@@ -640,45 +660,24 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           height: closest.node.height ?? 60,
         });
 
+        console.log(
+          `${LOG_PREFIX.DRAG} 🔵 REORDER INDICATOR ACTIVE:`,
+          `\n  Target: ${closest.node.id}`,
+          `\n  Insert ${closest.insertBefore ? 'BEFORE' : 'AFTER'}`,
+          `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`
+        );
+
         setReorderIndicator({
           x: screenPos.x + screenSize.width / 2,
           y: screenPos.y + (closest.insertBefore ? 0 : screenSize.height),
           width: screenSize.width,
           isAbove: closest.insertBefore,
         });
-        setReparentTarget(null);
       } else {
-        // Check for reparent (different parent)
         setReorderIndicator(null);
-
-        const target = findReparentTarget(
-          rfNode.id,
-          rfNode.position.x,
-          rfNode.position.y,
-          nodeMapRef.current
-        );
-
-        if (target) {
-          const screenPos = toScreenPoint({
-            x: target.position.x,
-            y: target.position.y,
-          });
-          const screenSize = toScreenSize({
-            width: target.width || 200,
-            height: target.height || 60,
-          });
-
-          setReparentTarget({
-            node: target,
-            screenPosition: screenPos,
-            screenSize: screenSize,
-          });
-        } else {
-          setReparentTarget(null);
-        }
       }
     },
-    [physics, findClosestSibling, findReparentTarget, toScreenPoint, toScreenSize]
+    [physics, findClosestSibling, toScreenPoint, toScreenSize, isLeafNode]
   );
 
   /**
@@ -688,14 +687,19 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    */
   const onNodeDragStop = useCallback(
     (event, rfNode) => {
+      console.log(`${LOG_PREFIX.DRAG} Drag stop: ${rfNode.id}`);
       isDraggingRef.current = false;
-      setReorderIndicator(null);
-      setReparentTarget(null);
+        setReorderIndicator(null);
       animateNextRef.current = true;
 
-      let actionTaken = false;
+      // // Only allow reordering for leaf nodes
+      // if (!isLeafNode(rfNode.id, rfRef.current?.getNodes() || [])) {
+      //   console.log(`${LOG_PREFIX.DRAG} Leaf node check failed, skipping reorder`);
+      //   physics.stop();
+      //   return;
+      // }
 
-      // Try reorder first (tighter threshold)
+      // Check for reordering
       const reorderInfo = checkReorderDrop(
         rfNode.id,
         rfNode.position.y,
@@ -708,39 +712,14 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
-        actionTaken = true;
+
+        
       } else {
-        // Try reparent
-        const target = findReparentTarget(
-          rfNode.id,
-          rfNode.position.x,
-          rfNode.position.y,
-          nodeMapRef.current
-        );
-
-        if (target) {
-          reparentNode(rfNode.id, target.id);
-          actionTaken = true;
-        }
+        console.log(`${LOG_PREFIX.DRAG} No reorder target found`);
       }
-
-      physics.stop();
-
-      // Snap back if no action
-      if (!actionTaken) {
-        const originalPos = originalNodePositionsRef.current[rfNode.id];
-        if (originalPos) {
-          setNodes((nds) =>
-            nds.map((n) =>
-              n.id === rfNode.id ? { ...n, position: originalPos } : n
-            )
-          );
-        }
-      }
-
-      delete originalNodePositionsRef.current[rfNode.id];
+        physics.stop();
     },
-    [checkReorderDrop, findReparentTarget, reorderNode, reparentNode, physics, setNodes]
+    [checkReorderDrop, physics, onTreeUpdate, isLeafNode]
   );
 
   /**
@@ -984,65 +963,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
             }}
           >
             Reorder {reorderIndicator.isAbove ? '↑' : '↓'}
-          </div>
-        </div>
-      )}
-
-      {/* Reparent Indicator */}
-      {reparentTarget && (
-        <div
-          style={{
-            position: 'fixed',
-            left: reparentTarget.screenPosition.x,
-            top: reparentTarget.screenPosition.y,
-            width: reparentTarget.screenSize.width || 200,
-            height: reparentTarget.screenSize.height || 60,
-            border: '3px solid #10b981',
-            borderRadius: 10,
-            pointerEvents: 'none',
-            zIndex: 9999,
-            boxShadow: '0 0 20px rgba(16, 185, 129, 0.6)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-          }}
-        >
-          {/* Corner indicators */}
-          {[
-            { top: -8, left: -8 },
-            { top: -8, right: -8 },
-            { bottom: -8, left: -8 },
-            { bottom: -8, right: -8 },
-          ].map((pos, i) => (
-            <div
-              key={i}
-              style={{
-                position: 'absolute',
-                ...pos,
-                width: 16,
-                height: 16,
-                backgroundColor: '#10b981',
-                borderRadius: '50%',
-                boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)',
-              }}
-            />
-          ))}
-
-          {/* Label */}
-          <div
-            style={{
-              position: 'absolute',
-              top: -28,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backgroundColor: '#10b981',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            Drop to attach here
           </div>
         </div>
       )}
