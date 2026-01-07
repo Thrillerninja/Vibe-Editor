@@ -819,7 +819,7 @@ export function AnimatedNodeComponent({ id, data }) {
   ) : null;
 
   // Get significant emotions for badge display, excluding the dominant one
-  const significantEmotions = getSignificantEmotions(emotionProfile, 1)
+  const significantEmotions = getSignificantEmotions(emotionProfile, 30)
     .filter(e => e.emotion !== emotion);
 
   return (
