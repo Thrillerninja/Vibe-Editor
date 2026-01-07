@@ -1,0 +1,225 @@
+/**
+ * Tree Visualization Styles
+ */
+
+.tree-pane {
+  flex: 1;
+  min-width: 400px;
+  height: 100%;
+  border-left: 1px solid #e5e7eb;
+  background: #f9fafb;
+  overflow: hidden;
+}
+
+.tree-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #9ca3af;
+  font-size: 14px;
+}
+
+/* ReactFlow overrides */
+.react-flow {
+  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+}
+
+.react-flow__minimap {
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid #e5e7eb;
+}
+
+.react-flow__controls {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+/* Node Styles */
+.animated-node {
+  background: white;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 180px;
+  cursor: pointer;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: all 0.2s ease;
+}
+
+.animated-node:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.animated-node.selected {
+  border-color: #3b82f6;
+  background: #eff6ff;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+}
+
+.animated-node.dragging {
+  opacity: 0.7;
+  cursor: grabbing;
+}
+
+/* Node Content */
+.node-type-icon {
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.node-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+  margin-bottom: 6px;
+}
+
+.node-emotion {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.node-emotion span:first-child {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.node-metadata {
+  font-size: 10px;
+  color: #9ca3af;
+  margin-bottom: 6px;
+  display: flex;
+  gap: 8px;
+}
+
+/* Modified Indicator */
+.modified-indicator {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fbbf24;
+  border-radius: 50%;
+  font-size: 12px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  z-index: 10;
+}
+
+/* Action Buttons */
+.node-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.action-btn {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+  font-weight: 500;
+}
+
+.action-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.action-btn:active {
+  transform: translateY(0);
+}
+
+/* Reparent Indicator */
+.reparent-indicator {
+  pointer-events: none;
+  animation: pulse 0.6s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+/* Handles */
+.react-flow__handle {
+  width: 8px;
+  height: 8px;
+  background: #3b82f6;
+  border: 2px solid white;
+  border-radius: 50%;
+}
+
+.react-flow__handle:hover {
+  background: #1e40af;
+}
+
+/* Edges */
+.react-flow__edge-path {
+  stroke: #9ca3af;
+  stroke-width: 2;
+}
+
+.react-flow__edge:hover .react-flow__edge-path {
+  stroke: #3b82f6;
+  stroke-width: 3;
+}
+
+/* Selection indicator */
+.react-flow__node.selected {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animated-node {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .tree-pane {
+    min-width: 300px;
+  }
+
+  .animated-node {
+    min-width: 150px;
+    padding: 10px;
+  }
+
+  .node-label {
+    font-size: 12px;
+  }
+}

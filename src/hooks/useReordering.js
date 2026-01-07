@@ -1,131 +1,90 @@
-/**
- * Hook for reordering sibling nodes
- * Allows nodes to be reordered within the same parent
- */
-
 import { useCallback } from 'react';
 import { useReactFlow } from 'reactflow';
 import posthog from '../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
 
-const REORDER_THRESHOLD = 60; // pixels - tighter threshold
+const REORDER_THRESHOLD = 60;
 
 export function useReordering() {
-  const { getNodes, getEdges, setEdges } = useReactFlow();
+  const { getNodes, getEdges } = useReactFlow();
 
   /**
-   * Get parent of a node
+   * Determines if a node is a leaf node (sentence, not a group)
    */
-  const getParent = useCallback(
-    (nodeId) => {
-      const edges = getEdges();
-      const edge = edges.find((e) => e.target === nodeId);
-      return edge?.source || null;
-    },
-    [getEdges]
-  );
-
-  /**
-   * Build map of parent -> children in order
-   */
-  const buildParentChildrenMap = useCallback(() => {
-    const map = new Map();
-    getEdges().forEach((edge) => {
-      if (!map.has(edge.source)) {
-        map.set(edge.source, []);
-      }
-      map.get(edge.source).push(edge.target);
-    });
-    return map;
-  }, [getEdges]);
-
-  /**
-   * Calculate the depth/level of each node in the tree
-   */
-  const getNodeDepths = useCallback(() => {
-    const depths = new Map();
+  const isLeafNode = useCallback((nodeId, nodes) => {
+    const node = nodes.find(n => n.id === nodeId);
+    // A leaf node is one that is a sentence (data.type === 'sentence' or no children)
+    if (!node) return false;
+    
     const edges = getEdges();
-
-    // Find root nodes (nodes with no incoming edges)
-    const allTargets = new Set(edges.map(e => e.target));
-    const allSources = new Set(edges.map(e => e.source));
-    const roots = [...allSources].filter(id => !allTargets.has(id));
-
-    // BFS to calculate depths
-    const queue = roots.map(id => ({ id, depth: 0 }));
-    const visited = new Set();
-
-    while (queue.length > 0) {
-      const { id, depth } = queue.shift();
-
-      if (visited.has(id)) continue;
-      visited.add(id);
-      depths.set(id, depth);
-
-      // Add children to queue
-      const children = edges.filter(e => e.source === id).map(e => e.target);
-      for (const childId of children) {
-        queue.push({ id: childId, depth: depth + 1 });
-      }
-    }
-
-    return depths;
+    const hasChildren = edges.some(e => e.source === nodeId);
+    
+    return !hasChildren; // Leaf if no outgoing edges
   }, [getEdges]);
 
   /**
-   * Get all nodes at the same level (depth) as the given node
+   * Get all leaf nodes at the same hierarchical level as the dragged node
    */
-  const getNodesAtSameLevel = useCallback(
+  const getLeafNodesAtSameLevel = useCallback(
     (nodeId) => {
-      const depths = getNodeDepths();
-      const nodeDepth = depths.get(nodeId);
+      const nodes = getNodes();
+      const edges = getEdges();
+      
+      // Get depth of dragged node
+      const depths = new Map();
+      const allTargets = new Set(edges.map(e => e.target));
+      const allSources = new Set(edges.map(e => e.source));
+      const roots = [...allSources].filter(id => !allTargets.has(id));
 
-      if (nodeDepth === undefined) return [];
+      const queue = roots.map(id => ({ id, depth: 0 }));
+      const visited = new Set();
 
-      // Find all nodes at the same depth, excluding the dragged node
-      const nodesAtLevel = [];
-      for (const [id, depth] of depths.entries()) {
-        if (depth === nodeDepth && id !== nodeId) {
-          nodesAtLevel.push(id);
+      while (queue.length > 0) {
+        const { id, depth } = queue.shift();
+        if (visited.has(id)) continue;
+        visited.add(id);
+        depths.set(id, depth);
+
+        const children = edges.filter(e => e.source === id).map(e => e.target);
+        for (const childId of children) {
+          queue.push({ id: childId, depth: depth + 1 });
         }
       }
 
-      return nodesAtLevel;
+      const draggedDepth = depths.get(nodeId);
+      if (draggedDepth === undefined) return [];
+
+      // Find all leaf nodes at same depth (excluding dragged node)
+      const leafNodesAtLevel = [];
+      for (const [id, depth] of depths.entries()) {
+        if (depth === draggedDepth && id !== nodeId) {
+          if (isLeafNode(id, nodes)) {
+            leafNodesAtLevel.push(id);
+          }
+        }
+      }
+
+      return leafNodesAtLevel;
     },
-    [getNodeDepths]
+    [getNodes, getEdges, isLeafNode]
   );
 
   /**
-   * Get siblings of a node (same parent)
-   */
-  const getSiblings = useCallback(
-    (nodeId) => {
-      const parent = getParent(nodeId);
-      if (!parent) return [];
-
-      const parentChildrenMap = buildParentChildrenMap();
-      return (parentChildrenMap.get(parent) || []).filter(
-        (id) => id !== nodeId
-      );
-    },
-    [getParent, buildParentChildrenMap]
-  );
-
-  /**
-   * Find closest node at same level during drag for indicator
-   * Now supports cross-parent reordering on same level
+   * Find closest leaf node at same level during drag
    */
   const findClosestSibling = useCallback(
     (draggedId, currentY) => {
       const nodes = getNodes();
-      const nodesAtLevel = getNodesAtSameLevel(draggedId);
+      const leafNodesAtLevel = getLeafNodesAtSameLevel(draggedId);
 
       console.log(
-        `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(1)}, ${nodesAtLevel.length} nodes at same level`
+        `${LOG_PREFIX.DRAG} Checking reorder: node ${draggedId}, Y=${currentY.toFixed(
+          1
+        )}, ${leafNodesAtLevel.length} leaf nodes at same level`
       );
 
-      if (nodesAtLevel.length === 0) {
-        console.log(`${LOG_PREFIX.DRAG}   ❌ No nodes at same level found`);
+      if (leafNodesAtLevel.length === 0) {
+        console.log(`${LOG_PREFIX.DRAG}   ❌ No leaf nodes at same level`);
         return null;
       }
 
@@ -133,8 +92,8 @@ export function useReordering() {
       let minDistance = Infinity;
       let insertBefore = false;
 
-      for (const nodeId of nodesAtLevel) {
-        const node = nodes.find((n) => n.id === nodeId);
+      for (const nodeId of leafNodesAtLevel) {
+        const node = nodes.find(n => n.id === nodeId);
         if (!node) continue;
 
         const distance = Math.abs(node.position.y - currentY);
@@ -148,72 +107,65 @@ export function useReordering() {
 
       if (closestNode && minDistance < REORDER_THRESHOLD) {
         console.log(
-          `${LOG_PREFIX.DRAG}   ✅ Found closest node at same level: ${closestNode.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
+          `${LOG_PREFIX.DRAG}   ✅ Found closest leaf node: ${closestNode.id} (${minDistance.toFixed(
+            1
+          )}px)`
         );
         return { node: closestNode, insertBefore };
       }
 
       console.log(
-        `${LOG_PREFIX.DRAG}   ❌ Closest node too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
+        `${LOG_PREFIX.DRAG}   ❌ Closest node too far: ${minDistance.toFixed(
+          1
+        )}px > ${REORDER_THRESHOLD}px`
       );
       return null;
     },
-    [getNodes, getNodesAtSameLevel]
+    [getNodes, getLeafNodesAtSameLevel]
   );
 
   /**
-   * Check if drop should trigger reordering
-   * @returns {Object|null} { targetSiblingId, insertBefore, parent } or null
+   * Check if drop should trigger reordering (leaf nodes only)
    */
   const checkReorderDrop = useCallback(
     (draggedId, dropY) => {
+      const nodes = getNodes();
+      const draggedNode = nodes.find(n => n.id === draggedId);
+
+      // Only allow reordering for leaf nodes
+      if (!isLeafNode(draggedId, nodes)) {
+        console.log(
+          `${LOG_PREFIX.DRAG} Cannot reorder non-leaf node: ${draggedId}`
+        );
+        return null;
+      }
+
       const closest = findClosestSibling(draggedId, dropY);
 
       if (closest) {
-        const parent = getParent(draggedId);
         console.log(
-          `${LOG_PREFIX.DRAG} Reorder detected: ${draggedId} ${closest.insertBefore ? 'before' : 'after'
+          `${LOG_PREFIX.DRAG} Reorder detected: ${draggedId} ${
+            closest.insertBefore ? 'before' : 'after'
           } ${closest.node.id}`
         );
+
+        posthog.capture('node_reordered', {
+          dragged_node_id: draggedId,
+          target_node_id: closest.node.id,
+          insert_before: closest.insertBefore,
+          operation: 'cross_parent_reorder',
+        });
+
         return {
           targetSiblingId: closest.node.id,
           insertBefore: closest.insertBefore,
-          parent,
         };
       }
 
       return null;
     },
-    [findClosestSibling, getParent]
+    [getNodes, isLeafNode, findClosestSibling]
   );
 
-  /**
-   * Reorder nodes by changing edge order
-   * Supports both same-parent and cross-parent reordering
-   * Returns reorder info so the caller can apply it to the sentences array
-   */
-  const reorderNodes = useCallback(
-    (draggedId, targetSiblingId, insertBefore) => {
-      console.log(
-        `${LOG_PREFIX.DRAG} Preparing reorder: ${draggedId} → ${targetSiblingId} (${insertBefore ? 'before' : 'after'})`
-      );
-      // Track reordering
-      posthog.capture('node_reordered', {
-        dragged_node_id: draggedId,
-        target_node_id: targetSiblingId,
-        insert_before: insertBefore,
-        operation: 'reorder',
-      });
-
-      // Return reorder info so TreeInner can apply it to sentences
-      return {
-        draggedId,
-        targetSiblingId,
-        insertBefore,
-      };
-    },
-    []
-  );
-
-  return { checkReorderDrop, reorderNodes, findClosestSibling };
+  return { checkReorderDrop, findClosestSibling, isLeafNode };
 }
