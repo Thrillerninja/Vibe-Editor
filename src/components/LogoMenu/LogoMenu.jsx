@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function LogoMenu( { maxDepth, setMaxDepth } ) {
+export default function LogoMenu({ maxDepth, setMaxDepth }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [theme, setTheme] = useState('light');
     const [isDragActive, setIsDragActive] = useState(false);
@@ -78,69 +78,82 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
         width: '100%',
     };
 
+    const buttonBaseStyle = {
+        border: '1px solid #e5e7eb',
+        borderRadius: '12px',
+        backgroundColor: '#fff',
+        cursor: 'pointer',
+        transition: 'all 0.2s ease',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#374151',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+    };
+
     return (
         <>
-            <div style={{ position: 'fixed', top: '0', left: '0', zIndex: 50 }}>
-                {/* SVG Shape as Container */}
-                <svg
-                    width="350"
-                    height="80"
-                    viewBox="20 0 200 45"
+            <div style={{
+                position: 'fixed',
+                top: '12px',
+                left: '12px',
+                zIndex: 50,
+                display: 'flex',
+                gap: '12px',
+                alignItems: 'center'
+            }}>
+                {/* Hamburger Menu Capsule */}
+                <button
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    aria-label="Toggle menu"
                     style={{
-                        display: 'block',
-                    }}
-                >
-                    {/* Define Drop Shadow Filter */}
-                    <defs>
-                        <filter id="dropShadow" x="-50%" y="-50%" width="200%" height="200%">
-                            <feDropShadow dx="0" dy="2" stdDeviation="4" floodOpacity="0.5" />
-                        </filter>
-                    </defs>
-
-                    {/* Fill shape */}
-                    <path
-                        d="M 0,0 V 36 H 140 C 180,36 160,0 220,0 Z"
-                        fill="#ffffffff"
-                        fillOpacity="1"
-                        filter="url(#dropShadow)"
-                    />
-                </svg>
-
-                {/* Content Container - positioned absolute on top of SVG */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        top: '12px',
-                        left: '0',
-                        width: '220px',
-                        height: '36px',
+                        width: '44px',
+                        height: '44px',
+                        borderRadius: '50%',
+                        background: 'rgba(255,255,255,0.95)',
+                        border: '1px solid #e5e7eb',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+                        backdropFilter: 'saturate(180%) blur(4px)',
+                        cursor: 'pointer',
+                        padding: 0,
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '8px',
-                        padding: '0 12px',
+                        justifyContent: 'center',
+                        transition: 'transform 0.1s ease',
                     }}
+                    onMouseDown={(e) => e.currentTarget.style.transform = 'scale(0.95)'}
+                    onMouseUp={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                 >
-                    {/* Hamburger Menu */}
-                    <button
-                        onClick={() => setIsMenuOpen(!isMenuOpen)}
-                        aria-label="Toggle menu"
-                        style={{
-                            border: 'none',
-                            background: 'transparent',
-                            cursor: 'pointer',
-                            padding: '20px',
-                            backgroundImage: `url(/hamburger.png)`,
-                            backgroundSize: "28px",
-                            backgroundPosition: "center",
-                            backgroundRepeat: "no-repeat"
-                        }}
-                    />
+                    <div style={{
+                        width: '20px',
+                        height: '20px',
+                        backgroundImage: `url(/hamburger.png)`,
+                        backgroundSize: "contain",
+                        backgroundPosition: "center",
+                        backgroundRepeat: "no-repeat",
+                        opacity: 0.8
+                    }} />
+                </button>
 
-                    {/* Logo Text */}
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', whiteSpace: 'nowrap' }}>
-                        <span style={{ fontSize: '36px', fontWeight: 300, color: '#111827' }}>Vibe</span>
-                        <span style={{ fontSize: '36px', fontWeight: 600, color: '#111827' }}>Editor</span>
-                    </div>
+                {/* Logo Text Capsule */}
+                <div style={{
+                    height: '44px',
+                    padding: '0 20px',
+                    borderRadius: '22px', // Fully rounded
+                    background: 'rgba(255,255,255,0.95)',
+                    border: '1px solid #e5e7eb',
+                    boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+                    backdropFilter: 'saturate(180%) blur(4px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                    userSelect: 'none'
+                }}>
+                    <span style={{ fontSize: '18px', fontWeight: 300, color: '#111827' }}>Vibe</span>
+                    <span style={{ fontSize: '18px', fontWeight: 600, color: '#111827' }}>Editor</span>
                 </div>
             </div>
 
@@ -166,15 +179,15 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
                     position: 'fixed',
                     top: 0,
                     left: 0,
-                    width: '280px',
+                    width: '300px',
                     height: '100vh',
-                    backgroundColor: 'white',
-                    boxShadow: '2px 0 8px rgba(0,0,0,0.15)',
+                    backgroundColor: '#fafafa',
+                    boxShadow: '2px 0 20px rgba(0,0,0,0.1)',
                     zIndex: 45,
                     transform: isMenuOpen ? 'translateX(0)' : 'translateX(-100%)',
-                    transition: 'transform 0.3s ease-in-out',
+                    transition: 'transform 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
                     overflowY: 'auto',
-                    paddingTop: '60px',
+                    paddingTop: '80px',
                     display: 'flex',
                     flexDirection: 'column',
                 }}
@@ -182,27 +195,29 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
                 {/* IMPORT SECTION */}
                 <div style={sectionStyle}>
                     <div style={sectionTitleStyle}>Import</div>
-                    <div style={{ display: 'flex', gap: '8px', padding: '0 16px', alignItems: 'stretch' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '0 16px' }}>
                         {/* Import Button */}
                         <button
                             onClick={handleImportClick}
                             style={{
-                                width: '56px',
-                                padding: '12px 8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                backgroundColor: '#f9fafb',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
+                                ...buttonBaseStyle,
+                                padding: '16px',
+                                gap: '8px',
                             }}
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6', e.target.style.borderColor = '#d1d5db')}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = '#f9fafb', e.target.style.borderColor = '#e5e7eb')}
+                            onMouseEnter={(e) => {
+                                e.currentTarget.style.transform = 'translateY(-1px)';
+                                e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)';
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                            }}
                         >
-                            📂
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                <path d="M12 11v6m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <span style={{ fontSize: '13px', fontWeight: 500 }}>Upload</span>
                         </button>
 
                         {/* Drag & Drop Zone */}
@@ -212,19 +227,18 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
                             onDragOver={handleDrag}
                             onDrop={handleDrop}
                             style={{
-                                flex: 1,
-                                border: isDragActive ? '2px dashed #111827' : '2px dashed #d1d5db',
-                                borderRadius: '6px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                cursor: 'grab',
-                                backgroundColor: isDragActive ? '#f0f0ff' : 'transparent',
-                                transition: 'all 0.2s',
-                                padding: '8px',
+                                ...buttonBaseStyle,
+                                border: isDragActive ? '2px dashed #111827' : '1px dashed #d1d5db',
+                                backgroundColor: isDragActive ? '#f0f9ff' : 'transparent',
+                                padding: '16px',
+                                gap: '8px',
+                                boxShadow: 'none'
                             }}
                         >
-                            <span style={{ fontSize: '18px' }}>⬇️</span>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                <path d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3 3m0 0l-3-3m3 3v-6" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            <span style={{ fontSize: '13px', fontWeight: 500 }}>Drop File</span>
                         </div>
                     </div>
                 </div>
@@ -233,104 +247,45 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
                 <div style={sectionStyle}>
                     <div style={sectionTitleStyle}>Export</div>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px', padding: '0 16px' }}>
-                        <button
-                            onClick={() => {
-                                handleExport('txt');
-                                closeMenu();
-                            }}
-                            title="Export as Text"
-                            style={{
-                                padding: '12px 8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                backgroundColor: '#f9fafb',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6', e.target.style.borderColor = '#d1d5db')}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = '#f9fafb', e.target.style.borderColor = '#e5e7eb')}
-                        >
-                            📄
-                        </button>
-                        <button
-                            onClick={() => {
-                                handleExport('md');
-                                closeMenu();
-                            }}
-                            title="Export as Markdown"
-                            style={{
-                                padding: '12px 8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                backgroundColor: '#f9fafb',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6', e.target.style.borderColor = '#d1d5db')}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = '#f9fafb', e.target.style.borderColor = '#e5e7eb')}
-                        >
-                            📝
-                        </button>
-                        <button
-                            onClick={() => {
-                                handleExport('html');
-                                closeMenu();
-                            }}
-                            title="Export as HTML"
-                            style={{
-                                padding: '12px 8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                backgroundColor: '#f9fafb',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6', e.target.style.borderColor = '#d1d5db')}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = '#f9fafb', e.target.style.borderColor = '#e5e7eb')}
-                        >
-                            🌐
-                        </button>
-                        <button
-                            onClick={() => {
-                                handleExport('pdf');
-                                closeMenu();
-                            }}
-                            title="Export as PDF"
-                            style={{
-                                padding: '12px 8px',
-                                border: '1px solid #e5e7eb',
-                                borderRadius: '6px',
-                                backgroundColor: '#f9fafb',
-                                cursor: 'pointer',
-                                fontSize: '20px',
-                                transition: 'all 0.2s',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                            }}
-                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6', e.target.style.borderColor = '#d1d5db')}
-                            onMouseLeave={(e) => (e.target.style.backgroundColor = '#f9fafb', e.target.style.borderColor = '#e5e7eb')}
-                        >
-                            📕
-                        </button>
+                        {[
+                            { id: 'txt', label: 'TXT', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
+                            { id: 'md', label: 'MD', icon: 'M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM7 7h10M7 12h10M7 17h6' },
+                            { id: 'html', label: 'HTML', icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4' },
+                            { id: 'pdf', label: 'PDF', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' }
+                        ].map(item => (
+                            <button
+                                key={item.id}
+                                onClick={() => {
+                                    handleExport(item.id);
+                                    closeMenu();
+                                }}
+                                title={`Export as ${item.label}`}
+                                style={{
+                                    ...buttonBaseStyle,
+                                    padding: '12px 4px',
+                                    gap: '6px'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.transform = 'translateY(0)';
+                                    e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d={item.icon} strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                                <span style={{ fontSize: '10px', fontWeight: 600 }}>{item.label}</span>
+                            </button>
+                        ))}
                     </div>
                 </div>
 
 
                 {/* VIEW SECTION */}
-                <div style={sectionStyle}>
+                {/* <div style={sectionStyle}>
                     <div style={sectionTitleStyle}>View</div>
                     <button
                         onClick={() => {
@@ -343,7 +298,7 @@ export default function LogoMenu( { maxDepth, setMaxDepth } ) {
                     >
                         📊 Analytics
                     </button>
-                </div>
+                </div> */}
 
                 {/* SPACER */}
                 <div style={{ flexGrow: 1 }}></div>

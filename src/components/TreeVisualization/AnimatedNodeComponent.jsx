@@ -854,8 +854,10 @@ export function AnimatedNodeComponent({ id, data }) {
                     appearance: 'none',
                     background: 'transparent',
                     border: 'none',
-                    color: '#6b7280',
-                    padding: '8px 10px',
+                    color: 'white',
+                    backgroundColor: '#7c7c7cff',
+                    borderRadius: '4px',
+                    padding: '6px 12px',
                     cursor: 'pointer',
                     fontSize: 13,
                     fontWeight: 500,
@@ -1112,37 +1114,50 @@ function SentenceEditingTab({
 }) {
   return (
     <div style={{ padding: '20px 24px 16px 24px', background: '#fff' }}>
-      {/* Delete Button */}
-      <div style={{ fontWeight: 600, marginBottom: 10 }}>Options</div>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* Content Editor */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <div style={{ fontWeight: 600 }}>
+          Edit Content
+        </div>
+
+        {/* Reroll Edits */}
         <button
-          title="Delete this sentence"
           onClick={e => {
             e.stopPropagation();
-            const ok = window.confirm(
-              'Delete this sentence? This cannot be undone.'
-            );
-            if (ok && typeof data.deleteNode === 'function') {
-              data.deleteNode(id);
-            }
+            fetchRewriteOptions();
           }}
           disabled={isNodeRewriting}
+          title="Generate 3 rewrite suggestions using current emotion profile"
           style={{
-            padding: '8px 12px',
-            backgroundColor: '#ef4444',
-            color: 'white',
+            width: 36,
+            height: 36,
+            borderRadius: '50%',
             border: 'none',
-            borderRadius: '6px',
+            background: isNodeRewriting ? '#e5e7eb' : '#111827',
+            color: isNodeRewriting ? '#9ca3af' : '#ffffff',
             cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-            boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 18,
+            transition: 'all 0.2s ease',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            zIndex: 10,
+          }}
+          onMouseOver={e => {
+            if (!isNodeRewriting) {
+              e.currentTarget.style.background = '#374151';
+              e.currentTarget.style.transform = 'scale(1.1)';
+            }
+          }}
+          onMouseOut={e => {
+            e.currentTarget.style.background = '#111827';
+            e.currentTarget.style.transform = 'scale(1)';
           }}
         >
-          Delete
+          ↻
         </button>
       </div>
-
-      {/* Content Editor */}
-      <div style={{ fontWeight: 600, marginBottom: 8 }}>Edit Content</div>
 
       {suggestions.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -1199,46 +1214,6 @@ function SentenceEditingTab({
 
       {/* Emotion Profile Selector */}
       <div style={{ marginBottom: 16, position: 'relative' }}>
-        <button
-          onClick={e => {
-            e.stopPropagation();
-            fetchRewriteOptions();
-          }}
-          disabled={isNodeRewriting}
-          title="Generate 3 rewrite suggestions using current emotion profile"
-          style={{
-            position: 'absolute',
-            top: 0,
-            right: 0,
-            width: 36,
-            height: 36,
-            borderRadius: '50%',
-            border: 'none',
-            background: isNodeRewriting ? '#e5e7eb' : '#111827',
-            color: isNodeRewriting ? '#9ca3af' : '#ffffff',
-            cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 18,
-            transition: 'all 0.2s ease',
-            boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-            zIndex: 10,
-          }}
-          onMouseOver={e => {
-            if (!isNodeRewriting) {
-              e.currentTarget.style.background = '#374151';
-              e.currentTarget.style.transform = 'scale(1.1)';
-            }
-          }}
-          onMouseOut={e => {
-            e.currentTarget.style.background = '#111827';
-            e.currentTarget.style.transform = 'scale(1)';
-          }}
-        >
-          ↻
-        </button>
-
         <EmotionRadar
           profile={emotionProfile}
           onChange={next => {
@@ -1258,41 +1233,70 @@ function SentenceEditingTab({
         />
       </div>
 
-      {/* Save/Cancel Buttons */}
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+        {/* Delete Button */}
         <button
-          onClick={handleCancel}
+          title="Delete this sentence"
+          onClick={e => {
+            e.stopPropagation();
+            const ok = window.confirm(
+              'Delete this sentence? This cannot be undone.'
+            );
+            if (ok && typeof data.deleteNode === 'function') {
+              data.deleteNode(id);
+            }
+          }}
           disabled={isNodeRewriting}
           style={{
-            padding: '6px 12px',
+            padding: '8px 12px',
             backgroundColor: '#ef4444',
             color: 'white',
             border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
+            borderRadius: '6px',
+            cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+            boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
           }}
         >
-          Cancel
+          Delete Node
         </button>
 
-        {(nodeText !== previousText ||
-          JSON.stringify(emotionProfile) !==
-            JSON.stringify(originalEmotionProfile)) && (
+        <div style={{ display: 'flex', gap: 10 }}>
+          {/* Save Button */}
+          {(nodeText !== previousText ||
+            JSON.stringify(emotionProfile) !==
+              JSON.stringify(originalEmotionProfile)) && (
+            <button
+              onClick={handleSave}
+              disabled={isNodeRewriting}
+              style={{
+                padding: '8px 14px',
+                background: '#10B981',
+                color: 'white',
+                borderRadius: 6,
+                border: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              Save
+            </button>
+          )}
+
+          {/* Cancel Button */}
           <button
-            onClick={handleSave}
+            onClick={handleCancel}
             disabled={isNodeRewriting}
             style={{
-              padding: '8px 14px',
-              background: '#10B981',
+              padding: '6px 12px',
+              backgroundColor: '#7c7c7cff',
               color: 'white',
-              borderRadius: 6,
               border: 'none',
+              borderRadius: '4px',
               cursor: 'pointer',
             }}
           >
-            Save
+            Cancel
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

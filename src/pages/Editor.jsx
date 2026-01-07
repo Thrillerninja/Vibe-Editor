@@ -43,7 +43,7 @@ import React from 'react';
 import { v4 as uuidv4 } from 'uuid';
 
 // Components
-import { HistoryGraph, TreeVisualization } from '../components';
+import { HistoryGraph, TreeVisualization, EmotionsLegend } from '../components';
 import LogoMenu from '../components/LogoMenu/LogoMenu';
 import RichTextEditor from '../components/RichTextEditor/RichTextEditor';
 
@@ -1259,100 +1259,30 @@ export default function Editor() {
                   onClick={() => {
                     console.log('[Editor] Triggering AI hierarchy regeneration');
                     posthog.capture('hierarchy_ai_regenerate_clicked');
-                    // TODO: Implement AI hierarchy regeneration
                     handleGenerateHierarchy();
                   }}
-                  // disabled={hierarchyState !== 'generated'}
+                  disabled={isGenerating || nodeMap.size === 1}
                   style={{
                     ...floatingButtonStyle,
                     backgroundColor:
-                      hierarchyState !== 'generated' ? '#0c0c0eff' : '#10b981',
+                      hierarchyState !== 'generated' ? ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff') : '#10b981',
                     color: 'white',
                   }}
                 >
-                  <svg
-                    className="w-5 h-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                    />
-                  </svg>
+                  {isGenerating ? (
+                      <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                  ) : (
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                  )}
                 </button>
               </div>
 
-              {/* Emotion Legend */}
-              <div
-                aria-label="Emotion legend"
-                style={{
-                  position: 'absolute',
-                  top: '12px',
-                  left: '12px',
-                  background: 'rgba(255,255,255,0.95)',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
-                  padding: '10px 12px',
-                  zIndex: 50,
-                  fontSize: '13px',
-                  color: '#111827',
-                  maxWidth: '260px',
-                  backdropFilter: 'saturate(180%) blur(4px)',
-                }}
-              >
-                <div style={{ fontWeight: 600, marginBottom: 8 }}>
-                  DES Emotions Legend
-                </div>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'auto 1fr',
-                    columnGap: 10,
-                    rowGap: 8,
-                  }}
-                >
-                  {[
-                    EMOTIONS.INTEREST,
-                    EMOTIONS.JOY,
-                    EMOTIONS.SURPRISE,
-                    EMOTIONS.SADNESS,
-                    EMOTIONS.ANGER,
-                    EMOTIONS.DISGUST,
-                    EMOTIONS.CONTEMPT,
-                    EMOTIONS.FEAR,
-                    EMOTIONS.SHAME,
-                    EMOTIONS.GUILT,
-                  ].map(key => {
-                    const swatch = EMOTION_COLORS[key]?.medium || '#e5e7eb';
-                    const label = EMOTION_LABELS[key] || key;
-
-                    return (
-                      <React.Fragment key={key}>
-                        <span
-                          aria-hidden
-                          style={{
-                            display: 'inline-block',
-                            width: 14,
-                            height: 14,
-                            borderRadius: 4,
-                            background: swatch,
-                            border: '1px solid rgba(0,0,0,0.1)',
-                            marginTop: 2,
-                          }}
-                        />
-                        <span style={{ whiteSpace: 'nowrap' }}>
-                          {label}
-                        </span>
-                      </React.Fragment>
-                    );
-                  })}
-                </div>
-              </div>
+              <EmotionsLegend />
 
               <TreeVisualization
                 rootId={rootId}

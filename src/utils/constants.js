@@ -21,7 +21,7 @@ export const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
   'elk.layered.spacing.nodeNodeBetweenLayers': 150,
-  'elk.spacing.nodeNode': 200,
+  'elk.spacing.nodeNode': 100,
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 };
 
@@ -109,57 +109,57 @@ export const EMOTION_LABELS = {
   [EMOTIONS.GUILT]: 'Guilt',
 };
 
-// Emotion colors by intensity (0-100) - DES emotions
+// Emotion colors by intensity (0-100) - Rainbow spectrum with proper gradients
 export const EMOTION_COLORS = {
   [EMOTIONS.INTEREST]: {
-    light: '#dbeafe',    // Light blue - curiosity, engagement
-    medium: '#60a5fa',
-    strong: '#2563eb',
+    light: '#fff9cc',    // Light yellow
+    medium: '#ffeb3b',   // Medium yellow
+    strong: '#ffd700',   // Strong yellow (gold)
   },
   [EMOTIONS.JOY]: {
-    light: '#fef3c7',    // Yellow/gold - happiness, delight
-    medium: '#fbbf24',
-    strong: '#f59e0b',
+    light: '#e6f7cc',    // Light lime
+    medium: '#b5e550',   // Medium lime
+    strong: '#7cb342',   // Strong lime
   },
   [EMOTIONS.SURPRISE]: {
-    light: '#e0e7ff',    // Indigo - astonishment
-    medium: '#a5b4fc',
-    strong: '#6366f1',
+    light: '#ccf5cc',    // Light green
+    medium: '#66cc66',   // Medium green
+    strong: '#00a651',   // Strong green
   },
   [EMOTIONS.SADNESS]: {
-    light: '#dbeafe',    // Soft blue - melancholy
-    medium: '#93c5fd',
-    strong: '#3b82f6',
+    light: '#ccf5f5',    // Light cyan
+    medium: '#4dd0e1',   // Medium cyan
+    strong: '#00bcd4',   // Strong cyan
   },
   [EMOTIONS.ANGER]: {
-    light: '#fecaca',    // Red - hostility, rage
-    medium: '#f87171',
-    strong: '#dc2626',
+    light: '#cce0ff',    // Light blue
+    medium: '#64b5f6',   // Medium blue
+    strong: '#1976d2',   // Strong blue
   },
   [EMOTIONS.DISGUST]: {
-    light: '#d1fae5',    // Green - revulsion
-    medium: '#6ee7b7',
-    strong: '#10b981',
+    light: '#d6ccff',    // Light indigo
+    medium: '#7c4dff',   // Medium indigo
+    strong: '#4527a0',   // Strong indigo
   },
   [EMOTIONS.CONTEMPT]: {
-    light: '#f3e8ff',    // Purple - scorn, disdain
-    medium: '#c084fc',
-    strong: '#9333ea',
+    light: '#f3ccff',    // Light purple
+    medium: '#ba68c8',   // Medium purple
+    strong: '#7b1fa2',   // Strong purple
   },
   [EMOTIONS.FEAR]: {
-    light: '#f3f4f6',    // Gray - anxiety, terror
-    medium: '#9ca3af',
-    strong: '#4b5563',
+    light: '#ffcce6',    // Light magenta
+    medium: '#ec407a',   // Medium magenta
+    strong: '#c2185b',   // Strong magenta
   },
   [EMOTIONS.SHAME]: {
-    light: '#fed7aa',    // Orange - embarrassment
-    medium: '#fb923c',
-    strong: '#ea580c',
+    light: '#ffcccb',    // Light red
+    medium: '#ff6b6b',   // Medium red
+    strong: '#e60000',   // Strong red
   },
   [EMOTIONS.GUILT]: {
-    light: '#fecdd3',    // Rose - remorse, regret
-    medium: '#fb7185',
-    strong: '#e11d48',
+    light: '#ffe4cc',    // Light orange
+    medium: '#ff9d5c',   // Medium orange
+    strong: '#ff6600',   // Strong orange
   },
 };
 

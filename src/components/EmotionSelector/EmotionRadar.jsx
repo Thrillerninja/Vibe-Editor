@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { EMOTION_AXES, EMOTION_COLORS } from '../../utils/constants';
 import { normalizeEmotionProfile } from '../../utils/emotionProfiles';
 
@@ -15,18 +15,20 @@ export default function EmotionRadar({
   const center = size / 2;
   const padding = 38;
   const radius = center - padding;
+  const minRadius = radius * 0.15; // Start from 15% of the radius
   const axes = EMOTION_AXES;
   const draggingAxis = useRef(null);
+  const [hoveredAxis, setHoveredAxis] = useState(null);
 
   const points = useMemo(() => {
     return axes.map((axis, idx) => {
       const angle = (Math.PI * 2 * idx) / axes.length - Math.PI / 2; // start at top
-      const r = (normalized[axis] / 100) * radius;
+      const r = minRadius + ((normalized[axis] / 100) * (radius - minRadius));
       const x = center + r * Math.cos(angle);
       const y = center + r * Math.sin(angle);
       return { axis, angle, x, y };
     });
-  }, [axes, normalized, center, radius]);
+  }, [axes, normalized, center, radius, minRadius]);
 
   const polygonPath = points.map((p) => `${p.x},${p.y}`).join(' ');
 
@@ -39,7 +41,8 @@ export default function EmotionRadar({
     const dy = clientY - (rect.top + center);
     // project onto axis direction
     const proj = dx * Math.cos(angle) + dy * Math.sin(angle);
-    const value = toPct(clamp01(proj / radius) * 100);
+    const normalizedProj = (proj - minRadius) / (radius - minRadius);
+    const value = toPct(clamp01(normalizedProj) * 100);
     const next = { ...normalized, [axis]: value };
     onChange?.(next);
   };
@@ -48,7 +51,13 @@ export default function EmotionRadar({
 
   const handlePointerDown = (idx, e) => {
     e.preventDefault();
+    e.stopPropagation();
     draggingAxis.current = idx;
+
+    // Immediate update
+    const pt = e.touches ? e.touches[0] : e;
+    updateAxisValue(idx, pt.clientX, pt.clientY);
+
     const move = (ev) => {
       const pt = ev.touches ? ev.touches[0] : ev;
       updateAxisValue(idx, pt.clientX, pt.clientY);
@@ -70,9 +79,6 @@ export default function EmotionRadar({
 
   return (
     <div style={{ width: size, margin: '0 auto' }}>
-      <div style={{ fontSize: 14, fontWeight: 500, color: '#374151', marginBottom: 6, textAlign: 'center' }}>
-        {label}
-      </div>
       <svg
         ref={svgRef}
         width={size}
@@ -87,26 +93,63 @@ export default function EmotionRadar({
             key={idx}
             cx={center}
             cy={center}
-            r={radius * r}
+            r={minRadius + (radius - minRadius) * r}
             fill="none"
             stroke="#e5e7eb"
             strokeDasharray="4 4"
             strokeWidth={1}
+            style={{ pointerEvents: 'none' }}
           />
         ))}
 
-        {/* axes */}
-        {points.map((p, idx) => (
-          <line
-            key={p.axis}
-            x1={center}
-            y1={center}
-            x2={p.x + (p.x - center) * 0.05}
-            y2={p.y + (p.y - center) * 0.05}
-            stroke="#d1d5db"
-            strokeWidth={1}
-          />
-        ))}
+        {/* inner circle at minRadius */}
+        <circle
+          cx={center}
+          cy={center}
+          r={minRadius}
+          fill="none"
+          stroke="#d1d5db"
+          strokeWidth={1}
+          style={{ pointerEvents: 'none' }}
+        />
+
+        {/* axes with color indicators */}
+        {points.map((p, idx) => {
+          const color = EMOTION_COLORS[p.axis]?.strong || '#2563eb';
+          const outerX = center + radius * Math.cos(p.angle);
+          const outerY = center + radius * Math.sin(p.angle);
+          const innerX = center + minRadius * Math.cos(p.angle);
+          const innerY = center + minRadius * Math.sin(p.angle);
+          const isEditable = onChange !== null && onChange !== undefined;
+          return (
+            <g key={p.axis}>
+              {/* Visible rail */}
+              <line
+                x1={innerX}
+                y1={innerY}
+                x2={outerX}
+                y2={outerY}
+                stroke={color}
+                strokeWidth={2}
+                opacity={0.4}
+                style={{ pointerEvents: 'none' }}
+              />
+              {/* Invisible click handler */}
+              <line
+                x1={innerX}
+                y1={innerY}
+                x2={outerX}
+                y2={outerY}
+                stroke="transparent"
+                strokeWidth={24}
+                strokeLinecap="round"
+                onMouseDown={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
+                onTouchStart={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
+                style={{ cursor: isEditable ? 'pointer' : 'default' }}
+              />
+            </g>
+          );
+        })}
 
         {/* filled polygon */}
         <polygon
@@ -114,6 +157,7 @@ export default function EmotionRadar({
           fill="#2563eb22"
           stroke="#2563eb"
           strokeWidth={2}
+          style={{ pointerEvents: 'none' }}
         />
 
         {/* handles */}
@@ -125,30 +169,68 @@ export default function EmotionRadar({
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={8}
+                r={hoveredAxis === p.axis ? 10 : 8}
                 fill={color}
                 stroke="#fff"
                 strokeWidth={2}
                 onMouseDown={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
                 onTouchStart={isEditable ? (e) => handlePointerDown(idx, e) : undefined}
-                style={{ cursor: isEditable ? 'pointer' : 'default' }}
+                onMouseEnter={() => setHoveredAxis(p.axis)}
+                onMouseLeave={() => setHoveredAxis(null)}
+                style={{ cursor: isEditable ? 'pointer' : 'default', transition: 'r 0.2s ease' }}
               />
               <text
                 x={center + (radius + 14) * Math.cos(p.angle)}
                 y={center + (radius + 14) * Math.sin(p.angle)}
                 textAnchor="middle"
                 dominantBaseline="middle"
-                style={{ fontSize: 13, fontWeight: 500, fill: '#111827' }}
+                style={{ fontSize: 13, fontWeight: 500, fill: '#111827', pointerEvents: 'none' }}
               >
                 {p.axis}
               </text>
             </g>
           );
         })}
+
+        {/* Tooltip */}
+        {hoveredAxis && (() => {
+          const p = points.find((pt) => pt.axis === hoveredAxis);
+          if (!p) return null;
+          // Position tooltip above the point
+          return (
+            <g
+              transform={`translate(${p.x}, ${p.y - 24})`}
+              style={{ pointerEvents: 'none', transition: 'all 0.2s ease' }}
+            >
+              {/* Tooltip Background */}
+              <rect
+                x="-16"
+                y="-15"
+                width="32"
+                height="22"
+                rx="6"
+                fill="#1f2937"
+                filter="drop-shadow(0 2px 4px rgba(0,0,0,0.1))"
+              />
+              {/* Tooltip Arrow */}
+              <polygon points="-4,7 4,7 0,11" fill="#1f2937" />
+              {/* Tooltip Text */}
+              <text
+                x="0"
+                y="-2"
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="#f9fafb"
+                fontSize="11"
+                fontWeight="600"
+              >
+                {Math.round(normalized[p.axis])}
+              </text>
+            </g>
+          );
+        })()}
       </svg>
-      <div style={{ fontSize: 13, color: '#4b5563', marginTop: 8, textAlign: 'center' }}>
-        {axes.map((axis) => `${axis}: ${normalized[axis]}`).join(' · ')}
-      </div>
+
     </div>
   );
 }
