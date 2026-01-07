@@ -281,7 +281,7 @@ export function AnimatedNodeComponent({ id, data }) {
     >
       <div
         style={{
-          background: "rgba(255, 255, 255, 0.9)",
+          background: "rgba(255, 255, 255, 0.95)",
           backdropFilter: "saturate(180%) blur(20px)",
           WebkitBackdropFilter: "saturate(180%) blur(20px)",
           borderRadius: "24px",
@@ -290,8 +290,8 @@ export function AnimatedNodeComponent({ id, data }) {
           width: "90%",
           height: 'auto',
           maxHeight: '80vh',
-          border: "1px solid rgba(255, 255, 255, 0.5)",
-          boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)",
+          border: `3px solid ${modalAccentColor}`,
+          boxShadow: `0 20px 40px -10px rgba(0, 0, 0, 0.2), 0 0 30px ${modalAccentColor}66`,
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
