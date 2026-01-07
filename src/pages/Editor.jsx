@@ -1049,7 +1049,7 @@ export default function Editor() {
     
     setNodeMap(updatedNodes);
     addCommit(updatedNodes, 'Tree updated');
-  }, [rootId, pendingText, addCommit]);
+  }, [rootId, addCommit]);
 
   // Add this effect near your other useEffect hooks
   useEffect(() => {
@@ -1526,7 +1526,7 @@ function getContentNodesInOrder(nodeMap, rootId) {
       console.log(`[DEBUG getContentNodesInOrder] Added content node: "${node.content.substring(0, 30)}"`);
     } else if (isGroupNode(node)) {
       console.log(`[DEBUG getContentNodesInOrder] Expanding group node, children:`, node.hierarchy.childIds);
-      queue.unshift(...node.hierarchy.childIds);
+      queue.push(...node.hierarchy.childIds);
     }
   }
 

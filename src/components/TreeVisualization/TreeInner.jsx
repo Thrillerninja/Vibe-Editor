@@ -1,8 +1,14 @@
 /**
- * @fileoverview TreeInner - Main tree visualization logic with Lexical integration
+ * @fileoverview TreeInner - Core tree visualization and interaction logic
  *
- * Manages ReactFlow visualization, drag-and-drop, layout, and node editing.
- * Works directly with Node map as SSOT.
+ * Manages ReactFlow visualization, drag-and-drop reordering/reparenting,
+ * automatic layout, and node editing with emotion support.
+ *
+ * ARCHITECTURE:
+ * - ReactFlow for visualization
+ * - ELK for automatic hierarchical layout
+ * - Physics engine for drag-drop feedback
+ * - nodeMap as single source of truth
  *
  * @typedef {import('../types/node').Node} Node
  */
@@ -24,15 +30,21 @@ import ReactFlow, {
   useNodesState,
   addEdge,
 } from 'reactflow';
-import posthog from '../../utils/posthog';
+
 import { AnimatedNodeComponent } from './AnimatedNodeComponent';
+
+// Utils
+import posthog from '../../utils/posthog';
+import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
+import { runElk } from '../../utils/layoutEngine';
+import { useFlowScreenConverters } from '../../utils/coords';
+
+// Hooks
 import { useReparenting } from '../../hooks/useReparenting';
 import { useLocalPhysics } from '../../hooks/useLocalPhysics';
 import { useReordering } from '../../hooks/useReordering';
-import { ReparentIndicator } from './ReparentIndicator';
-import { runElk } from '../../utils/layoutEngine';
-import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
-import { useFlowScreenConverters } from '../../utils/coords';
+
+// Node Utils
 import {
   cloneNode,
   markNodeDirty,
@@ -41,40 +53,37 @@ import {
   isContentNode,
 } from '../../types/node';
 
-/** Move nodeTypes outside component to prevent recreation */
+// Constants
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
 /**
- * TreeInner - Main tree visualization logic
- * Works with node map as SSOT
+ * TreeInner - Renders and manages tree visualization
+ *
+ * Responsibilities:
+ * - Build ReactFlow nodes/edges from nodeMap
+ * - Layout visualization using ELK
+ * - Handle drag-drop (reorder, reparent)
+ * - Manage node editing and deletion
+ * - Sync tree changes back to parent
  *
  * @param {Object} props
- * @param {Map<string, Node>} props.nodeMap - Map of all nodes
  * @param {string} props.rootId - Root node ID
- * @param {(nodeMap: Map<string, Node>) => void} props.onTreeUpdate
+ * @param {Map<string, Node>} props.nodeMap - All nodes
+ * @param {(nodeMap: Map<string, Node>) => void} props.onTreeUpdate - Update callback
  * @returns {React.ReactElement}
  */
 export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   console.log('[TreeInner] Component rendering with', nodeMap.size, 'nodes');
 
-  // ReactFlow state
+  // =========================================================================
+  // ReactFlow State
+  // =========================================================================
+
   /** @type {[Array, Function, Function]} */
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
   /** @type {[Array, Function, Function]} */
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
-
-  /** @type {[Object | null, Function]} */
-  const [reorderIndicator, setReorderIndicator] = useState(null);
-
-  /** @type {[Object | null, Function]} */
-  const [reparentTarget, setReparentTarget] = useState(null);
-
-  /** @type {[string | null, Function]} */
-  const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
-
-  /** @type {[boolean, Function]} */
-  const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
 
   /** @type {React.MutableRefObject<any>} */
   const rfRef = useRef(null);
@@ -82,33 +91,87 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /** @type {React.MutableRefObject<HTMLDivElement>} */
   const containerRef = useRef(null);
 
-  /** @type {React.MutableRefObject<boolean>} */
+  
+  // =========================================================================
+  //    Drag State
+  // =========================================================================
+
+  /**
+   * Is currently dragging a node
+   * @type {React.MutableRefObject<boolean>}
+   */
   const isDraggingRef = useRef(false);
 
-  /** @type {React.MutableRefObject<Map<string, Node>>} */
-  const nodeMapRef = useRef(nodeMap);
-
-  /** @type {React.MutableRefObject<boolean>} */
-  const animateNextRef = useRef(false);
-
-  // Track what changed during drag for relayout
-  const prevNodeMapRef = useRef(nodeMap);/**
-
-  * Store original node positions before drag for snap-back
-  */
-  const originalNodePositionsRef = useRef({});
-
-  // Keep track of which node was dragged and if tree changed
+  /**
+   * ID of node being dragged
+   * @type {React.MutableRefObject<string | null>}
+   */
   const draggedNodeIdRef = useRef(null);
+
+  /**
+   * Tree structure changed during drag
+   * @type {React.MutableRefObject<boolean>}
+   */
   const treeChangedRef = useRef(false);
 
-  // Keep nodeMap ref updated
+  /**
+   * Original positions before drag (for snap-back)
+   * @type {React.MutableRefObject<Object>}
+   */
+  const originalNodePositionsRef = useRef({});
+
+  /**
+   * Animate layout after drop
+   * @type {React.MutableRefObject<boolean>}
+   */
+  const animateNextRef = useRef(false);
+
+  // =========================================================================
+  //     Visual Feedback State
+  // =========================================================================
+
+  /**
+   * Reorder indicator (shows where node will go)
+   * @type {[Object | null, Function]}
+   */
+  const [reorderIndicator, setReorderIndicator] = useState(null);
+
+  /**
+   * Reparent target (shows drop zone)
+   * @type {[Object | null, Function]}
+   */
+  const [reparentTarget, setReparentTarget] = useState(null);
+
+  /**
+   * Show debug hitboxes (F8 key)
+   * @type {[boolean, Function]}
+   */
+  const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
+
+  // =========================================================================
+  //     References (Keep in Sync)
+  // =========================================================================
+
+  /**
+   * Keep nodeMap ref current
+   * @type {React.MutableRefObject<Map<string, Node>>}
+   */
+  const nodeMapRef = useRef(nodeMap);
+
   useEffect(() => {
     nodeMapRef.current = nodeMap;
-    console.log('[TreeInner] nodeMapRef updated, size:', nodeMap.size);
   }, [nodeMap]);
 
-  // Custom hooks
+  /**
+   * Track previous nodeMap structure
+   * @type {React.MutableRefObject<string | null>}
+   */
+  const prevNodeMapKeyRef = useRef(null);
+
+  // =========================================================================
+  //     Custom hooks
+  // =========================================================================
+
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
   const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
@@ -126,25 +189,26 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   // INITIALIZATION
   // =========================================================================
 
-  // Log component mount/unmount
+  // =========================================================================
+  // SECTION: Initialization
+  // =========================================================================
+
+  /**
+   * Component lifecycle logging
+   */
   useEffect(() => {
-    console.log('[TreeInner] Component MOUNTED');
     return () => {
-      console.log('[TreeInner] Component UNMOUNTED');
+      physics.stop();
     };
   }, []);
-  
-  // Toggle debug hitboxes with F8
+
+  /**
+   * Toggle debug hitboxes with F8
+   */
   useEffect(() => {
-    /**
-     * @param {KeyboardEvent} e
-     */
-    const handleKeyDown = e => {
+    const handleKeyDown = (e) => {
       if (e.key === 'F8') {
-        setShowDebugHitboxes(prev => !prev);
-        console.log(
-          `${LOG_PREFIX.DRAG} Debug hitboxes: ${!showDebugHitboxes}`
-        );
+        setShowDebugHitboxes((prev) => !prev);
       }
     };
 
@@ -152,23 +216,16 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showDebugHitboxes]);
 
-  // Cleanup physics on unmount
-  useEffect(() => {
-    return () => {
-      console.log(`${LOG_PREFIX.PHYSICS} Component unmounting, cleaning up`);
-      physics.stop();
-    };
-  }, []);
-
   // =========================================================================
-  // NODE MODIFICATION HELPERS
+  // SECTION: Node Modification Helpers
   // =========================================================================
 
   /**
    * Reparent a node under a new parent
+   * Updates hierarchy and marks dirty
    *
    * @param {string} nodeId - Node to reparent
-   * @param {string} newParentId - New parent node ID
+   * @param {string} newParentId - New parent ID
    */
   const reparentNode = useCallback(
     (nodeId, newParentId) => {
@@ -176,7 +233,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       const node = updated.get(nodeId);
       const newParent = updated.get(newParentId);
 
-      // Validate both nodes exist
       if (!node) {
         console.error(`[TreeInner] Cannot reparent: node ${nodeId} not found`);
         return;
@@ -184,12 +240,11 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       if (!newParent) {
         console.error(
-          `[TreeInner] Cannot reparent: new parent ${newParentId} not found`
+          `[TreeInner] Cannot reparent: parent ${newParentId} not found`
         );
         return;
       }
 
-      // Prevent self-parenting
       if (nodeId === newParentId) {
         console.warn('[TreeInner] Cannot reparent node to itself');
         return;
@@ -201,12 +256,12 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         if (oldParent) {
           const oldParentClone = cloneNode(oldParent);
           oldParentClone.hierarchy.childIds =
-            oldParentClone.hierarchy.childIds.filter(id => id !== nodeId);
+            oldParentClone.hierarchy.childIds.filter((id) => id !== nodeId);
           updated.set(oldParent.id, oldParentClone);
         }
       }
 
-      // Update node's parent
+      // Update node
       const nodeClone = cloneNode(node);
       nodeClone.hierarchy.parentId = newParentId;
       nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
@@ -221,10 +276,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       }
       updated.set(newParentId, newParentClone);
 
-      console.log(
-        `[TreeInner] Reparented ${nodeId} to ${newParentId} (level ${nodeClone.hierarchy.level})`
-      );
-
       treeChangedRef.current = true;
       onTreeUpdate(updated);
     },
@@ -232,175 +283,134 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   );
 
   /**
-  * Reorder a node relative to a sibling(same parent)
-  *
-  * @param { string } nodeId - Node to reorder
-  * @param { string } targetSiblingId - Target sibling node
-  * @param { boolean } insertBefore - Insert before or after
-  */
+   * Reorder a node relative to a sibling (same parent)
+   * Validates and updates hierarchy
+   *
+   * @param {string} nodeId - Node to reorder
+   * @param {string} targetSiblingId - Target sibling
+   * @param {boolean} insertBefore - Insert before or after
+   */
   const reorderNode = useCallback(
     (nodeId, targetSiblingId, insertBefore) => {
       console.log(
-        `[TreeInner] Reorder: ${nodeId} ${insertBefore ? 'BEFORE' : 'AFTER'
-        } ${targetSiblingId}`
+        `[TreeInner] Reorder START: ${nodeId.substring(0, 8)} ${
+          insertBefore ? 'BEFORE' : 'AFTER'
+        } ${targetSiblingId.substring(0, 8)}`
       );
 
       const updated = new Map(nodeMapRef.current);
       const node = updated.get(nodeId);
       const sibling = updated.get(targetSiblingId);
 
-      if (!node || !sibling) {
-        console.error('[TreeInner] Reorder: Node or sibling not found');
-        return;
+      // ===== VALIDATION =====
+      if (!node) {
+        console.error(`[TreeInner] ❌ Node ${nodeId} not found`);
+        return false;
       }
 
-      // Verify same parent
-      if (node.hierarchy.parentId !== sibling.hierarchy.parentId) {
-        console.error(
-          `[TreeInner] Reorder: Different parents: ${node.hierarchy.parentId} vs ${sibling.hierarchy.parentId}`
-        );
-        return;
+      if (!sibling) {
+        console.error(`[TreeInner] ❌ Sibling ${targetSiblingId} not found`);
+        return false;
+      }
+
+      const sameParent = node.hierarchy.parentId === sibling.hierarchy.parentId;
+      console.log(
+        `[TreeInner] Same parent? ${sameParent} (${node.hierarchy.parentId} vs ${sibling.hierarchy.parentId})`
+      );
+
+      if (!sameParent) {
+        console.error('[TreeInner] ❌ Different parents - not reordering');
+        return false;
       }
 
       const parentId = node.hierarchy.parentId;
       const parent = updated.get(parentId);
 
       if (!parent) {
-        console.error(`[TreeInner] Reorder: Parent not found: ${parentId}`);
-        return;
+        console.error(`[TreeInner] ❌ Parent ${parentId} not found`);
+        return false;
       }
 
-      // Reorder children
+      console.log(
+        `[TreeInner] Parent found: ${parentId.substring(0, 8)}, current children: [${parent.hierarchy.childIds
+          .slice(0, 3)
+          .map((id) => id.substring(0, 8))
+          .join(', ')}]`
+      );
+
+      // ===== PERFORM REORDER =====
       const parentClone = cloneNode(parent);
       const childIds = [...parentClone.hierarchy.childIds];
 
-      // Remove node from current position
       const nodeIndex = childIds.indexOf(nodeId);
       if (nodeIndex === -1) {
-        console.error(`[TreeInner] Reorder: Node not in parent's children`);
-        return;
+        console.error(`[TreeInner] ❌ Node not in parent's children`);
+        return false;
       }
 
+      console.log(`[TreeInner] Node at index ${nodeIndex}, removing...`);
       childIds.splice(nodeIndex, 1);
 
-      // Find target position
       const siblingIndex = childIds.indexOf(targetSiblingId);
       if (siblingIndex === -1) {
         console.error(
-          `[TreeInner] Reorder: Target sibling not in parent's children`
+          `[TreeInner] ❌ Sibling not in parent's children after removal`
         );
-        return;
+        return false;
       }
 
       const insertIndex = insertBefore ? siblingIndex : siblingIndex + 1;
+      console.log(
+        `[TreeInner] Inserting at index ${insertIndex} (insertBefore=${insertBefore})`
+      );
 
-      // Insert at new position
       childIds.splice(insertIndex, 0, nodeId);
 
+      console.log(
+        `[TreeInner] New order: [${childIds
+          .slice(0, 3)
+          .map((id) => id.substring(0, 8))
+          .join(', ')}]`
+      );
+
+      // ===== UPDATE PARENT =====
       parentClone.hierarchy.childIds = childIds;
+      parentClone.metadata.modifiedAt = new Date().toISOString();
       updated.set(parentId, parentClone);
 
-      // Mark as dirty
+      // ===== MARK NODE DIRTY =====
       const nodeClone = cloneNode(node);
       nodeClone.metadata.isDirty = true;
       nodeClone.metadata.modifiedAt = new Date().toISOString();
       updated.set(nodeId, nodeClone);
 
-      console.log(
-        `[TreeInner] ✅ Reorder applied: new order = [${childIds.join(', ')}]`
-      );
+      console.log('[TreeInner] ✅ Reorder complete: parent and node updated');
 
       treeChangedRef.current = true;
       onTreeUpdate(updated);
+      return true;
     },
     [onTreeUpdate]
   );
 
   // =========================================================================
-  // TREE BUILDING & LAYOUT
+  // SECTION: Tree Building & Layout
   // =========================================================================
 
   /**
-   * Build ReactFlow nodes and edges from node map
-   * Validates that all edges reference existing nodes
-   *
-   * @returns {{nodes: Array, edges: Array}}
-   */
-  const buildFlowStructure = useCallback(() => {
-    console.log('[TreeInner] Building flow structure from', nodeMap.size, 'nodes');
-
-    const flowNodes = [];
-    const flowEdges = [];
-
-    // Create flow nodes from each node in map
-    nodeMap.forEach((node) => {
-      flowNodes.push({
-        id: node.id,
-        data: {
-          label: node.content,
-          content: node.content,
-          type: node.type,
-          level: node.hierarchy.level,
-          emotion: node.emotion,
-          metadata: node.metadata,
-          isDirty: node.metadata.isDirty,
-          structure: node.structure, // Add this line
-        },
-        position: { x: 0, y: 0 },
-        type: 'animatedNode',
-        style: {
-          width: 'auto',
-          height: 'auto',
-        },
-      });
-    });
-
-    // Create set of valid node IDs for edge validation
-    const validNodeIds = new Set(nodeMap.keys());
-
-    // Create edges from hierarchy - VALIDATE both nodes exist
-    nodeMap.forEach((node) => {
-      if (node.hierarchy.parentId) {
-        // Only create edge if parent exists in nodeMap
-        if (validNodeIds.has(node.hierarchy.parentId)) {
-          flowEdges.push({
-            id: `${node.hierarchy.parentId}-${node.id}`,
-            source: node.hierarchy.parentId,
-            target: node.id,
-            animated: false,
-          });
-        } else {
-          // Orphaned node - log warning
-          console.warn(
-            `[TreeInner] Node ${node.id} references missing parent ${node.hierarchy.parentId}`
-          );
-        }
-      }
-    });
-
-    console.log(
-      `[TreeInner] Built ${flowNodes.length} flow nodes and ${flowEdges.length} edges`
-    );
-
-    return { nodes: flowNodes, edges: flowEdges };
-  }, [nodeMap]);
-
-  /**
- * Track previous nodeMap structure to avoid redundant layouts
- */
-  const prevNodeMapKeyRef = useRef(null);
-
-  /**
-   * Check if nodeMap structure has meaningfully changed
+   * Check if nodeMap structure has changed (not just position)
+   * Uses structure hash to avoid redundant layouts
    *
    * @returns {boolean}
    */
   const hasNodeMapStructureChanged = useCallback(() => {
     if (!prevNodeMapKeyRef.current) return true;
 
-    // Create a structure key based on node IDs and parent relationships
-    const structureKey = Array.from(nodeMap.entries())
-      .map(([id, node]) => `${id}:${node.hierarchy.parentId}`)
+    const structureKey = Array.from(nodeMap.values())
+      .map((n) => {
+        const children = (n.hierarchy.childIds ?? []).join(',');
+        return `${n.id}:${n.hierarchy.parentId ?? ''}:[${children}]`;
+      })
       .sort()
       .join('|');
 
@@ -411,34 +421,94 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   }, [nodeMap]);
 
   /**
-   * Build structure and apply layout when tree structure changes
+   * Build ReactFlow nodes and edges from nodeMap
+   * Validates all edge references
+   *
+   * @returns {{nodes: Array, edges: Array}}
    */
-  const applyLayout = useCallback(async () => {
-    if (isDraggingRef.current) {
-      console.log('[TreeInner] Skipping layout update (dragging)');
-      return;
-    }
+  const buildFlowStructure = useCallback(() => {
+  const flowNodes = [];
+  const flowEdges = [];
 
-    if (!hasNodeMapStructureChanged()) {
-      console.log('[TreeInner] Node map structure unchanged, skipping layout');
-      return;
+  const visited = new Set();
+  const orderedIds = [];
+
+  const dfs = (id) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+
+    const node = nodeMap.get(id);
+    if (!node) return;
+
+    orderedIds.push(id);
+
+    const children = node.hierarchy.childIds ?? [];
+    for (const childId of children) dfs(childId);
+  };
+
+  dfs(rootId);
+
+  // include any disconnected/orphan nodes deterministically
+  for (const id of nodeMap.keys()) {
+    if (!visited.has(id)) orderedIds.push(id);
+  }
+
+  for (const id of orderedIds) {
+    const node = nodeMap.get(id);
+    if (!node) continue;
+
+    flowNodes.push({
+      id: node.id,
+      data: {
+        label: node.content,
+        content: node.content,
+        type: node.type,
+        level: node.hierarchy.level,
+        emotion: node.emotion,
+        metadata: node.metadata,
+        isDirty: node.metadata.isDirty,
+        structure: node.structure,
+      },
+      position: { x: 0, y: 0 },
+      type: 'animatedNode',
+      style: { width: 'auto', height: 'auto' },
+    });
+
+    if (node.hierarchy.parentId && nodeMap.has(node.hierarchy.parentId)) {
+      flowEdges.push({
+        id: `${node.hierarchy.parentId}-${node.id}`,
+        source: node.hierarchy.parentId,
+        target: node.id,
+        animated: false,
+      });
     }
+  }
+
+  return { nodes: flowNodes, edges: flowEdges };
+}, [nodeMap, rootId]);
+
+  /**
+   * Apply layout to nodes using ELK algorithm
+   * Skips if structure hasn't changed or dragging
+   */
+  const layoutRunIdRef = useRef(0);
+  const applyLayout = useCallback(async () => {
+    const runId = ++layoutRunIdRef.current;
+    if (isDraggingRef.current) return;
+
+    if (!hasNodeMapStructureChanged()) return;
 
     try {
       const { nodes: flowNodes, edges: flowEdges } = buildFlowStructure();
 
-      if (flowNodes.length === 0) {
-        console.warn('[TreeInner] No nodes to layout');
-        return;
-      }
-
-      console.log(
-        `[TreeInner] Applying ELK layout to ${flowNodes.length} nodes and ${flowEdges.length} edges`
-      );
+      if (flowNodes.length === 0) return;
 
       const laidOut = await runElk(flowNodes, flowEdges);
 
-      // Only apply if not dragging
+
+      if (runId !== layoutRunIdRef.current) return; // discard stale result
+      if (isDraggingRef.current) return;
+      
       if (!isDraggingRef.current) {
         if (animateNextRef.current && containerRef.current) {
           containerRef.current.classList.add('rf-animate-drop');
@@ -453,105 +523,86 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
             animateNextRef.current = false;
           }, 300);
         }
-
-        console.log('[TreeInner] Layout applied successfully');
       }
     } catch (err) {
       console.error('[TreeInner] Layout error:', err);
-      // Don't crash - just keep previous layout
     }
-  }, [nodeMap, buildFlowStructure, hasNodeMapStructureChanged, setNodes, setEdges]);
+  }, [buildFlowStructure, hasNodeMapStructureChanged, setNodes, setEdges]);
 
-  // Apply layout when nodeMap structure changes
+  /**
+   * Apply layout when structure changes
+   */
   useEffect(() => {
     applyLayout();
   }, [applyLayout]);
 
-  // =========================================================================
-  // EMOTION PANEL FOCUS
-  // =========================================================================
-
   /**
-   * Focus view on node when emotion panel opens
+   * Re-apply layout when tree changed during drag
    */
   useEffect(() => {
-    if (!openEmotionNodeId || !containerRef.current) return;
-
-    const node = nodes.find(n => n.id === openEmotionNodeId);
-    if (!node) return;
-
-    console.log(`[Emotion] Focusing view on node ${openEmotionNodeId}`);
-
-    // Get container dimensions
-    const containerRect = containerRef.current.getBoundingClientRect();
-    const viewportWidth = containerRect.width;
-    const viewportHeight = containerRect.height;
-
-    // Node dimensions
-    const nodeWidth = node.width || 200;
-    const nodeHeight = node.height || 60;
-
-    // Dialog dimensions (from EmotionSelector)
-    const dialogWidth = 380;
-    const dialogHeight = 600;
-
-    // Calculate the bounding box that includes both node and dialog
-    // Dialog is positioned below the node (nodeBottom + 12px gap)
-    const totalWidth = Math.max(nodeWidth, dialogWidth);
-    const totalHeight = nodeHeight + 12 + dialogHeight; // node + gap + dialog
-
-    // Center point between node and dialog area
-    const centerX = node.position.x + nodeWidth / 2;
-    const centerY =
-      node.position.y +
-      nodeHeight / 2 +
-      (12 + dialogHeight / 2) / 2;
-
-    // Calculate zoom level to fit both node and dialog
-    const padding = 100; // Extra padding around the content
-    const zoomX = viewportWidth / (totalWidth + padding * 2);
-    const zoomY = viewportHeight / (totalHeight + padding * 2);
-    const targetZoom = Math.min(zoomX, zoomY, 1.0); // Cap at 1.0 for max zoom
-
-    // Smooth animation to center and zoom
-    setTimeout(() => {
-      setCenter(centerX, centerY, {
-        zoom: targetZoom,
-        duration: 400,
-      });
-    }, 50); // Small delay to ensure node is rendered
-
-  }, [openEmotionNodeId, nodes, setCenter]);
+    if (treeChangedRef.current && !isDraggingRef.current) {
+      applyLayout();
+      treeChangedRef.current = false;
+    }
+  }, [nodeMap, applyLayout]);
 
   // =========================================================================
-  // REACTFLOW HANDLERS
+  // SECTION: Node Utilities
   // =========================================================================
 
   /**
-   * ReactFlow initialization callback
-   * @param {Object} instance
-   * @returns {void}
+   * Get all descendant leaf nodes
+   * Used for subtree editing in dialog
+   *
+   * @param {string} nodeId - Starting node
+   * @returns {Node[]}
    */
-  const onInit = useCallback(instance => {
-    console.log('[TreeInner] ReactFlow initialized');
+  const getDescendantLeaves = useCallback((nodeId) => {
+    const node = nodeMapRef.current.get(nodeId);
+    if (!node) return [];
+
+    const leaves = [];
+    const queue = [node];
+
+    while (queue.length) {
+      const current = queue.shift();
+
+      if (!current.hierarchy.childIds || current.hierarchy.childIds.length === 0) {
+        leaves.push(current);
+      } else {
+        current.hierarchy.childIds.forEach((childId) => {
+          const child = nodeMapRef.current.get(childId);
+          if (child) queue.push(child);
+        });
+      }
+    }
+
+    return leaves;
+  }, []);
+
+  // =========================================================================
+  // SECTION: ReactFlow Handlers
+  // =========================================================================
+
+  /**
+   * ReactFlow initialization
+   * @param {Object} instance
+   */
+  const onInit = useCallback((instance) => {
     rfRef.current = instance;
   }, []);
 
   /**
-   * Node drag start handler
+   * Drag start - store original position, start physics
    * @param {React.DragEvent} event
    * @param {Object} rfNode - ReactFlow node
-   * @returns {void}
    */
   const onNodeDragStart = useCallback(
     (event, rfNode) => {
-      console.log(`[TreeInner] Drag start: ${rfNode.id}`);
       isDraggingRef.current = true;
       draggedNodeIdRef.current = rfNode.id;
       treeChangedRef.current = false;
-      setOpenEmotionNodeId(null);
 
-      // Store original position for snap-back
       originalNodePositionsRef.current[rfNode.id] = {
         x: rfNode.position.x,
         y: rfNode.position.y,
@@ -564,20 +615,13 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   );
 
   /**
-   * Node drag handler (during drag)
+   * During drag - update physics, show indicators
    * @param {React.DragEvent} event
    * @param {Object} rfNode - ReactFlow node
-   * @returns {void}
    */
   const onNodeDrag = useCallback(
     (event, rfNode) => {
       physics.updateDraggedPosition(rfNode.position.x, rfNode.position.y);
-
-      console.log(
-        `${LOG_PREFIX.DRAG} onNodeDrag: ${rfNode.id} at (${rfNode.position.x.toFixed(
-          1
-        )}, ${rfNode.position.y.toFixed(1)})`
-      );
 
       // Check for reorder (same parent)
       const closest = findClosestSibling(
@@ -587,10 +631,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       if (closest) {
-        console.log(
-          `${LOG_PREFIX.DRAG} 🔵 Showing reorder indicator for ${closest.node.id}`
-        );
-
         const screenPos = toScreenPoint({
           x: closest.node.position.x,
           y: closest.node.position.y,
@@ -619,10 +659,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         );
 
         if (target) {
-          console.log(
-            `${LOG_PREFIX.DRAG} 🟢 Showing reparent indicator for ${target.id}`
-          );
-
           const screenPos = toScreenPoint({
             x: target.position.x,
             y: target.position.y,
@@ -642,24 +678,16 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         }
       }
     },
-    [
-      physics,
-      findClosestSibling,
-      findReparentTarget,
-      toScreenPoint,
-      toScreenSize,
-    ]
+    [physics, findClosestSibling, findReparentTarget, toScreenPoint, toScreenSize]
   );
 
   /**
- * Node drag stop handler with snap-back logic
- * @param {React.DragEvent} event
- * @param {Object} rfNode - ReactFlow node
- * @returns {void}
- */
+   * Drag end - perform reorder/reparent or snap back
+   * @param {React.DragEvent} event
+   * @param {Object} rfNode - ReactFlow node
+   */
   const onNodeDragStop = useCallback(
     (event, rfNode) => {
-      console.log(`${LOG_PREFIX.DRAG} onNodeDragStop: ${rfNode.id}`);
       isDraggingRef.current = false;
       setReorderIndicator(null);
       setReparentTarget(null);
@@ -667,7 +695,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       let actionTaken = false;
 
-      // Check for reorder first (same parent, tighter threshold)
+      // Try reorder first (tighter threshold)
       const reorderInfo = checkReorderDrop(
         rfNode.id,
         rfNode.position.y,
@@ -675,11 +703,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       if (reorderInfo) {
-        console.log(
-          `${LOG_PREFIX.DRAG} ✅ REORDER ACTION: ${rfNode.id} ${reorderInfo.insertBefore ? 'before' : 'after'
-          } ${reorderInfo.targetSiblingId}`
-        );
-
         reorderNode(
           rfNode.id,
           reorderInfo.targetSiblingId,
@@ -687,7 +710,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         );
         actionTaken = true;
       } else {
-        // Try reparenting (different parent)
+        // Try reparent
         const target = findReparentTarget(
           rfNode.id,
           rfNode.position.x,
@@ -696,7 +719,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         );
 
         if (target) {
-          console.log(`${LOG_PREFIX.DRAG} ✅ REPARENT ACTION: ${rfNode.id} → ${target.id}`);
           reparentNode(rfNode.id, target.id);
           actionTaken = true;
         }
@@ -704,24 +726,13 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       physics.stop();
 
-      // Snap back if no action taken
+      // Snap back if no action
       if (!actionTaken) {
         const originalPos = originalNodePositionsRef.current[rfNode.id];
         if (originalPos) {
-          console.log(
-            `${LOG_PREFIX.DRAG} ⬅️ SNAP BACK: ${rfNode.id} to (${originalPos.x.toFixed(
-              1
-            )}, ${originalPos.y.toFixed(1)})`
-          );
-
-          setNodes(nds =>
-            nds.map(n =>
-              n.id === rfNode.id
-                ? {
-                  ...n,
-                  position: originalPos,
-                }
-                : n
+          setNodes((nds) =>
+            nds.map((n) =>
+              n.id === rfNode.id ? { ...n, position: originalPos } : n
             )
           );
         }
@@ -729,109 +740,45 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       delete originalNodePositionsRef.current[rfNode.id];
     },
-    [
-      checkReorderDrop,
-      findReparentTarget,
-      reorderNode,
-      reparentNode,
-      physics,
-      setNodes,
-    ]
+    [checkReorderDrop, findReparentTarget, reorderNode, reparentNode, physics, setNodes]
   );
 
-  // =========================================================================
-  // LAYOUT RELAYOUT AFTER MODIFICATIONS
-  // =========================================================================
-
-  // Re-apply layout when tree actually changes
-  useEffect(() => {
-    if (treeChangedRef.current && !isDraggingRef.current) {
-      console.log('[TreeInner] Tree changed, re-applying layout');
-      applyLayout();
-      treeChangedRef.current = false;
-    }
-  }, [nodeMap, applyLayout]);
-
-  const getDescendantLeaves = useCallback((nodeId) => {
-    const node = nodeMapRef.current.get(nodeId);
-    if (!node) return [];
-
-    const leaves = [];
-    const queue = [node];
-
-    while (queue.length) {
-      const current = queue.shift();
-
-      // Check if leaf (no children)
-      if (!current.hierarchy.childIds || current.hierarchy.childIds.length === 0) {
-        leaves.push(current);
-      } else {
-        // Add children to queue
-        current.hierarchy.childIds.forEach(childId => {
-          const child = nodeMapRef.current.get(childId);
-          if (child) queue.push(child);
-        });
-      }
-    }
-
-    return leaves;
-  }, []);
-
   /**
-   * Edge connection handler
+   * Handle edge connections
    * @param {Object} params
-   * @returns {void}
    */
   const onConnect = useCallback(
-    params => {
-      console.log(
-        `[TreeInner] Manual connection: ${params.source} → ${params.target}`
-      );
-      setEdges(eds => addEdge({ ...params, animated: false }, eds));
+    (params) => {
+      setEdges((eds) => addEdge({ ...params, animated: false }, eds));
     },
     [setEdges]
   );
 
   // =========================================================================
-  // NODE EDITING & UPDATES
+  // SECTION: Node Editing
   // =========================================================================
 
   /**
-   * Edit node content
+   * Edit node content and emotion
    * @param {string} nodeId
    * @param {string} newContent
    * @param {Object} emotionProfile
-   * @returns {void}
    */
   const applyNodeEdit = useCallback(
     (nodeId, newContent, emotionProfile) => {
-      console.log(`[TreeInner] Editing node ${nodeId}: "${newContent}"`);
-
       const updated = new Map(nodeMapRef.current);
       const node = updated.get(nodeId);
 
-      if (!node) {
-        console.warn(`[TreeInner] Node ${nodeId} not found`);
-        return;
-      }
+      if (!node) return;
 
-      // Update content
       const editedNode = cloneNode(node);
       const contentChanged = editedNode.content !== newContent;
       editedNode.content = newContent;
 
-      // Update emotion if provided
       if (emotionProfile) {
-        editedNode.emotion = {
-          profile: emotionProfile,
-          dominantEmotion: emotionProfile.dominantEmotion,
-          dominantIntensity: emotionProfile.dominantIntensity,
-          source: 'manual',
-          timestamp: new Date().toISOString(),
-        };
+        editedNode.emotion = emotionProfile;
       }
 
-      // Mark as dirty if content changed
       if (contentChanged) {
         editedNode.metadata.isDirty = true;
         editedNode.metadata.modifiedAt = new Date().toISOString();
@@ -839,41 +786,29 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       }
 
       updated.set(nodeId, editedNode);
-
       onTreeUpdate(updated);
     },
     [onTreeUpdate]
   );
 
   /**
-   * Apply emotion to node and descendants
+   * Apply emotion to subtree
    * @param {string} nodeId
    * @param {Object} emotionProfile
-   * @returns {void}
    */
   const applyEmotionToSubtree = useCallback(
     (nodeId, emotionProfile) => {
-      console.log(`[TreeInner] Applying emotion to subtree ${nodeId}`);
-
       const updated = new Map(nodeMapRef.current);
       const node = updated.get(nodeId);
 
       if (!node) return;
 
-      // Update node
       const updatedNode = cloneNode(node);
-      updatedNode.emotion = {
-        profile: emotionProfile,
-        dominantEmotion: emotionProfile.dominantEmotion,
-        dominantIntensity: emotionProfile.dominantIntensity,
-        source: 'manual',
-        timestamp: new Date().toISOString(),
-      };
+      updatedNode.emotion = emotionProfile;
       updated.set(nodeId, updatedNode);
 
-      // Update all descendants
       const descendants = getDescendants(node, nodeMapRef.current);
-      descendants.forEach(descendant => {
+      descendants.forEach((descendant) => {
         const cloned = cloneNode(descendant);
         cloned.emotion = updatedNode.emotion;
         updated.set(descendant.id, cloned);
@@ -885,38 +820,69 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   );
 
   /**
-   * Delete a node and update hierarchy
+   * Apply changes to subtree (emotion + text edits)
    * @param {string} nodeId
-   * @returns {void}
+   * @param {Object} emotionProfile
+   * @param {Object} edits - Map of leafId → newContent
+   */
+  const applySubtreeChanges = useCallback(
+    (nodeId, emotionProfile, edits) => {
+      const updated = new Map(nodeMapRef.current);
+
+      // Apply emotion to subtree
+      const node = updated.get(nodeId);
+      if (node) {
+        const nodeClone = cloneNode(node);
+        nodeClone.emotion = emotionProfile;
+        nodeClone.metadata.isDirty = true;
+        updated.set(nodeId, nodeClone);
+      }
+
+      // Apply text edits
+      for (const [leafId, newContent] of Object.entries(edits)) {
+        const leaf = updated.get(leafId);
+        if (leaf && leaf.content !== newContent) {
+          const leafClone = cloneNode(leaf);
+          leafClone.content = newContent;
+          leafClone.metadata.isDirty = true;
+          leafClone.metadata.modifiedAt = new Date().toISOString();
+          updated.set(leafId, leafClone);
+        }
+      }
+
+      onTreeUpdate(updated);
+    },
+    [onTreeUpdate]
+  );
+
+  /**
+   * Delete a node from tree
+   * @param {string} nodeId
    */
   const deleteNode = useCallback(
-    nodeId => {
-      console.log(`[TreeInner] Deleting node ${nodeId}`);
-
+    (nodeId) => {
       const updated = new Map(nodeMapRef.current);
       const node = updated.get(nodeId);
 
       if (!node) return;
 
-      // Remove from parent's childIds
+      // Remove from parent
       if (node.hierarchy.parentId) {
         const parent = updated.get(node.hierarchy.parentId);
         if (parent) {
           const parentClone = cloneNode(parent);
           parentClone.hierarchy.childIds = parentClone.hierarchy.childIds.filter(
-            id => id !== nodeId
+            (id) => id !== nodeId
           );
           updated.set(node.hierarchy.parentId, parentClone);
         }
       }
 
-      // Remove the node
+      // Remove node and edges
       updated.delete(nodeId);
-
-      // Remove from ReactFlow
-      setNodes(nds => nds.filter(n => n.id !== nodeId));
-      setEdges(eds =>
-        eds.filter(e => e.source !== nodeId && e.target !== nodeId)
+      setNodes((nds) => nds.filter((n) => n.id !== nodeId));
+      setEdges((eds) =>
+        eds.filter((e) => e.source !== nodeId && e.target !== nodeId)
       );
 
       onTreeUpdate(updated);
@@ -925,51 +891,32 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   );
 
   // =========================================================================
-  // NODE DATA WITH HANDLERS
+  // SECTION: Node Data Enrichment
   // =========================================================================
 
   /**
    * Attach handlers and utilities to all nodes
+   * Makes them available to node components
    */
   const nodesWithHandlers = useMemo(
     () =>
-      nodes.map(rfNode => ({
+      nodes.map((rfNode) => ({
         ...rfNode,
         data: {
           ...rfNode.data,
           applyNodeEdit,
           applyEmotionToSubtree,
+          applySubtreeChanges,
           deleteNode,
-          setOpenEmotionNodeId,
           getDescendantLeaves,
         },
       })),
-    [
-      nodes,
-      applyNodeEdit,
-      applyEmotionToSubtree,
-      deleteNode,
-      getDescendantLeaves,
-    ]
+    [nodes, applyNodeEdit, applyEmotionToSubtree, applySubtreeChanges, deleteNode, getDescendantLeaves]
   );
 
   // =========================================================================
-  // RENDER
+  // SECTION: Render
   // =========================================================================
-
-  const controlButtonStyle = {
-    width: '36px',
-    height: '36px',
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-    border: 'none',
-    cursor: 'pointer',
-    backgroundColor: 'white',
-    color: '#374151',
-  };
 
   return (
     <div
@@ -1021,7 +968,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
             boxShadow: '0 0 10px rgba(59, 130, 246, 0.7)',
           }}
         >
-          {/* Debug label */}
           <div
             style={{
               position: 'absolute',
@@ -1060,10 +1006,25 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           }}
         >
           {/* Corner indicators */}
-          <div style={{ position: 'absolute', top: -8, left: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', top: -8, right: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', bottom: -8, left: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', bottom: -8, right: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
+          {[
+            { top: -8, left: -8 },
+            { top: -8, right: -8 },
+            { bottom: -8, left: -8 },
+            { bottom: -8, right: -8 },
+          ].map((pos, i) => (
+            <div
+              key={i}
+              style={{
+                position: 'absolute',
+                ...pos,
+                width: 16,
+                height: 16,
+                backgroundColor: '#10b981',
+                borderRadius: '50%',
+                boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)',
+              }}
+            />
+          ))}
 
           {/* Label */}
           <div
@@ -1088,7 +1049,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       {/* Debug Hitboxes */}
       {showDebugHitboxes &&
-        nodes.map(rfNode => {
+        nodes.map((rfNode) => {
           const screenPos = toScreenPoint({
             x: rfNode.position.x,
             y: rfNode.position.y,
@@ -1128,3 +1089,5 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     </div>
   );
 }
+
+export default TreeInner;

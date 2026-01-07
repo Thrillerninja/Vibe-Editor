@@ -1,5 +1,5 @@
 /**
- * @fileoverview RichTextEditor - Lexical-based editor with markdown support
+ * @fileoverview RichTextEditor - Lexical-based markdown editor
  *
  * Features:
  * - Markdown conversion via Lexical transformers
@@ -16,8 +16,7 @@
  * @property {'none' | 'generated' | 'has-dirty-nodes'} [hierarchyState] - Hierarchy build status
  * @property {Node[]} [sentences] - Array of sentence/content nodes
  */
-import { $convertFromMarkdownString } from '@lexical/markdown';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+
 import React, { useCallback, useEffect, useRef } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
@@ -25,23 +24,29 @@ import { ContentEditable } from '@lexical/react/LexicalContentEditable';
 import { HistoryPlugin } from '@lexical/react/LexicalHistoryPlugin';
 import { OnChangePlugin } from '@lexical/react/LexicalOnChangePlugin';
 import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
+import { ListPlugin } from '@lexical/react/LexicalListPlugin';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
+  $convertFromMarkdownString,
   $convertToMarkdownString,
   TRANSFORMERS,
 } from '@lexical/markdown';
+import {
+  $getRoot,
+  $createParagraphNode,
+} from 'lexical';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { LinkNode } from '@lexical/link';
-import { ListPlugin } from '@lexical/react/LexicalListPlugin';
-import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
 
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import LinkHoverPlugin from './plugins/LinkHoverPlugin';
 import './styles/editor.css';
 
-// =========================================================================
+// ============================================================================
 // LEXICAL CONFIGURATION
-// =========================================================================
+// ============================================================================
 
 /**
  * Lexical editor configuration
@@ -82,9 +87,9 @@ const editorConfig = {
   },
 };
 
-// =========================================================================
+// ============================================================================
 // HIERARCHY STATUS COMPONENT
-// =========================================================================
+// ============================================================================
 
 /**
  * HierarchyStatus - Visual indicator of document hierarchy state
@@ -132,18 +137,19 @@ function HierarchyStatus({ state, count }) {
   );
 }
 
-// =========================================================================
-// MAIN EDITOR COMPONENT
-// =========================================================================
+// ============================================================================
+// EDITOR CONTENT COMPONENT (Internal)
+// ============================================================================
 
 /**
- * RichTextEditor - Lexical-based markdown editor component
+ * EditorContent - The actual editor with plugins
  *
  * Provides a rich text editing experience with:
  * - Markdown format output
  * - List and link support
  * - Real-time status tracking
  * - Customizable placeholder text
+ * Separated from main export to use LexicalComposer context
  *
  * @param {RichTextEditorProps} props
  * @returns {React.ReactElement}
@@ -157,7 +163,7 @@ function HierarchyStatus({ state, count }) {
  *   sentences={nodes}
  * />
  */
-export function EditorContent({
+function EditorContent({
   value,
   onChange,
   onBlur,
@@ -165,21 +171,25 @@ export function EditorContent({
   hierarchyState = 'none',
   sentences = [],
 }) {
-
-  
   const [editor] = useLexicalComposerContext();
   // =========================================================================
   // STATE & REFS
   // =========================================================================
 
-  /** @type {React.MutableRefObject<Object>} Cached editor state for markdown conversion */
-  const editorStateRef = useRef(null);
+  /**
+   * Debounce timer for value synchronization
+   * @type {React.MutableRefObject<NodeJS.Timeout | null>}
+   */
+  const syncDebounceRef = useRef(null);
 
-  /** @type {React.MutableRefObject<Object>} Cached editor instance */
-  const editorRef = useRef(null);
+  /**
+   * Track if we're currently syncing to avoid loops
+   * @type {React.MutableRefObject<boolean>}
+   */
+  const isSyncingRef = useRef(false);
 
   // =========================================================================
-  // HANDLERS
+  // Markdown Conversion
   // =========================================================================
 
   /**
@@ -195,9 +205,6 @@ export function EditorContent({
    */
   const handleEditorChange = useCallback(
     (editorState, editor) => {
-      editorStateRef.current = editorState;
-      editorRef.current = editor;
-
       editor.read(() => {
         // Convert editor state to markdown
         const markdownContent = $convertToMarkdownString(TRANSFORMERS);
@@ -210,7 +217,6 @@ export function EditorContent({
             cursorPos = selection.anchor.offset;
           }
         } catch (e) {
-          // Fallback to end of content if selection unavailable
           cursorPos = markdownContent.length;
         }
 
@@ -236,6 +242,82 @@ export function EditorContent({
     }
   }, [onBlur]);
 
+
+
+
+
+  // =========================================================================
+  // Value Synchronization
+  // =========================================================================
+
+  /**
+   * Sync editor content when value prop changes
+   * Uses debouncing to avoid excessive updates
+   */
+  useEffect(() => {
+    if (isSyncingRef.current) return;
+
+    // Clear existing debounce
+    if (syncDebounceRef.current) {
+      clearTimeout(syncDebounceRef.current);
+    }
+
+    // Debounce the sync to batch rapid changes
+    syncDebounceRef.current = setTimeout(() => {
+      if (isSyncingRef.current) return;
+
+      editor.read(() => {
+        const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
+
+        // Only sync if content differs
+        if (currentMarkdown === value) {
+          return;
+        }
+
+        console.log('[RichTextEditor] Syncing content from prop');
+        console.log('  current markdown length:', currentMarkdown.length);
+        console.log('  new value length:', value.length);
+      });
+
+      // If values differ, update editor
+      editor.update(
+        () => {
+          const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
+
+          if (currentMarkdown === value) {
+            return;
+          }
+
+          isSyncingRef.current = true;
+
+          // Clear the entire root
+          const root = $getRoot();
+          root.clear();
+
+          // Insert new content from markdown
+          // $convertFromMarkdownString returns an array of nodes
+          const nodes = $convertFromMarkdownString(value, TRANSFORMERS);
+          
+          if (nodes && nodes.length > 0) {
+            root.append(...nodes);
+          } else {
+            // Ensure root is never empty
+            root.append($createParagraphNode());
+          }
+
+          isSyncingRef.current = false;
+        },
+        { tag: 'history-push' } // Add to history so user can undo
+      );
+    }, 100); // Small debounce to let tree updates settle
+
+    return () => {
+      if (syncDebounceRef.current) {
+        clearTimeout(syncDebounceRef.current);
+      }
+    };
+  }, [value, editor]);
+
   // =========================================================================
   // RENDER
   // =========================================================================
@@ -245,74 +327,75 @@ export function EditorContent({
     console.log('  preview:', value.substring(0, 100));
   }, [value]);
 
-  useEffect(() => {
-    console.log('[RichTextEditor] Syncing editor state with value prop');
-    console.log('  value length:', value.length);
-    
-    editor.update(() => {
-      const currentContent = $convertToMarkdownString(TRANSFORMERS);
-      console.log('  current editor content length:', currentContent.length);
-      console.log('  content matches value:', currentContent === value);
-      
-      if (currentContent !== value) {
-        console.log('[RichTextEditor] Updating editor content to match prop');
-        editor.setRootElement(null);
-        const newEditorState = editor.parseEditorState(
-          $convertFromMarkdownString(value, TRANSFORMERS)
-        );
-        editor.setEditorState(newEditorState);
-      }
-    });
-  }, [value, editor]);
-
   return (
-    <LexicalComposer initialConfig={editorConfig}>
-      <div className="flex flex-col h-full overflow-hidden">
-        {/* Toolbar Section */}
-          <div className="flex items-center gap-2 bg-gray-50 px-3 py-3 flex-shrink-0 flex-wrap">
-            <div className="w-[200px] h-11 flex-shrink-0" />
-            <ToolbarPlugin />
-          </div>
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Toolbar Section */}
+      <div className="flex items-center gap-2 bg-gray-50 px-3 py-3 flex-shrink-0 flex-wrap">
+        <div className="w-[200px] h-11 flex-shrink-0" />
+        <ToolbarPlugin />
+      </div>
 
-          {/* Editor Section */}
-        <div className="flex flex-col flex-1 editor-container overflow-hidden">
-          <div className="editor-inner flex-1">
-            <RichTextPlugin
-              contentEditable={
-                <ContentEditable
-                  className="editor-input"
-                  onBlur={handleBlur}
-                />
-              }
-              placeholder={
-                <div className="editor-placeholder">{placeholder}</div>
-              }
-              ErrorBoundary={LexicalErrorBoundary}
-            />
+      {/* Editor Section */}
+      <div className="flex flex-col flex-1 editor-container overflow-hidden">
+        <div className="editor-inner flex-1">
+          <RichTextPlugin
+            contentEditable={
+              <ContentEditable
+                className="editor-input"
+                onBlur={handleBlur}
+              />
+            }
+            placeholder={
+              <div className="editor-placeholder">{placeholder}</div>
+            }
+            ErrorBoundary={LexicalErrorBoundary}
+          />
 
-            {/* Plugins */}
-            <OnChangePlugin onChange={handleEditorChange} />
-            <HistoryPlugin />
-            <ListPlugin />
-            <LinkPlugin />
-            <LinkHoverPlugin />
-          </div>
+          {/* Plugins */}
+          <OnChangePlugin onChange={handleEditorChange} />
+          <HistoryPlugin />
+          <ListPlugin />
+          <LinkPlugin />
+          <LinkHoverPlugin />
+        </div>
 
-          {/* Status Bar */}
-          <div className="flex flex-row justify-end gap-2 px-4 py-2 bg-gray-50 text-sm text-gray-600 flex-shrink-0">
-            <span>{sentences.length} nodes</span>
-            <span>•</span>
-            <span>{value.length} chars</span>
-            <HierarchyStatus state={hierarchyState} count={sentences.length} />
-          </div>
+        {/* Status Bar */}
+        <div className="flex flex-row justify-end gap-2 px-4 py-2 bg-gray-50 text-sm text-gray-600 flex-shrink-0">
+          <span>{sentences.length} nodes</span>
+          <span>•</span>
+          <span>{value.length} chars</span>
+          <HierarchyStatus state={hierarchyState} count={sentences.length} />
         </div>
       </div>
-    </LexicalComposer>
+    </div>
   );
 }
 
+// ============================================================================
+// MAIN EXPORT COMPONENT
+// ============================================================================
 
-// Main component - wraps EditorContent with LexicalComposer
+/**
+ * RichTextEditor - Lexical-based markdown editor component
+ *
+ * Provides a rich text editing experience with:
+ * - Markdown format output
+ * - List and link support
+ * - Real-time status tracking
+ * - Customizable placeholder text
+ *
+ * @param {RichTextEditorProps} props
+ * @returns {React.ReactElement}
+ *
+ * @example
+ * <RichTextEditor
+ *   value={markdown}
+ *   onChange={(md, pos) => setMarkdown(md)}
+ *   placeholder="Enter your text here..."
+ *   hierarchyState="generated"
+ *   sentences={nodes}
+ * />
+ */
 export default function RichTextEditor({
   value,
   onChange,

@@ -32,13 +32,15 @@ export function useReordering() {
 
     const node = nodeMap.get(nodeId);
     if (!node) {
-      console.log(`${LOG_PREFIX.DRAG} [getSiblings] Node not found: ${nodeId}`);
+      console.debug(
+        `${LOG_PREFIX.DRAG} [getSiblings] Node not found: ${nodeId}`
+      );
       return [];
     }
 
     const parentId = node.hierarchy.parentId;
     if (!parentId) {
-      console.log(
+      console.debug(
         `${LOG_PREFIX.DRAG} [getSiblings] No parent for ${nodeId}`
       );
       return [];
@@ -46,7 +48,7 @@ export function useReordering() {
 
     const parent = nodeMap.get(parentId);
     if (!parent) {
-      console.log(
+      console.debug(
         `${LOG_PREFIX.DRAG} [getSiblings] Parent not found: ${parentId}`
       );
       return [];
@@ -56,7 +58,7 @@ export function useReordering() {
       id => id !== nodeId
     );
 
-    console.log(
+    console.debug(
       `${LOG_PREFIX.DRAG} [getSiblings] Node ${nodeId}: parent=${parentId}, siblings=${siblings.length}`
     );
 
@@ -72,80 +74,91 @@ export function useReordering() {
    * @returns {ReorderResult|null}
    */
   const findClosestSibling = useCallback(
-    (draggedId, currentY, nodeMap) => {
-      if (!nodeMap) {
-        console.log(`${LOG_PREFIX.DRAG} [findClosestSibling] No nodeMap provided`);
-        return null;
-      }
+  (draggedId, currentY, nodeMap) => {
+    if (!nodeMap) {
+      console.log(`${LOG_PREFIX.DRAG} [findClosestSibling] No nodeMap`);
+      return null;
+    }
 
-      const rfNodes = getNodes();
-      const siblingIds = getSiblings(draggedId, nodeMap);
-
+    const draggedNode = nodeMap.get(draggedId);
+    if (!draggedNode) {
       console.log(
-        `${LOG_PREFIX.DRAG} [findClosestSibling] Checking node ${draggedId}, Y=${currentY.toFixed(
-          1
-        )}, siblings=${siblingIds.length}`
-      );
-
-      if (siblingIds.length === 0) {
-        console.log(`${LOG_PREFIX.DRAG}   ❌ No siblings found`);
-        return null;
-      }
-
-      let closestNode = null;
-      let minDistance = Infinity;
-      let insertBefore = false;
-
-      // Find closest sibling by Y distance
-      for (const siblingId of siblingIds) {
-        const rfNode = rfNodes.find(n => n.id === siblingId);
-        if (!rfNode) {
-          console.log(
-            `${LOG_PREFIX.DRAG}   ⚠️  Sibling ${siblingId} not in ReactFlow nodes`
-          );
-          continue;
-        }
-
-        const distance = Math.abs(rfNode.position.y - currentY);
-
-        console.log(
-          `${LOG_PREFIX.DRAG}   Check sibling ${siblingId}: Y=${rfNode.position.y.toFixed(
-            1
-          )}, distance=${distance.toFixed(1)}px`
-        );
-
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestNode = rfNode;
-          insertBefore = currentY < rfNode.position.y;
-        }
-      }
-
-      if (!closestNode) {
-        console.log(`${LOG_PREFIX.DRAG}   ❌ No sibling nodes found in ReactFlow`);
-        return null;
-      }
-
-      console.log(
-        `${LOG_PREFIX.DRAG}   Closest: ${closestNode.id}, distance=${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px`
-      );
-
-      if (minDistance < REORDER_THRESHOLD) {
-        console.log(
-          `${LOG_PREFIX.DRAG}   ✅ Valid reorder target: ${closestNode.id} (${
-            insertBefore ? 'before' : 'after'
-          })`
-        );
-        return { node: closestNode, insertBefore, distance: minDistance };
-      }
-
-      console.log(
-        `${LOG_PREFIX.DRAG}   ❌ Too far: ${minDistance.toFixed(1)}px > ${REORDER_THRESHOLD}px`
+        `${LOG_PREFIX.DRAG} [findClosestSibling] Dragged node ${draggedId} not in nodeMap`
       );
       return null;
-    },
-    [getNodes, getSiblings]
-  );
+    }
+
+    console.log(
+      `${LOG_PREFIX.DRAG} [findClosestSibling] Dragged: ${draggedId.substring(0, 8)}, parent: ${draggedNode.hierarchy.parentId?.substring(
+        0,
+        8
+      ) || 'none'}`
+    );
+
+    const parentId = draggedNode.hierarchy.parentId;
+    const parent = nodeMap.get(parentId);
+
+    if (!parent) {
+      console.log(
+        `${LOG_PREFIX.DRAG} [findClosestSibling] Parent ${parentId} not found`
+      );
+      return null;
+    }
+
+    const siblingIds = parent.hierarchy.childIds.filter(id => id !== draggedId);
+    console.log(
+      `${LOG_PREFIX.DRAG} [findClosestSibling] Found ${siblingIds.length} siblings: [${siblingIds
+        .slice(0, 3)
+        .map(id => id.substring(0, 8))
+        .join(', ')}]`
+    );
+
+    if (siblingIds.length === 0) {
+      return null;
+    }
+
+    const rfNodes = getNodes();
+    let closestNode = null;
+    let minDistance = Infinity;
+    let insertBefore = false;
+
+    for (const siblingId of siblingIds) {
+      const rfNode = rfNodes.find(n => n.id === siblingId);
+      if (!rfNode) {
+        console.log(
+          `${LOG_PREFIX.DRAG}   Sibling ${siblingId.substring(0, 8)} not in ReactFlow`
+        );
+        continue;
+      }
+
+      const distance = Math.abs(rfNode.position.y - currentY);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestNode = rfNode;
+        insertBefore = currentY < rfNode.position.y;
+      }
+    }
+
+    console.log(
+      `${LOG_PREFIX.DRAG} [findClosestSibling] Closest: ${closestNode?.id.substring(
+        0,
+        8
+      )}, distance: ${minDistance.toFixed(0)}px, threshold: ${REORDER_THRESHOLD}px`
+    );
+
+    if (minDistance < REORDER_THRESHOLD && closestNode) {
+      console.log(
+        `${LOG_PREFIX.DRAG} [findClosestSibling] ✅ Valid reorder target`
+      );
+      return { node: closestNode, insertBefore, distance: minDistance };
+    }
+
+    console.log(`${LOG_PREFIX.DRAG} [findClosestSibling] ❌ Too far away`);
+    return null;
+  },
+  [getNodes]
+);
 
   /**
    * Check if drop should trigger reordering
@@ -172,7 +185,7 @@ export function useReordering() {
         };
       }
 
-      console.log(`${LOG_PREFIX.DRAG} ❌ No reorder target`);
+      console.debug(`${LOG_PREFIX.DRAG} ❌ No reorder target`);
       return null;
     },
     [findClosestSibling]

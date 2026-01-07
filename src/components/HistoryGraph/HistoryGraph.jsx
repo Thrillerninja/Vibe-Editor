@@ -26,6 +26,7 @@ import React, {
   forwardRef,
 } from 'react';
 import DiffView from './DiffView';
+import { isGroupNode, isContentNode } from '../../types/node';
 
 /**
  * @typedef {Object} CommitEntry
@@ -256,14 +257,24 @@ const HistoryGraph = forwardRef(
     }
 
     /**
-     * Get content nodes in document order
-     * @param {Map<string, Node>} nodeMap
-     * @param {string} rootId
-     * @returns {Node[]}
+     * Get all content nodes in order
+     *
+     * Traverses tree from root, collecting content nodes in breadth-first order
+     *
+     * @param {Map<string, Node>} nodeMap - All nodes
+     * @param {string} rootId - Root node ID
+     * @returns {Node[]} Array of content nodes in order
      */
     function getContentNodesInOrder(nodeMap, rootId) {
+      console.log('[DEBUG getContentNodesInOrder] Starting traversal from root:', rootId);
+      
       const root = nodeMap.get(rootId);
-      if (!root) return [];
+      if (!root) {
+        console.log('[DEBUG getContentNodesInOrder] Root not found!');
+        return [];
+      }
+
+      console.log('[DEBUG getContentNodesInOrder] Root children:', root.hierarchy.childIds);
 
       const nodes = [];
       const queue = [...root.hierarchy.childIds];
@@ -271,14 +282,25 @@ const HistoryGraph = forwardRef(
       while (queue.length > 0) {
         const nodeId = queue.shift();
         const node = nodeMap.get(nodeId);
+        
+        console.log(`[DEBUG getContentNodesInOrder] Processing node ${nodeId}:`, 
+                    node ? `${node.hierarchy.role} - "${node.content?.substring(0, 30)}"` : 'NOT FOUND');
+        
         if (!node) continue;
 
-        if (node.hierarchy.role === 'content') {
+        if (isContentNode(node)) {
           nodes.push(node);
-        } else if (node.hierarchy.role === 'group') {
+          console.log(`[DEBUG getContentNodesInOrder] Added content node: "${node.content.substring(0, 30)}"`);
+        } else if (isGroupNode(node)) {
+          console.log(`[DEBUG getContentNodesInOrder] Expanding group node, children:`, node.hierarchy.childIds);
           queue.unshift(...node.hierarchy.childIds);
         }
       }
+
+      console.log(`[DEBUG getContentNodesInOrder] Final order: ${nodes.length} content nodes`);
+      nodes.forEach((node, i) => {
+        console.log(`  ${i}: "${node.content.substring(0, 30)}"`);
+      });
 
       return nodes;
     }
