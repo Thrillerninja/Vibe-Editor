@@ -133,7 +133,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       console.log('[TreeInner] Component UNMOUNTED');
     };
   }, []);
-
+  
   // Toggle debug hitboxes with F8
   useEffect(() => {
     /**

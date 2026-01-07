@@ -16,8 +16,9 @@
  * @property {'none' | 'generated' | 'has-dirty-nodes'} [hierarchyState] - Hierarchy build status
  * @property {Node[]} [sentences] - Array of sentence/content nodes
  */
-
-import React, { useCallback, useRef } from 'react';
+import { $convertFromMarkdownString } from '@lexical/markdown';
+import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { LexicalComposer } from '@lexical/react/LexicalComposer';
 import { RichTextPlugin } from '@lexical/react/LexicalRichTextPlugin';
 import { ContentEditable } from '@lexical/react/LexicalContentEditable';
@@ -156,7 +157,7 @@ function HierarchyStatus({ state, count }) {
  *   sentences={nodes}
  * />
  */
-export default function RichTextEditor({
+export function EditorContent({
   value,
   onChange,
   onBlur,
@@ -164,6 +165,9 @@ export default function RichTextEditor({
   hierarchyState = 'none',
   sentences = [],
 }) {
+
+  
+  const [editor] = useLexicalComposerContext();
   // =========================================================================
   // STATE & REFS
   // =========================================================================
@@ -235,6 +239,31 @@ export default function RichTextEditor({
   // =========================================================================
   // RENDER
   // =========================================================================
+  useEffect(() => {
+    console.log('[RichTextEditor DEBUG] Value prop changed:');
+    console.log('  length:', value.length);
+    console.log('  preview:', value.substring(0, 100));
+  }, [value]);
+
+  useEffect(() => {
+    console.log('[RichTextEditor] Syncing editor state with value prop');
+    console.log('  value length:', value.length);
+    
+    editor.update(() => {
+      const currentContent = $convertToMarkdownString(TRANSFORMERS);
+      console.log('  current editor content length:', currentContent.length);
+      console.log('  content matches value:', currentContent === value);
+      
+      if (currentContent !== value) {
+        console.log('[RichTextEditor] Updating editor content to match prop');
+        editor.setRootElement(null);
+        const newEditorState = editor.parseEditorState(
+          $convertFromMarkdownString(value, TRANSFORMERS)
+        );
+        editor.setEditorState(newEditorState);
+      }
+    });
+  }, [value, editor]);
 
   return (
     <LexicalComposer initialConfig={editorConfig}>
@@ -278,6 +307,30 @@ export default function RichTextEditor({
           </div>
         </div>
       </div>
+    </LexicalComposer>
+  );
+}
+
+
+// Main component - wraps EditorContent with LexicalComposer
+export default function RichTextEditor({
+  value,
+  onChange,
+  onBlur,
+  placeholder = 'Enter your text here...',
+  hierarchyState = 'none',
+  sentences = [],
+}) {
+  return (
+    <LexicalComposer initialConfig={editorConfig}>
+      <EditorContent
+        value={value}
+        onChange={onChange}
+        onBlur={onBlur}
+        placeholder={placeholder}
+        hierarchyState={hierarchyState}
+        sentences={sentences}
+      />
     </LexicalComposer>
   );
 }

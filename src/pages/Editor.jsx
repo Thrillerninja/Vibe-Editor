@@ -128,11 +128,21 @@ export default function Editor() {
    * @type {string}
    */
   const text = useMemo(() => {
+    console.log('[Editor] Reconstructing text from nodeMap');
     const root = nodeMap.get(rootId);
-    if (!root) return '';
+    if (!root) {
+      console.log('[Editor] No root found for text reconstruction');
+      return '';
+    }
 
     const contentNodes = getContentNodesInOrder(nodeMap, rootId);
-    return contentNodes.map(n => n.content).join(' ');
+    console.log(`[Editor] Reconstructing from ${contentNodes.length} content nodes`);
+    
+    const reconstructed = contentNodes.map(n => n.content).join(' ');
+    console.log('[Editor] Reconstructed text length:', reconstructed.length);
+    console.log('[Editor] Reconstructed preview:', reconstructed.substring(0, 100));
+    
+    return reconstructed;
   }, [nodeMap, rootId]);
 
   // =========================================================================
@@ -219,6 +229,17 @@ export default function Editor() {
   // =========================================================================
 
   useUserIdentification();
+
+  useEffect(() => {
+    console.log('[Editor DEBUG] State changed:');
+    console.log('  nodeMap.size:', nodeMap.size);
+    console.log('  text length:', text.length);
+    console.log('  pendingText length:', pendingText.length);
+    console.log('  text === pendingText:', text === pendingText);
+    console.log('  text preview:', text.substring(0, 100));
+    console.log('  pendingText preview:', pendingText.substring(0, 100));
+  }, [nodeMap, text, pendingText]);
+
 
   /**
    * Add initial commit to history
@@ -781,24 +802,6 @@ export default function Editor() {
   }, [pendingText, processTextToNodes]);
 
   // =========================================================================
-  // HIERARCHY GENERATION
-  // =========================================================================
-
-  /**
-   * Handle tree modifications (drag/drop in visualization)
-   */
-  const handleTreeUpdate = useCallback(updatedNodes => {
-    console.log('[Editor] Tree updated, node count:', updatedNodes.size);
-
-    posthog.capture('tree_updated', {
-      node_count: updatedNodes.size,
-    });
-
-    setNodeMap(updatedNodes);
-    addCommit(updatedNodes, 'Tree updated');
-  }, []);
-
-  // =========================================================================
   // HISTORY & COMMITS
   // =========================================================================
 
@@ -994,6 +997,68 @@ export default function Editor() {
     }
   }, [nodeMap, rootId, maxDepth, createHierarchyStructure]);
 
+  
+  // =========================================================================
+  // HIERARCHY GENERATION
+  // =========================================================================
+
+  /**
+   * Handle tree modifications (drag/drop in visualization)
+   */
+  const handleTreeUpdate = useCallback(updatedNodes => {
+    console.log('[Editor] Tree updated, node count:', updatedNodes.size);
+    
+    // Calculate new text from updated nodes
+    const root = updatedNodes.get(rootId);
+    if (root) {
+      const contentNodes = getContentNodesInOrder(updatedNodes, rootId);
+      const newText = contentNodes.map(n => n.content).join(' ');
+      
+      console.log('[Editor DEBUG] Tree update - syncing text:');
+      console.log('  old pendingText length:', pendingText.length);
+      console.log('  old pendingText preview:', pendingText.substring(0, 100));
+      console.log('  new text length:', newText.length);
+      console.log('  new text preview:', newText.substring(0, 100));
+      console.log('  texts are equal:', pendingText === newText);
+      
+      // Check first few content nodes for order
+      console.log('  First 5 nodes in new order:');
+      contentNodes.slice(0, 5).forEach((node, i) => {
+        console.log(`    ${i}: "${node.content.substring(0, 40)}"`);
+      });
+      
+      // Sync pendingText with the new order
+      setPendingText(newText);
+      console.log('[Editor DEBUG] setPendingText called with new text');
+      
+      // Clear any pending debounce timer since we're updating directly
+      if (textDebounceTimerRef.current) {
+        console.log('[Editor DEBUG] Clearing existing debounce timer');
+        clearTimeout(textDebounceTimerRef.current);
+        textDebounceTimerRef.current = null;
+      } else {
+        console.log('[Editor DEBUG] No debounce timer to clear');
+      }
+    } else {
+      console.error('[Editor] Root not found in updated nodes!');
+    }
+    
+    posthog.capture('tree_updated', {
+      node_count: updatedNodes.size,
+    });
+    
+    setNodeMap(updatedNodes);
+    addCommit(updatedNodes, 'Tree updated');
+  }, [rootId, pendingText, addCommit]);
+
+  // Add this effect near your other useEffect hooks
+  useEffect(() => {
+    console.log('[Editor DEBUG] pendingText changed:');
+    console.log('  new length:', pendingText.length);
+    console.log('  preview:', pendingText.substring(0, 100));
+  }, [pendingText]);
+
+  
   // =========================================================================
   // LAYOUT MANAGEMENT
   // =========================================================================
@@ -1434,8 +1499,15 @@ function parseTextToSentences(text) {
  * @returns {Node[]} Array of content nodes in order
  */
 function getContentNodesInOrder(nodeMap, rootId) {
+  console.log('[DEBUG getContentNodesInOrder] Starting traversal from root:', rootId);
+  
   const root = nodeMap.get(rootId);
-  if (!root) return [];
+  if (!root) {
+    console.log('[DEBUG getContentNodesInOrder] Root not found!');
+    return [];
+  }
+
+  console.log('[DEBUG getContentNodesInOrder] Root children:', root.hierarchy.childIds);
 
   const nodes = [];
   const queue = [...root.hierarchy.childIds];
@@ -1443,14 +1515,25 @@ function getContentNodesInOrder(nodeMap, rootId) {
   while (queue.length > 0) {
     const nodeId = queue.shift();
     const node = nodeMap.get(nodeId);
+    
+    console.log(`[DEBUG getContentNodesInOrder] Processing node ${nodeId}:`, 
+                node ? `${node.hierarchy.role} - "${node.content?.substring(0, 30)}"` : 'NOT FOUND');
+    
     if (!node) continue;
 
     if (isContentNode(node)) {
       nodes.push(node);
+      console.log(`[DEBUG getContentNodesInOrder] Added content node: "${node.content.substring(0, 30)}"`);
     } else if (isGroupNode(node)) {
+      console.log(`[DEBUG getContentNodesInOrder] Expanding group node, children:`, node.hierarchy.childIds);
       queue.unshift(...node.hierarchy.childIds);
     }
   }
+
+  console.log(`[DEBUG getContentNodesInOrder] Final order: ${nodes.length} content nodes`);
+  nodes.forEach((node, i) => {
+    console.log(`  ${i}: "${node.content.substring(0, 30)}"`);
+  });
 
   return nodes;
 }
