@@ -1001,8 +1001,13 @@ export function AnimatedNodeComponent({ id, data }) {
                               display: 'flex', alignItems: 'center', justifyContent: 'center'
                             }}
                           >
-                            ▶
+                            ↻
                           </button>
+                          {JSON.stringify(subtreeEmotionProfile) !== JSON.stringify(originalEmotionProfile) && (
+                            <div className="modified-indicator" style={{ top: -4, right: -4, width: 14, height: 14, fontSize: 10, lineHeight: '14px', background: '#ef4444' }}>
+                              !
+                            </div>
+                          )}
                         </div>
                       )}
                       <textarea
@@ -1394,6 +1399,10 @@ export function AnimatedNodeComponent({ id, data }) {
       </div>,
       document.body
     ) : null;
+
+  // Get significant emotions for badge display, excluding the dominant one
+  const significantEmotions = getSignificantEmotions(emotionProfile, 30)
+    .filter(e => e.emotion !== emotion);
 
   // Get significant emotions for badge display, excluding the dominant one
   const significantEmotions = getSignificantEmotions(emotionProfile, 30)
