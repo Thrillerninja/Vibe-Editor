@@ -63,32 +63,53 @@ export function useReparenting() {
     []
   );
 
+  const getNodeSize = (node) => {
+    const styleW = node?.style?.width;
+    const styleH = node?.style?.height;
+
+    const w =
+      node.width ??
+      node.measured?.width ??
+      (typeof styleW === 'number' ? styleW : parseFloat(styleW)) ??
+      200;
+
+    const h =
+      node.height ??
+      node.measured?.height ??
+      (typeof styleH === 'number' ? styleH : parseFloat(styleH)) ??
+      60;
+
+    return { w, h };
+  };
+
+
   /**
    * Check if a point is inside a node's bounding box
    */
   const isPointInNode = React.useCallback((point, node) => {
-    const nodeWidth = node.width || 200;
-    const nodeHeight = node.height || 60;
+    const { w, h } = getNodeSize(node);
 
-    const isInside = (
-      point.x >= node.position.x &&
-      point.x <= node.position.x + nodeWidth &&
-      point.y >= node.position.y &&
-      point.y <= node.position.y + nodeHeight
+    // Größere "Trefferzone" für kleine Nodes
+    const PADDING = 24;
+    const MIN_W = 140;
+    const MIN_H = 50;
+
+    const nodeWidth = Math.max(w, MIN_W);
+    const nodeHeight = Math.max(h, MIN_H);
+
+    const left = node.position.x - PADDING;
+    const right = node.position.x + nodeWidth + PADDING;
+    const top = node.position.y - PADDING;
+    const bottom = node.position.y + nodeHeight + PADDING;
+
+    return (
+      point.x >= left &&
+      point.x <= right &&
+      point.y >= top &&
+      point.y <= bottom
     );
-
-    if (LOGGING_ENABLED) {
-      console.log(
-        `${LOG_PREFIX.REPARENT}     Hitbox check for ${node.id}:`,
-        `\n      Node bounds: X[${node.position.x.toFixed(1)} → ${(node.position.x + nodeWidth).toFixed(1)}] Y[${node.position.y.toFixed(1)} → ${(node.position.y + nodeHeight).toFixed(1)}]`,
-        `\n      Point: (${point.x.toFixed(1)}, ${point.y.toFixed(1)})`,
-        `\n      Size: ${nodeWidth}x${nodeHeight}`,
-        `\n      Result: ${isInside ? '✅ INSIDE' : '❌ OUTSIDE'}`
-      );
-    }
-
-    return isInside;
   }, []);
+
 
   /**
    * Find potential reparent target during drag (for preview)
@@ -109,11 +130,11 @@ export function useReparenting() {
       }
 
       // Calculate the center point of the dragged node
-      const draggedWidth = draggedNode.width || 200;
-      const draggedHeight = draggedNode.height || 60;
+      const { w: draggedWidth, h: draggedHeight } = getNodeSize(draggedNode);
       const draggedCenter = {
-        x: flowX + (draggedNode.width || 200) / 2,
-        y: flowY + (draggedNode.height || 60) / 2,
+        x: flowX + draggedWidth ,
+        y: flowY + draggedHeight ,
+
       };
 
       console.log(

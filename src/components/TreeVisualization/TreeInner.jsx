@@ -24,6 +24,9 @@ import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
 import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
 import { normalizeEmotionProfile, deriveLegacyFromProfile } from '../../utils/emotionProfiles';
+import { mergeNodes } from '../../utils/nodeMerge';
+import { evaluateSentenceEmotions, evaluateHierarchyNodeEmotions } from '../../services/claude';
+
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -355,7 +358,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
    * Node drag stop handler
    */
   const onNodeDragStop = useCallback(
-    (event, node) => {
+    async (event, node) => {
       console.log(`${LOG_PREFIX.DRAG} Drag stop: ${node.id}`);
       isDraggingRef.current = false;
       setReorderIndicator(null);
@@ -391,7 +394,53 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
         // Re-layout will happen automatically via useEffect when sentences change
       } else {
-        // Try reparenting (different parent)
+        // If we dropped on another node, MERGE instead of reparenting.
+        const target = findReparentTarget(node.id, node.position.x, node.position.y);
+
+        if (target) {
+          const current = sentencesRef.current;
+          const meta = current?._hierarchyMeta;
+
+          const targetIsSentence = current.some(s => s.id === target.id);
+          const targetIsGroup = !!meta?.nodes?.some(n => n.id === target.id);
+
+          // Kein echter mergebarer Node → abbrechen, Reorder zulassen
+          if (!targetIsSentence && !targetIsGroup) {
+            console.log('[TreeInner] Non-mergeable target ignored:', target.id);
+            // NICHT returnen → normaler Reorder läuft weiter
+          } else {
+            console.log('[TreeInner] Merge:', node.id, '→', target.id);
+
+            let updatedSentences = mergeNodes(
+              current,
+              node.id,
+              target.id
+            );
+
+            let pruned = pruneEmptyHierarchyBranches(updatedSentences);
+
+            try {
+              if (targetIsSentence) {
+                pruned = await evaluateSentenceEmotions(pruned);
+              } else if (targetIsGroup) {
+                const { updatedHierarchyMeta } =
+                  await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
+
+                const withMeta = pruned.map(s => ({ ...s }));
+                withMeta._hierarchyMeta = updatedHierarchyMeta;
+                pruned = withMeta;
+              }
+            } catch (err) {
+              console.warn('[TreeInner] Emotion refresh failed:', err);
+            }
+
+            onTreeUpdate?.(pruned);
+            physics.stop();
+            return; // ⬅ wichtig: Reorder verhindern
+          }
+        }
+
+        // Fallback: existing (disabled) reparent behaviour
         console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
         onDropToReparent(node.id, node.position.x, node.position.y);
 
@@ -403,30 +452,9 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         if (onTreeUpdate && prunedAfterReparent !== sentencesRef.current) {
           onTreeUpdate(prunedAfterReparent);
         }
-
-        // Re-layout after reparent
-        setTimeout(async () => {
-          if (!isDraggingRef.current) {
-            console.log(`${LOG_PREFIX.LAYOUT} Re-layouting after reparent`);
-            const laidOut = await runElk(
-              rfRef.current.getNodes(),
-              rfRef.current.getEdges()
-            );
-            if (animateNextRef.current && containerRef.current) {
-              containerRef.current.classList.add('rf-animate-drop');
-            }
-            setNodes(laidOut);
-            if (animateNextRef.current && containerRef.current) {
-              setTimeout(() => {
-                containerRef.current?.classList.remove('rf-animate-drop');
-                animateNextRef.current = false;
-              }, 300);
-            }
-          }
-        }, 50);
       }
     },
-    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, onTreeUpdate]
+    [checkReorderDrop, onDropToReparent, physics, onTreeUpdate, findReparentTarget]
   );
 
   /**

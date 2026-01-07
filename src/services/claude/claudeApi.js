@@ -4,7 +4,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { findDirtyRootNodes, buildDirtySubtrees } from './dirtyNodeFinder.js';
+import { findDirtyRootNodes, buildDirtySubtrees, findSentencesInNode } from './dirtyNodeFinder.js';
 import { buildDirtyRestructurePrompt } from './promptBuilder.js';
 import { parseDirtyRestructureResponse } from './responseValidator.js';
 import { EMOTIONS, EMOTION_AXES } from '../../utils/constants.js';
@@ -163,6 +163,82 @@ Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
         console.error('[Claude Service] Error stack:', error.stack);
         throw new Error(`Failed to evaluate sentence emotions: ${error.message}`);
     }
+}
+
+export async function evaluateHierarchyNodeEmotions(sentences, hierarchyMeta, nodeIds) {
+  const client = getClient();
+
+  if (!hierarchyMeta?.nodes?.length || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    return { updatedHierarchyMeta: hierarchyMeta };
+  }
+
+  const nodesById = new Map(hierarchyMeta.nodes.map(n => [n.id, n]));
+  const targets = nodeIds.map(id => nodesById.get(id)).filter(Boolean);
+
+  if (targets.length === 0) {
+    return { updatedHierarchyMeta: hierarchyMeta };
+  }
+
+  const nodeTextBlocks = targets.map((node) => {
+    const descendantSentences = findSentencesInNode(node, hierarchyMeta, sentences);
+    const text = descendantSentences.map(s => s.content).join(' ');
+    return `- (${node.id}) TITLE: ${node.label}\n  TEXT: ${text}`;
+  }).join('\n');
+
+  const prompt = `For each input NODE, assign a 10-axis emotion profile using the Differential Emotions Scale (DES) by Izard (1997).
+
+The DES measures these 10 fundamental, distinct emotions (0-100):
+${EMOTION_AXES.map((a, i) => `${i + 1}. ${a.toUpperCase()}`).join('\n')}
+
+Rate each emotion independently based on the node's title and the combined text of its descendant sentences.
+
+Return ONLY valid JSON: an array where each item is { "id": "<node-id>", "emotions": { ${EMOTION_AXES.map(k => `"${k}": 0-100`).join(', ')} } }.
+- Use all ten DES emotion keys exactly: ${EMOTION_AXES.join(', ')}.
+- Clamp every value to 0-100.
+- Do not add extra fields or prose.
+
+Nodes:\n${nodeTextBlocks}`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const responseText = message.content[0].text;
+    const emotionData = JSON.parse(responseText);
+
+    const emotionMap = new Map();
+    for (const item of emotionData) {
+      const profile = normalizeEmotionProfile(
+        item.emotions ?? profileFromLegacy(item.emotion, item.intensity)
+      );
+      emotionMap.set(item.id, profile);
+    }
+
+    const updatedNodes = hierarchyMeta.nodes.map((n) => {
+      if (!emotionMap.has(n.id)) return n;
+      const profile = emotionMap.get(n.id);
+      const legacy = deriveLegacyFromProfile(profile);
+      return {
+        ...n,
+        emotions: profile,
+        emotion: legacy.emotion,
+        intensity: legacy.intensity,
+      };
+    });
+
+    return {
+      updatedHierarchyMeta: {
+        ...hierarchyMeta,
+        nodes: updatedNodes,
+      }
+    };
+  } catch (error) {
+    console.error('[Claude Service] Error evaluating hierarchy node emotions:', error);
+    throw new Error(`Failed to evaluate hierarchy node emotions: ${error.message}`);
+  }
 }
 
 
