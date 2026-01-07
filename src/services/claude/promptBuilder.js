@@ -259,7 +259,8 @@ Only generate NEW UUIDs for the grouping nodes (id field), NOT for childIds at l
 RESPONSE FORMAT
 ═══════════════════════════════════════════════════════════════════
 
-Return valid JSON only (no markdown):
+Return ONLY valid JSON. DO NOT wrap your response in markdown code fences (no \`\`\`json).
+Start directly with the opening brace { and end with the closing brace }.
 
 {${isRootDirty ? `
   "newRootTitle": "Document Title",
@@ -283,4 +284,5 @@ Return valid JSON only (no markdown):
 }
 
 Remember: Check each subtree's topLevel and create ALL levels from 2 to topLevel!`;
+
 }
