@@ -281,19 +281,21 @@ export function AnimatedNodeComponent({ id, data }) {
     >
       <div
         style={{
-          background: "#fff",
-          borderRadius: 12,
+          background: "rgba(255, 255, 255, 0.9)",
+          backdropFilter: "saturate(180%) blur(20px)",
+          WebkitBackdropFilter: "saturate(180%) blur(20px)",
+          borderRadius: "24px",
           padding: 0,
           maxWidth: 800,
           width: "90%",
           height: 'auto',
           maxHeight: '80vh',
-          border: `3px solid ${modalAccentColor}`,
-          boxShadow: "0 8px 30px rgba(0,0,0,0.25)",
+          border: "1px solid rgba(255, 255, 255, 0.5)",
+          boxShadow: "0 20px 40px -10px rgba(0, 0, 0, 0.1), 0 0 15px rgba(0,0,0,0.05)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
-          color: "#000"
+          color: "#111827"
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -301,12 +303,12 @@ export function AnimatedNodeComponent({ id, data }) {
 
         {/* Scrollable content area */}
         {!isNodeRewriting && (
-          <div style={{ overflowY: 'auto', background: '#fff', maxHeight: 'calc(72vh - 52px)' }}>
+          <div style={{ overflowY: 'auto', background: 'transparent', maxHeight: 'calc(72vh - 52px)' }}>
 
 
             {/* Editing Tab: Sentence editing */}
             {data.type === "sentence" && (
-              <div style={{ padding: "20px 24px 16px 24px", background: "#fff", display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ padding: "20px 24px 16px 24px", background: "transparent", display: 'flex', flexDirection: 'column', height: '100%' }}>
 
                 <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flex: 1 }}>
                   {/* Left Column: Text */}
@@ -372,10 +374,11 @@ export function AnimatedNodeComponent({ id, data }) {
                           style={{
                             width: 28,
                             height: 28,
-                            borderRadius: 4,
-                            border: '1px solid #ccc',
-                            background: '#f8f8f8',
+                            borderRadius: 8,
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            background: 'rgba(255,255,255,0.8)',
                             cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                           }}
                         >
                           ◀
@@ -390,10 +393,11 @@ export function AnimatedNodeComponent({ id, data }) {
                           style={{
                             width: 28,
                             height: 28,
-                            borderRadius: 4,
-                            border: '1px solid #ccc',
-                            background: '#f8f8f8',
+                            borderRadius: 8,
+                            border: '1px solid rgba(0,0,0,0.1)',
+                            background: 'rgba(255,255,255,0.8)',
                             cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
                           }}
                         >
                           ▶
@@ -407,12 +411,17 @@ export function AnimatedNodeComponent({ id, data }) {
                         width: "100%",
                         flex: 1,
                         minHeight: 320,
-                        padding: 10,
-                        borderRadius: 6,
-                        border: "1px solid #bbb",
+                        padding: "16px",
+                        borderRadius: "12px",
+                        border: "1px solid rgba(0, 0, 0, 0.1)",
+                        background: "rgba(255, 255, 255, 0.5)",
                         marginBottom: 16,
-                        color: "#000000",
-                        resize: "none"
+                        color: "#111827",
+                        resize: "none",
+                        fontFamily: "inherit",
+                        fontSize: "14px",
+                        outline: "none",
+                        boxShadow: "inset 0 1px 3px rgba(0,0,0,0.02)"
                       }}
                     />
                   </div>
@@ -435,7 +444,7 @@ export function AnimatedNodeComponent({ id, data }) {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid #eee' }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                   <button
                     title="Delete this sentence"
                     onClick={(e) => {
@@ -448,13 +457,27 @@ export function AnimatedNodeComponent({ id, data }) {
                     }}
                     disabled={isNodeRewriting}
                     style={{
-                      padding: '6px 12px',
+                      padding: '8px 16px',
                       backgroundColor: '#ef4444',
                       color: 'white',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '12px',
                       cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
-                      marginRight: 'auto'
+                      marginRight: 'auto',
+                      fontWeight: 500,
+                      fontSize: '14px',
+                      transition: 'all 0.2s ease',
+                      boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isNodeRewriting) {
+                        e.currentTarget.style.backgroundColor = '#dc2626';
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = '#ef4444';
+                      e.currentTarget.style.transform = 'translateY(0)';
                     }}
                   >
                     Delete
@@ -463,12 +486,21 @@ export function AnimatedNodeComponent({ id, data }) {
                     onClick={handleCancel}
                     disabled={isNodeRewriting}
                     style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#ef4444',
-                      color: 'white',
+                      padding: '8px 16px',
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      color: '#374151',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '12px',
                       cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '14px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)';
                     }}
                   >
                     Cancel
@@ -478,12 +510,24 @@ export function AnimatedNodeComponent({ id, data }) {
                       onClick={handleSave}
                       disabled={isNodeRewriting}
                       style={{
-                        padding: "8px 14px",
-                        background: "#10B981",
+                        padding: "8px 20px",
+                        background: "#111827",
                         color: "white",
-                        borderRadius: 6,
+                        borderRadius: "12px",
                         border: "none",
                         cursor: "pointer",
+                        fontWeight: 500,
+                        fontSize: '14px',
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseOver={(e) => {
+                        e.currentTarget.style.transform = 'translateY(-1px)';
+                        e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+                      }}
+                      onMouseOut={(e) => {
+                        e.currentTarget.style.transform = 'translateY(0)';
+                        e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
                       }}
                     >
                       Save
@@ -495,7 +539,7 @@ export function AnimatedNodeComponent({ id, data }) {
 
             {/* Editing Tab: Subtree editing */}
             {data.type !== "sentence" && (
-              <div style={{ padding: "20px 24px", background: "#fff", display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <div style={{ padding: "20px 24px", background: "transparent", display: 'flex', flexDirection: 'column', height: '100%' }}>
 
                 <div style={{ display: 'flex', gap: 32, alignItems: 'flex-start', flex: 1, minHeight: 0 }}>
                   {/* Left Column: List */}
@@ -560,7 +604,7 @@ export function AnimatedNodeComponent({ id, data }) {
                           if (!entry) return null;
                           const currentText = entry.editedText ?? ((entry.options && entry.options.length > 0 && entry.selectedIdx >= 0) ? entry.options[entry.selectedIdx] : entry.original);
                           return (
-                            <div key={leafId} style={{ border: '1px solid #ddd', borderRadius: 6, padding: 10 }}>
+                            <div key={leafId} style={{ border: '1px solid rgba(0,0,0,0.1)', borderRadius: 12, padding: 16, background: "rgba(255,255,255,0.4)" }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                                 <button
                                   onClick={() => rotateLeafPrev(leafId)}
@@ -569,10 +613,11 @@ export function AnimatedNodeComponent({ id, data }) {
                                   style={{
                                     width: 28,
                                     height: 28,
-                                    borderRadius: 4,
-                                    border: '1px solid #ccc',
-                                    background: '#f8f8f8',
+                                    borderRadius: 8,
+                                    border: '1px solid rgba(0,0,0,0.1)',
+                                    background: 'rgba(255,255,255,0.8)',
                                     cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
                                   }}
                                 >
                                   ◀
@@ -587,10 +632,11 @@ export function AnimatedNodeComponent({ id, data }) {
                                   style={{
                                     width: 28,
                                     height: 28,
-                                    borderRadius: 4,
-                                    border: '1px solid #ccc',
-                                    background: '#f8f8f8',
+                                    borderRadius: 8,
+                                    border: '1px solid rgba(0,0,0,0.1)',
+                                    background: 'rgba(255,255,255,0.8)',
                                     cursor: isNodeRewriting ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', justifyContent: 'center'
                                   }}
                                 >
                                   ▶
@@ -605,11 +651,16 @@ export function AnimatedNodeComponent({ id, data }) {
                                 style={{
                                   width: '100%',
                                   minHeight: 100,
-                                  padding: 8,
-                                  borderRadius: 6,
-                                  border: '1px solid #bbb',
-                                  color: '#000000',
-                                  resize: 'vertical'
+                                  padding: "12px",
+                                  borderRadius: "8px",
+                                  border: "1px solid rgba(0, 0, 0, 0.1)",
+                                  background: "rgba(255, 255, 255, 0.5)",
+                                  color: "#111827",
+                                  resize: 'vertical',
+                                  fontFamily: "inherit",
+                                  fontSize: "14px",
+                                  outline: "none",
+                                  boxShadow: "inset 0 1px 2px rgba(0,0,0,0.02)"
                                 }}
                               />
                             </div>
@@ -637,17 +688,26 @@ export function AnimatedNodeComponent({ id, data }) {
                   </div>
                 </div>
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid #eee' }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 'auto', paddingTop: 16, borderTop: '1px solid rgba(0,0,0,0.06)' }}>
                   <button
                     onClick={handleCancel}
                     disabled={isNodeRewriting}
                     style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#ef4444',
-                      color: 'white',
+                      padding: '8px 16px',
+                      backgroundColor: 'rgba(0,0,0,0.05)',
+                      color: '#374151',
                       border: 'none',
-                      borderRadius: '4px',
+                      borderRadius: '12px',
                       cursor: 'pointer',
+                      fontWeight: 500,
+                      fontSize: '14px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onMouseOver={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.1)';
+                    }}
+                    onMouseOut={(e) => {
+                      e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.05)';
                     }}
                   >
                     Cancel
@@ -685,12 +745,24 @@ export function AnimatedNodeComponent({ id, data }) {
                         }}
                         disabled={isNodeRewriting}
                         style={{
-                          padding: "8px 14px",
-                          background: "#10B981",
+                          padding: "8px 20px",
+                          background: "#111827",
                           color: "white",
-                          borderRadius: 6,
+                          borderRadius: "12px",
                           border: "none",
                           cursor: "pointer",
+                          fontWeight: 500,
+                          fontSize: '14px',
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                          transition: 'all 0.2s ease'
+                        }}
+                        onMouseOver={(e) => {
+                          e.currentTarget.style.transform = 'translateY(-1px)';
+                          e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.15)';
+                        }}
+                        onMouseOut={(e) => {
+                          e.currentTarget.style.transform = 'translateY(0)';
+                          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
                         }}
                       >
                         Save
