@@ -50,6 +50,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const sentencesRef = useRef(sentences);
   const animateNextRef = useRef(false);
   const lastAiUpdateTokenRef = useRef(0);
+  const lastCommittedLayoutRef = useRef(new Map()); // id -> { x, y }
 
 
   // Keep sentences ref updated
@@ -244,6 +245,10 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         if (animateNextRef.current && containerRef.current) {
           containerRef.current.classList.add('rf-animate-drop');
         }
+        // Remember last committed layout positions
+        lastCommittedLayoutRef.current = new Map(
+          laidOut.map(n => [n.id, { x: n.position.x, y: n.position.y }])
+        );
         setNodes(laidOut);
         if (animateNextRef.current && containerRef.current) {
           setTimeout(() => {
@@ -270,6 +275,34 @@ export function TreeInner({ sentences, onTreeUpdate }) {
     console.log(`${LOG_PREFIX.DRAG} ReactFlow initialized`);
     rfRef.current = instance;
   }, []);
+
+  const snapBackToLastLayout = useCallback(() => {
+    const map = lastCommittedLayoutRef.current;
+    if (!map || map.size === 0) return;
+
+    // Animate this reset like a drop-layout update
+    animateNextRef.current = true;
+    if (containerRef.current) containerRef.current.classList.add('rf-animate-drop');
+
+    setNodes((nds) =>
+      nds.map((n) => {
+        const p = map.get(n.id);
+        if (!p) return n;
+        return {
+          ...n,
+          position: { x: p.x, y: p.y },
+        };
+      })
+    );
+
+    if (containerRef.current) {
+      setTimeout(() => {
+        containerRef.current?.classList.remove('rf-animate-drop');
+        animateNextRef.current = false;
+      }, 300);
+    }
+  }, [setNodes]);
+
 
   /**
    * Node drag start handler
@@ -422,6 +455,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           if (!targetIsSentence && !targetIsGroup) {
             console.log('[TreeInner] Non-mergeable target ignored:', target.id);
             physics.stop();
+            snapBackToLastLayout();
             return; 
           } else {
             // 1) Merge + prune
@@ -546,13 +580,13 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
             return; // extrem wichtig: verhindert Reorder danach
           }
+        }else {
+          // 4a) No merge target and no reorder -> snap back to last committed layout
+          console.log(`${LOG_PREFIX.DRAG} No merge/reorder target - snapping back`);
+          physics.stop();
+          snapBackToLastLayout();
+          return;
         }
-
-
-        // Fallback: existing (disabled) reparent behaviour
-        console.log(`${LOG_PREFIX.DRAG} Attempting reparent`);
-        onDropToReparent(node.id, node.position.x, node.position.y);
-
         // Stop physics
         physics.stop();
 
@@ -563,7 +597,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         }
       }
     },
-    [checkReorderDrop, onDropToReparent, physics, onTreeUpdate, findReparentTarget]
+    [checkReorderDrop, onDropToReparent, physics, onTreeUpdate, findReparentTarget, snapBackToLastLayout]
   );
 
   /**
