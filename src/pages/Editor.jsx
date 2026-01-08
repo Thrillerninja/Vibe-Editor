@@ -4,7 +4,7 @@ import React from 'react';
 import posthog from '../utils/posthog';
 import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
-import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
+import { updateDirtyNodes, evaluateSentenceEmotions, evaluateHierarchyNodeEmotions, evaluateHierarchyNodeTitles } from '../services/claude';
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { applyDirtySubtreeRestructure, createPlaceholderHierarchy } from '../utils/hierarchyIntegration';
 import { EMOTIONS, EMOTION_COLORS, EMOTION_LABELS } from '../utils/constants';
@@ -171,6 +171,48 @@ export default function Editor() {
 
             console.log('[App] Dirty nodes to restructure:', dirtyNodeIds.length);
             console.log('[App] Dirty sentences:', dirtySentenceIds.length);
+
+            // If only "metadata dirty" nodes exist (e.g. after manual Group↔Group merges),
+            // refresh hierarchy node TITLES + emotions WITHOUT restructuring the tree.
+            const dirtyLabelNodeIds = hierarchyMeta.dirtyLabelNodeIds || [];
+            if (dirtyNodeIds.length === 0 && dirtySentenceIds.length === 0 && dirtyLabelNodeIds.length > 0) {
+                console.log('[App] Refreshing hierarchy node titles + emotions only (no restructure). Dirty label nodes:', dirtyLabelNodeIds.length);
+
+                // 1) Update titles (labels) first
+                const { updatedHierarchyMeta: titledHierarchyMeta } = await evaluateHierarchyNodeTitles(
+                    sentencesToProcess,
+                    hierarchyMeta,
+                    dirtyLabelNodeIds
+                );
+
+                // 2) Then update node emotions (can optionally depend on updated titles)
+                const { updatedHierarchyMeta } = await evaluateHierarchyNodeEmotions(
+                    sentencesToProcess,
+                    titledHierarchyMeta,
+                    dirtyLabelNodeIds
+                );
+
+                let updatedSentences = [...sentencesToProcess];
+                updatedSentences._hierarchyMeta = {
+                    ...updatedHierarchyMeta,
+                    dirtyLabelNodeIds: []
+                };
+
+                // (Optional) refresh sentence emotions too, to keep UI consistent
+                await evaluateSentenceEmotions(updatedSentences).then(result => {
+                    updatedSentences = result;
+                });
+
+                // Clear any remaining dirty flags
+                updatedSentences = clearDirtyFlags(updatedSentences);
+
+                setSentences(updatedSentences);
+                addCommit(updatedSentences, 'Hierarchy metadata refreshed');
+                setHierarchyState('generated');
+                return;
+            }
+
+
 
             // Ask Claude to restructure dirty subtrees. this contains emotion stuff for hierarchy nodes
             const { dirtyRootNodes, restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = await updateDirtyNodes(

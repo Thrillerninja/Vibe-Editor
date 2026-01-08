@@ -232,8 +232,12 @@ export function clearDirtyFlags(sentences) {
     const updated = [...sentences];
     const hierarchyMeta = { ...sentences._hierarchyMeta };
 
+    /* delete hierarchyMeta.dirtyNodeIds;
+    delete hierarchyMeta.dirtySentenceIds; */
     delete hierarchyMeta.dirtyNodeIds;
     delete hierarchyMeta.dirtySentenceIds;
+    delete hierarchyMeta.dirtyLabelNodeIds;
+
 
     updated._hierarchyMeta = hierarchyMeta;
 
@@ -252,8 +256,11 @@ export function hasDirtyNodes(sentences) {
         return false;
     }
 
-    const { dirtyNodeIds = [], dirtySentenceIds = [] } = sentences._hierarchyMeta;
-    return dirtyNodeIds.length > 0 || dirtySentenceIds.length > 0;
+    /* const { dirtyNodeIds = [], dirtySentenceIds = [] } = sentences._hierarchyMeta;
+    return dirtyNodeIds.length > 0 || dirtySentenceIds.length > 0; */
+    const { dirtyNodeIds = [], dirtySentenceIds = [], dirtyLabelNodeIds = [] } = sentences._hierarchyMeta;
+    return dirtyNodeIds.length > 0 || dirtySentenceIds.length > 0 || dirtyLabelNodeIds.length > 0;
+
 }
 
 /**
@@ -414,3 +421,5 @@ export function removeSentenceFromHierarchy(sentences, sentenceId) {
 
     return updated;
 }
+
+

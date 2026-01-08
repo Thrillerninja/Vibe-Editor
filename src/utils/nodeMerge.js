@@ -73,11 +73,22 @@ export function mergeNodes(sentences, sourceId, targetId) {
     // Drop the source node from hierarchy
     hierarchyMeta.nodes = nodes.filter((n) => n.id !== sourceId);
 
+
     // Mark merged node as dirty so downstream logic can refresh titles/emotions if needed
-    const dirty = new Set(hierarchyMeta.dirtyNodeIds || []);
+    /* const dirty = new Set(hierarchyMeta.dirtyNodeIds || []);
     dirty.add(targetId);
-    dirty.add('root');
-    hierarchyMeta.dirtyNodeIds = Array.from(dirty);
+    hierarchyMeta.dirtyNodeIds = Array.from(dirty); */
+    // IMPORTANT:
+    // A manual Group↔Group merge is a structural user action.
+    // If we add the merged node/root to `dirtyNodeIds`, the next "AI refresh" will
+    // treat this as a subtree that must be *restructured* and can undo the merge.
+    // So we keep `dirtyNodeIds` unchanged here and only mark the node for a
+    // metadata refresh (titles/emotions) that does NOT alter tree structure.
+    const dirtyLabels = new Set(hierarchyMeta.dirtyLabelNodeIds || []);
+    dirtyLabels.add(targetId);
+    dirtyLabels.add('root');
+    hierarchyMeta.dirtyLabelNodeIds = Array.from(dirtyLabels);
+
 
     updated._hierarchyMeta = hierarchyMeta;
     return updated;

@@ -49,6 +49,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const isDraggingRef = useRef(false);
   const sentencesRef = useRef(sentences);
   const animateNextRef = useRef(false);
+  const lastAiUpdateTokenRef = useRef(0);
+
 
   // Keep sentences ref updated
   useEffect(() => {
@@ -403,10 +405,24 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
           const targetIsSentence = current.some(s => s.id === target.id);
           const targetIsGroup = !!meta?.nodes?.some(n => n.id === target.id);
+          // mergedId nur für Sentence↔Sentence relevant
+          let mergedId = target.id;
+          let droppedId = node.id;
+
+          if (targetIsSentence) {
+            const srcIdx = current.findIndex(s => s.id === node.id);
+            const tgtIdx = current.findIndex(s => s.id === target.id);
+
+            // Keep earlier sentence in document order
+            mergedId = (srcIdx !== -1 && tgtIdx !== -1 && srcIdx <= tgtIdx) ? node.id : target.id;
+            droppedId = mergedId === node.id ? target.id : node.id;
+          }
 
           // kein echter mergebarer Node → normaler Reorder
           if (!targetIsSentence && !targetIsGroup) {
             console.log('[TreeInner] Non-mergeable target ignored:', target.id);
+            physics.stop();
+            return; 
           } else {
             // 1) Merge + prune
             let updatedSentences = mergeNodes(current, node.id, target.id);
@@ -417,27 +433,116 @@ export function TreeInner({ sentences, onTreeUpdate }) {
             physics.stop();
 
             // 3) AI-Update IM HINTERGRUND (blockiert NICHT)
+            // Token: jede neue Merge-Aktion invalidiert alte AI-Responses
+            const token = ++lastAiUpdateTokenRef.current;
+
             (async () => {
               try {
-                let refreshed = pruned;
-
                 if (targetIsSentence) {
-                  refreshed = await evaluateSentenceEmotions(pruned);
-                } else if (targetIsGroup) {
+                  // 1) Texte VOR dem Merge bestimmen
+                  // Wichtig: aus dem pruned-Stand, weil da beide Sätze schon logisch zusammengehören
+                  const mergedSentence = pruned.find(s => s.id === mergedId);
+                  if (!mergedSentence) return;
+
+                  const originalTexts = {
+                    before: mergedSentence.content, // nach mergeNodes evtl. schon concatenated
+                  };
+
+                  // 2) AI erzeugt EINEN neuen, sauberen Satz
+                  const aiSentence = await generateMergedSentence(
+                    originalTexts.before
+                  );
+
+                  // Wenn inzwischen etwas Neueres passiert ist -> verwerfen
+                  if (token !== lastAiUpdateTokenRef.current) return;
+
+                  const latest = sentencesRef.current;
+                  if (!latest) return;
+
+                  // 3) Patch: NUR den Inhalt des gemergten Satzes ersetzen
+                  const patchedContent = latest.map(s => {
+                    if (s.id !== mergedId) return s;
+                    return {
+                      ...s,
+                      content: aiSentence,
+                    };
+                  });
+                  patchedContent._hierarchyMeta = latest._hierarchyMeta;
+
+                  onTreeUpdate?.(patchedContent);
+
+                  // 4) OPTIONAL: Emotionen für diesen EINEN Satz nachziehen
+                  try {
+                    const emoResult = await evaluateSentenceEmotions(patchedContent);
+                    if (token !== lastAiUpdateTokenRef.current) return;
+
+                    const byId = new Map(emoResult.map(s => [s.id, s]));
+                    const patchedEmo = patchedContent.map(s => {
+                      const aiS = byId.get(s.id);
+                      if (!aiS) return s;
+                      return {
+                        ...s,
+                        emotions: aiS.emotions ?? s.emotions,
+                        emotion: aiS.emotion ?? s.emotion,
+                        intensity: aiS.intensity ?? s.intensity,
+                      };
+                    });
+                    patchedEmo._hierarchyMeta = patchedContent._hierarchyMeta;
+
+                    onTreeUpdate?.(patchedEmo);
+                  } catch (e) {
+                    console.warn('[TreeInner] Sentence emotion refresh failed:', e);
+                  }
+
+                  return;
+                }
+
+
+                if (targetIsGroup) {
                   const { updatedHierarchyMeta } =
                     await evaluateHierarchyNodeEmotions(pruned, meta, [target.id]);
 
-                  const withMeta = pruned.map(s => ({ ...s }));
-                  withMeta._hierarchyMeta = updatedHierarchyMeta;
-                  refreshed = withMeta;
-                }
+                  if (token !== lastAiUpdateTokenRef.current) return;
 
-                // 4) Ergebnis nachreichen
-                onTreeUpdate?.(refreshed);
+                  const latest = sentencesRef.current;
+                  const srcIdx = current.findIndex(s => s.id === node.id);
+                  const tgtIdx = current.findIndex(s => s.id === target.id);
+
+                  if (!latest?._hierarchyMeta) return;
+
+                  // Map: nodeId -> emotion fields (nur das!)
+                  const aiById = new Map(
+                    (updatedHierarchyMeta.nodes || []).map(n => [
+                      n.id,
+                      {
+                        emotions: n.emotions,
+                        emotion: n.emotion,
+                        intensity: n.intensity,
+                      }
+                    ])
+                  );
+
+                  // Struktur aus latest behalten, nur Emotionen patchen
+                  const patchedMeta = {
+                    ...latest._hierarchyMeta,
+                    nodes: (latest._hierarchyMeta.nodes || []).map(n => {
+                      const ai = aiById.get(n.id);
+                      return ai ? { ...n, ...ai } : n;
+                    }),
+                  };
+
+                  const patched = latest.map(s => ({ ...s }));
+                  patched._hierarchyMeta = patchedMeta;
+
+                  onTreeUpdate?.(patched);
+
+                  return;
+                }
               } catch (err) {
                 console.warn('[TreeInner] Emotion refresh failed:', err);
               }
             })();
+
 
             return; // extrem wichtig: verhindert Reorder danach
           }

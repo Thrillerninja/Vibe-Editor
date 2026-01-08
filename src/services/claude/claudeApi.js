@@ -442,3 +442,109 @@ Output format: ["rewritten version 1", "rewritten version 2", "rewritten version
         throw new Error(`Failed to rewrite sentence (multi): ${error.message}`);
     }
 }
+
+export async function generateMergedSentence(a, b) {
+  const client = getClient();
+
+  const prompt = `Combine these two texts into ONE single well-formed sentence in the same language.
+- Keep the meaning.
+- Output ONLY JSON: {"content":"..."}
+Text A: ${a}
+Text B: ${b}`;
+
+  const message = await client.messages.create({
+    model: 'claude-3-5-haiku-20241022',
+    max_tokens: 300,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const txt = message.content[0].text;
+  const json = JSON.parse(txt);
+  return json.content;
+}
+
+/**
+ * Generate/refresh concise titles (labels) for specific hierarchy nodes WITHOUT changing structure.
+ *
+ * This is intentionally "metadata-only": it only updates `node.label` (and `hierarchyMeta.title` for root),
+ * and never touches `children` or sentence membership.
+ */
+export async function evaluateHierarchyNodeTitles(sentences, hierarchyMeta, nodeIds) {
+  const client = getClient();
+
+  if (!hierarchyMeta?.nodes?.length || !Array.isArray(nodeIds) || nodeIds.length === 0) {
+    return { updatedHierarchyMeta: hierarchyMeta };
+  }
+
+  const nodesById = new Map(hierarchyMeta.nodes.map(n => [n.id, n]));
+  const targets = nodeIds.map(id => nodesById.get(id)).filter(Boolean);
+  if (targets.length === 0) {
+    return { updatedHierarchyMeta: hierarchyMeta };
+  }
+
+  const nodeTextBlocks = targets.map((node) => {
+    const descendantSentences = findSentencesInNode(node, hierarchyMeta, sentences);
+    const text = descendantSentences.map(s => s.content).join(' ');
+    return `- (${node.id}) CURRENT_TITLE: ${node.label}\n  TEXT: ${text}`;
+  }).join('\n');
+
+  const prompt = `You are generating short, human-readable section titles for a document hierarchy.
+
+For each input NODE:
+- Create a concise title (2-7 words) that summarizes the combined meaning of its descendant sentences.
+- Keep the language of the text.
+- Avoid punctuation at the end.
+- Do NOT include quotes.
+- Do NOT change structure; ONLY propose a title.
+
+Return ONLY valid JSON: an array where each item is { "id": "<node-id>", "label": "<new-title>" }.
+- No extra fields.
+- No commentary.
+
+Nodes:\n${nodeTextBlocks}`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const responseText = message.content[0].text;
+    const titleData = JSON.parse(responseText);
+
+    const labelMap = new Map();
+    for (const item of titleData) {
+      if (!item?.id || typeof item?.label !== 'string') continue;
+      const cleaned = String(item.label).trim().replace(/^['"]|['"]$/g, '');
+      if (cleaned.length > 0) labelMap.set(String(item.id), cleaned);
+    }
+
+    const updatedNodes = hierarchyMeta.nodes.map((n) => {
+      if (!labelMap.has(n.id)) return n;
+      return { ...n, label: labelMap.get(n.id) };
+    }); 
+
+
+    // If root is among targets, also sync hierarchyMeta.title for consistency.
+    //const rootLabel = labelMap.get('root');
+    const rootNode = nodesById.get('root');
+    const rootLabel = labelMap.get('root');
+
+    // only update hierarchyMeta.title if root is not manual/locked
+    const canUpdateRootTitle = !(rootNode?.labelSource === 'manual' || rootNode?.labelLocked === true);
+
+
+    return {
+      updatedHierarchyMeta: {
+        ...hierarchyMeta,
+        ...(rootLabel ? { title: rootLabel } : {}),
+        nodes: updatedNodes,
+      }
+    };
+  } catch (error) {
+    console.error('[Claude Service] Error evaluating hierarchy node titles:', error);
+    throw new Error(`Failed to evaluate hierarchy node titles: ${error.message}`);
+  }
+}
+
