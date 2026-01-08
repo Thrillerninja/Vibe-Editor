@@ -63,7 +63,18 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
 
     // Build subtree information for each dirty root
     const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);
-
+    // Guard: if there are no subtrees to restructure, don't call Claude with empty input
+    if (dirtySubtrees.length === 0) {
+        console.log('[Claude Service] No dirty subtrees to restructure - skipping Claude call.');
+        return {
+            dirtyRootNodes: [],
+            restructuredSubtrees: [],
+            newRootTitle: undefined,
+            newRootEmotion: undefined,
+            newRootIntensity: undefined,
+            newRootEmotions: undefined,
+        };
+    }
     // Build the prompt
     const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
 

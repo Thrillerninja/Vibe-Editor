@@ -175,6 +175,46 @@ export default function Editor() {
             // If only "metadata dirty" nodes exist (e.g. after manual Group↔Group merges),
             // refresh hierarchy node TITLES + emotions WITHOUT restructuring the tree.
             const dirtyLabelNodeIds = hierarchyMeta.dirtyLabelNodeIds || [];
+
+            // 0) If nothing is dirty at all, don't call Claude restructure (would send empty INPUT DATA [])
+            if (dirtyNodeIds.length === 0 && dirtySentenceIds.length === 0 && dirtyLabelNodeIds.length === 0) {
+                console.log('[App] No dirty nodes/sentences/labels - nothing to update.');
+                setHierarchyState('generated');
+                setIsGenerating(false);
+                return;
+            }
+
+            // 1) Root-only dirty: refresh root title + emotion without restructure
+            if (dirtyNodeIds.length === 1 && dirtyNodeIds[0] === 'root' && dirtySentenceIds.length === 0) {
+                console.log('[App] Root-only dirty - refreshing root title + emotions without restructure.');
+
+                const { updatedHierarchyMeta: titledHierarchyMeta } = await evaluateHierarchyNodeTitles(
+                    sentencesToProcess,
+                    hierarchyMeta,
+                    ['root']
+                );
+
+                const { updatedHierarchyMeta } = await evaluateHierarchyNodeEmotions(
+                    sentencesToProcess,
+                    titledHierarchyMeta,
+                    ['root']
+                );
+
+                let updatedSentences = [...sentencesToProcess];
+                updatedSentences._hierarchyMeta = {
+                    ...updatedHierarchyMeta,
+                    dirtyLabelNodeIds: [] // (safety)
+                };
+
+                updatedSentences = clearDirtyFlags(updatedSentences);
+
+                setSentences(updatedSentences);
+                addCommit(updatedSentences, 'Root metadata refreshed');
+                setHierarchyState('generated');
+                setIsGenerating(false);
+                return;
+            }
+
             if (dirtyNodeIds.length === 0 && dirtySentenceIds.length === 0 && dirtyLabelNodeIds.length > 0) {
                 console.log('[App] Refreshing hierarchy node titles + emotions only (no restructure). Dirty label nodes:', dirtyLabelNodeIds.length);
 
