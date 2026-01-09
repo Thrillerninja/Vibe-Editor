@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "strict": true,
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "node",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "baseUrl": ".",
+    "paths": {
+      "@types/*": ["src/types/*"],
+      "@utils/*": ["src/utils/*"],
+      "@services/*": ["src/services/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,8 +1,25 @@
+/**
+ * @fileoverview DiffView Component - Text-based diff with inline highlighting
+ *
+ * Shows additions, modifications, and removals as highlighted text,
+ * similar to standard code diff viewers.
+ *
+ * DIFF STRUCTURE:
+ * Array<{
+ *   type: 'added' | 'removed' | 'unchanged' | 'skip',
+ *   content: string,
+ *   count?: number  // for skip type
+ * }>
+ */
+
 import React from 'react';
 
 /**
- * DiffView Component
- * Displays changes inline as continuous text with highlighting
+ * DiffView - Text-based diff display with inline highlighting
+ *
+ * @param {Object} props
+ * @param {Array<{type: string, content: string, count?: number}>} props.diff - Diff segments
+ * @returns {React.ReactElement}
  */
 const DiffView = ({ diff }) => {
     if (!diff || diff.length === 0) {
@@ -23,7 +40,9 @@ const DiffView = ({ diff }) => {
 };
 
 /**
- * Individual diff segment rendered inline
+ * Individual diff segment with appropriate styling
+ * @param {{item: {type: string, content: string, count?: number}}} props
+ * @returns {React.ReactElement}
  */
 const DiffSegment = ({ item }) => {
     switch (item.type) {
