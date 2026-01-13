@@ -11,6 +11,8 @@
  * - Use nodeMigration.js to convert as needed
  */
 
+import { EMOTION_AXES } from "@utils/constants";
+
 // ==================== EMOTION PROFILE ====================
 
 /**
@@ -29,23 +31,6 @@
  * @property {number} [shame] - Embarrassment (0-100)
  * @property {number} [guilt] - Remorse, regret (0-100)
  */
-
-/**
- * DES axis names in order
- * @type {const}
- */
-export const EMOTION_AXES = [
-  'interest',
-  'joy',
-  'surprise',
-  'sadness',
-  'anger',
-  'disgust',
-  'contempt',
-  'fear',
-  'shame',
-  'guilt',
-];
 
 /**
  * Create empty emotion profile (all zeros)
@@ -68,14 +53,10 @@ export function createEmptyEmotionProfile() {
  * @typedef {Object} HierarchyInfo
  * @property {number} level - Depth:
  *   - 0 = root node (single, for entire document)
- *   - 1 = content nodes (sentences, headings, lists, code blocks)
- *   - 2+ = grouping nodes (chapters, sections created by AI)
+ *   - 1+ = content nodes (sentences, headings, lists, code blocks)
+ *   - n-1 = grouping nodes (chapters, sections created by AI)
  * @property {string | null} parentId - Parent node ID (null only for root)
  * @property {string[]} childIds - IDs of immediate children (empty if leaf)
- * @property {'content'|'group'|'root'} role - Type of node:
- *   - 'content': Actual text (sentence, heading, list-item, etc.)
- *   - 'group': Organizational grouping (created by AI)
- *   - 'root': Document root (one per document)
  */
 
 /**
@@ -204,6 +185,7 @@ export function createEmptyEmotionProfile() {
  * @param {'sentence'|'heading'|'list-item'|'code-block'|'blockquote'|'horizontal-rule'} type
  * @param {string} content - The text
  * @param {string} parentId - Parent node ID
+ * @param {number} maxDepth - maxDepth of the node tree
  * @param {Partial<Node>} [overrides] - Overrides
  * @returns {Node}
  * 
@@ -212,24 +194,23 @@ export function createEmptyEmotionProfile() {
  *   textRep: { punctuation: '.', delimiter: 'space' }
  * });
  */
-export function createContentNode(id, type, content, parentId, overrides = {}) {
+export function createContentNode(id, type, content, parentId, maxDepth, overrides = {}) {
   return {
     id,
     type,
     content,
     hierarchy: {
-      level: 1,
+      level: maxDepth-1,
       parentId,
       childIds: [],
-      role: 'content',
     },
+    ...overrides,
     metadata: {
       isDirty: false,
       createdAt: new Date().toISOString(),
       version: 1,
       ...overrides.metadata,
     },
-    ...overrides,
   };
 }
 
@@ -259,15 +240,14 @@ export function createGroupNode(id, label, level, parentId, childIds = [], overr
       level,
       parentId,
       childIds,
-      role: 'group',
     },
+    ...overrides,
     metadata: {
       isDirty: false,
       createdAt: new Date().toISOString(),
       version: 1,
       ...overrides.metadata,
     },
-    ...overrides,
   };
 }
 
@@ -288,7 +268,6 @@ export function createRootNode(id, documentTitle, childIds = []) {
       level: 0,
       parentId: null,
       childIds,
-      role: 'root',
     },
     metadata: {
       isDirty: false,
@@ -314,7 +293,6 @@ export function cloneNode(node) {
       level: node.hierarchy.level,
       parentId: node.hierarchy.parentId,
       childIds: [...node.hierarchy.childIds],
-      role: node.hierarchy.role,
     },
     structure: node.structure ? { ...node.structure } : undefined,
     formatting: node.formatting ? [...node.formatting] : undefined,
@@ -461,6 +439,128 @@ export function getDescendants(node, nodeMap) {
   return descendants;
 }
 
+// =============== HIERARCY MODIFICATION ===============
+
+export function removeChildId(map, parentId, childId) {
+  const parent = map.get(parentId);
+  if (!parent) return;
+  const patched = cloneNode(parent);
+  patched.hierarchy.childIds = patched.hierarchy.childIds.filter((id) => id !== childId);
+  map.set(parentId, patched);
+}
+
+export function insertChildId(map, parentId, childId, index) {
+  const parent = map.get(parentId);
+  if (!parent) return false;
+  const patched = cloneNode(parent);
+  const arr = [...patched.hierarchy.childIds].filter((id) => id !== childId);
+  const idx = Math.max(0, Math.min(arr.length, index));
+  arr.splice(idx, 0, childId);
+  patched.hierarchy.childIds = arr;
+  map.set(parentId, patched);
+  return true;
+}
+
+export function markDirtyUp(map, startId) {
+  let curId = startId;
+  const visited = new Set();
+  while (curId && !visited.has(curId)) {
+    visited.add(curId);
+    const n = map.get(curId);
+    if (!n) break;
+
+    if (!n.metadata.isDirty) {
+      const patched = cloneNode(n);
+      patched.metadata.isDirty = true;
+      patched.metadata.modifiedAt = new Date().toISOString();
+      map.set(curId, patched);
+    }
+
+    curId = n.hierarchy.parentId;
+  }
+}
+
+/**
+ * If a group becomes empty, delete it and remove from its parent.
+ * Cascade upward (but never delete root).
+ */
+export function pruneEmptyGroupsUp(map, startGroupId, rootId) {
+  let curId = startGroupId;
+
+  while (curId && curId !== rootId) {
+    const node = map.get(curId);
+    if (!node) break;
+    if (!isGroupNode(node)) break;
+    if ((node.hierarchy.childIds || []).length > 0) break;
+
+    const parentId = node.hierarchy.parentId;
+    // remove this group from parent, then delete it
+    if (parentId) removeChildId(map, parentId, curId);
+    map.delete(curId);
+
+    curId = parentId;
+  }
+}
+
+/**
+ * Reparent a node (move it under a new parent) and optionally reorder.
+ * Keeps parent/child links consistent and fixes levels for the moved subtree.
+ *
+ * @param {NodeMap} nodeMap
+ * @param {string} nodeId
+ * @param {string} newParentId
+ * @returns {boolean}
+ */
+export function reparentNode(nodeMap, nodeId, newParentId) {
+  const node = nodeMap.get(nodeId);
+  const newParent = nodeMap.get(newParentId);
+
+  if (!node) {
+    console.error(`[TreeInner] Cannot reparent: node ${nodeId} not found`);
+    return false;
+  }
+
+  if (!newParent) {
+    console.error(
+      `[TreeInner] Cannot reparent: parent ${newParentId} not found`
+    );
+    return false;
+  }
+
+  if (nodeId === newParentId) {
+    console.warn('[TreeInner] Cannot reparent node to itself');
+    return false;
+  }
+
+  // Remove from old parent
+  if (node.hierarchy.parentId) {
+    const oldParent = nodeMap.get(node.hierarchy.parentId);
+    if (oldParent) {
+      const oldParentClone = cloneNode(oldParent);
+      oldParentClone.hierarchy.childIds =
+        oldParentClone.hierarchy.childIds.filter((id) => id !== nodeId);
+      nodeMap.set(oldParent.id, oldParentClone);
+    }
+  }
+
+  // Update node
+  const nodeClone = cloneNode(node);
+  nodeClone.hierarchy.parentId = newParentId;
+  nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
+  nodeClone.metadata.isDirty = true;
+  nodeClone.metadata.modifiedAt = new Date().toISOString();
+  nodeMap.set(nodeId, nodeClone);
+
+  // Add to new parent
+  const newParentClone = cloneNode(newParent);
+  if (!newParentClone.hierarchy.childIds.includes(nodeId)) {
+    newParentClone.hierarchy.childIds.push(nodeId);
+  }
+  nodeMap.set(newParentId, newParentClone);
+
+  return true;
+}
+
 // ==================== TYPE GUARDS ====================
 
 /**
@@ -505,7 +605,7 @@ export function isBlockquoteNode(node) {
  * @returns {boolean}
  */
 export function isGroupNode(node) {
-  return node.hierarchy.role === 'group';
+  return node.type === 'group';
 }
 
 /**
@@ -514,7 +614,7 @@ export function isGroupNode(node) {
  * @returns {boolean}
  */
 export function isContentNode(node) {
-  return node.hierarchy.role === 'content';
+  return ['sentence', 'heading', 'list-item', 'code-block', 'blockquote', 'horizontal-rule'].includes(node.type);
 }
 
 /**
@@ -523,7 +623,7 @@ export function isContentNode(node) {
  * @returns {boolean}
  */
 export function isRootNode(node) {
-  return node.hierarchy.role === 'root';
+  return node.type === 'root';
 }
 
 // ==================== UTILITY ====================

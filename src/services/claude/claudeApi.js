@@ -7,13 +7,13 @@ import Anthropic from '@anthropic-ai/sdk';
 import { findDirtyRootNodes, buildDirtySubtrees, findSentencesInNode } from './dirtyNodeFinder.js';
 import { buildDirtyRestructurePrompt } from './promptBuilder.js';
 import { parseDirtyRestructureResponse } from './responseValidator.js';
-import { EMOTIONS, EMOTION_AXES } from '../../utils/constants.js';
+import { EMOTIONS, EMOTION_AXES } from '@utils/constants.js';
 import {
     normalizeEmotionProfile,
     deriveLegacyFromProfile,
     profileFromLegacy,
     describeEmotionProfile,
-} from '../../utils/emotionProfiles.js';
+} from '@utils/emotionProfiles.js';
 
 // Initialize the Anthropic client
 const getClient = () => {

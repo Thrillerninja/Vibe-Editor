@@ -1,6 +1,6 @@
 // src/hooks/useUserIdentification.js
 import { useEffect } from 'react';
-import posthog from '../utils/posthog';
+import posthog from '@utils/posthog';
 
 export function useUserIdentification() {
   useEffect(() => {

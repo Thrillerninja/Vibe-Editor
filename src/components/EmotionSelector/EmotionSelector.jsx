@@ -7,7 +7,7 @@ import {
   EMOTIONS,
   EMOTION_LABELS,
   EMOTION_COLORS,
-} from "../../utils/constants";
+} from "@utils/constants";
 
 const TABS = [
   { key: "emotion", label: "Emotion" },

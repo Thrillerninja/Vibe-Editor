@@ -12,14 +12,14 @@ import {
   forceY,
   forceX,
 } from 'd3-force';
-import { measureLabel } from '../utils/measurements';
+import { measureLabel } from '@utils/measurements';
 import {
   LAYER_GAP,
   PHYSICS_RADIUS,
   PHYSICS_CONFIG,
   LOGGING_ENABLED,
   LOG_PREFIX,
-} from '../utils/constants';
+} from '@utils/constants';
 
 /**
  * useLocalPhysics hook
@@ -111,7 +111,7 @@ export function useLocalPhysics() {
         // Fix ALL nodes during drag - only the dragged node moves via ReactFlow
         fx: n.position.x,
         fy: n.position.y,
-        r: Math.max(28, measureLabel(n.data.label).height / 2),
+        r: Math.max(28, measureLabel(n.data.content).height / 2),
         type: n.data.type,
       }));
 

@@ -5,8 +5,8 @@
 
 import React from 'react';
 import { useReactFlow } from 'reactflow';
-import posthog from '../utils/posthog';
-import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
+import posthog from '@utils/posthog';
+import { LOGGING_ENABLED, LOG_PREFIX } from '@utils/constants';
 
 /**
  * useReparenting hook
@@ -132,8 +132,8 @@ export function useReparenting() {
       // Calculate the center point of the dragged node
       const { w: draggedWidth, h: draggedHeight } = getNodeSize(draggedNode);
       const draggedCenter = {
-        x: flowX + draggedWidth ,
-        y: flowY + draggedHeight ,
+        x: flowX + draggedWidth/2 ,
+        y: flowY + draggedHeight/2 ,
 
       };
 
@@ -216,7 +216,7 @@ export function useReparenting() {
         if (targetNode) {
           console.log(`Reparenting disabled: Would attach ${draggedId} to ${targetNode.id}`);
         }
-        console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode.id}`);
+        console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode?.id ? targetNode && targetNode.id : "null"}`);
         posthog.capture('node_reparented', {
           dragged_node_id: draggedId,
           new_parent_id: targetNode.id,

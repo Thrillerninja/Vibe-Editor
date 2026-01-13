@@ -13,8 +13,8 @@
  *    f. Validate proper parent-child relationships
  */
 
-import { EMOTION_AXES } from '../../utils/constants.js';
-import { normalizeEmotionProfile } from '../../utils/emotionProfiles.js';
+import { EMOTION_AXES } from '@utils/constants.js';
+import { normalizeEmotionProfile } from '@utils/emotionProfiles.js';
 
 /**
  * Parse the response from dirty subtree restructure

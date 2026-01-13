@@ -19,11 +19,11 @@ import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
-import { EMOTION_AXES, EMOTION_COLORS, EMOTION_LABELS } from '../../utils/constants';
+import { EMOTION_AXES, EMOTION_COLORS, EMOTION_LABELS } from '@utils/constants';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 import { createEmptyEmotionProfile } from '../../types/node.js';
-import '../../components/TreeVisualization/TreeNode.css';
-import { normalizeEmotionProfile } from '../../utils/emotionProfiles.js';
+import '@components/TreeVisualization/TreeNode.css';
+import { normalizeEmotionProfile } from '@utils/emotionProfiles.js';
 
 // ============================================================================
 // TYPE DEFINITIONS & CONSTANTS
@@ -496,7 +496,6 @@ function renderNodeContent(content, type, structure, inlineElements) {
  * @param {string} props.id - Node UUID
  * @param {Object} props.data - Node data (new unified Node type)
  * @param {string} props.data.content - Node text content
- * @param {string} [props.data.label] - Display label (for groups/root)
  * @param {string} props.data.type - Node type (sentence|heading|list-item|etc)
  * @param {NodeEmotion} [props.data.emotion] - Emotion metadata
  * @param {Object} [props.data.metadata] - Operational metadata
@@ -520,9 +519,9 @@ export function AnimatedNodeComponent({ id, data }) {
   // STATE: Node Content
   // =========================================================================
 
-  const [nodeText, setNodeText] = useState(data.content || data.label || '');
+  const [nodeText, setNodeText] = useState(data.content || '');
   const [previousText, setPreviousText] = useState(
-    data.content || data.label || ''
+    data.content || ''
   );
   const [nodeModified, setNodeModified] = useState(
     data.metadata?.isDirty ?? false
@@ -612,7 +611,7 @@ export function AnimatedNodeComponent({ id, data }) {
     setIntensity(data.emotion?.dominantIntensity ?? 0);
     setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
     setPreviousEmotion(data.emotion?.dominantEmotion || 'interest');
-    setPreviousText(data.content || data.label || '');
+    setPreviousText(data.content || '');
     setSubtreeEmotionProfile(profile);
     setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
     setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
@@ -1146,7 +1145,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     {/* Left Column: List */}
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, height: '100%', overflowY: 'auto' }}>
                       <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center', minHeight: 36 }}>
-                        <div style={{ fontWeight: 600 }}>{data.label || 'Subtree Content'}</div>
+                        <div style={{ fontWeight: 600 }}>{data.content || 'Subtree Content'}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           {(data.emotion?.source || data.emotion?.timestamp) && (
                             <span style={{ fontWeight: 400, color: '#6b7280', fontSize: 13 }}>
@@ -1439,7 +1438,7 @@ export function AnimatedNodeComponent({ id, data }) {
             overflowWrap: 'break-word',
           }}
         >
-          {data.label}{"\n"}
+          {data.content}{"\n"}
         </div>
         {nodeModified && (
           <>
@@ -1450,8 +1449,10 @@ export function AnimatedNodeComponent({ id, data }) {
             <svg className="animated-border-svg">
               <rect
                 x="3" y="3"
-                width="calc(100% - 6px)"
-                height="calc(100% - 6px)"
+                style={{
+                  width: 'calc(100% - 6px)',
+                  height: 'calc(100% - 6px)'
+                }}
                 className="animated-border-rect"
               />
             </svg>

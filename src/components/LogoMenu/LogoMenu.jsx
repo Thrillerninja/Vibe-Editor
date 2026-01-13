@@ -361,8 +361,8 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                                     color: '#374151',
                                     transition: 'all 0.2s',
                                 }}
-                                onMouseEnter={(e) => !theme === 'light' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'light' && (e.target.style.borderColor = '#e5e7eb')}
+                                onMouseEnter={(e) => theme != 'light' && (e.target.style.borderColor = '#d1d5db')}
+                                onMouseLeave={(e) => theme != 'light' && (e.target.style.borderColor = '#e5e7eb')}
                             >
                                 ☀️ Light
                             </button>
@@ -380,8 +380,8 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                                     color: '#374151',
                                     transition: 'all 0.2s',
                                 }}
-                                onMouseEnter={(e) => !theme === 'dark' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'dark' && (e.target.style.borderColor = '#e5e7eb')}
+                                onMouseEnter={(e) => theme != 'dark' && (e.target.style.borderColor = '#d1d5db')}
+                                onMouseLeave={(e) => theme != 'dark' && (e.target.style.borderColor = '#e5e7eb')}
                             >
                                 🌙 Dark
                             </button>

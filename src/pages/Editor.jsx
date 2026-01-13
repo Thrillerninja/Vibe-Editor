@@ -44,19 +44,19 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Components
 import { HistoryGraph, TreeVisualization, EmotionsLegend } from '../components';
-import LogoMenu from '../components/LogoMenu/LogoMenu';
-import DepthRecommendationSnackbar from '../components/DepthRecommendation/DepthRecommendationSnackbar';
-import DepthChangeConfirmationModal from '../components/DepthRecommendation/DepthChangeConfirmationModal';
-import RichTextEditor from '../components/RichTextEditor/RichTextEditor';
+import LogoMenu from '@components/LogoMenu/LogoMenu';
+import DepthRecommendationSnackbar from '@components/DepthRecommendation/DepthRecommendationSnackbar';
+import DepthChangeConfirmationModal from '@components/DepthRecommendation/DepthChangeConfirmationModal';
+import RichTextEditor from '@components/RichTextEditor/RichTextEditor';
 
 // Utils & Services
-import posthog from '../utils/posthog';
+import posthog from '@utils/posthog';
 import {
   EMOTIONS,
   EMOTION_COLORS,
   EMOTION_LABELS,
-} from '../utils/constants';
-import { shouldShowRecommendation } from '../utils/depthRecommendation';
+} from '@utils/constants';
+import { shouldShowRecommendation } from '@utils/depthRecommendation';
 
 import {
   createRootNode,
@@ -69,7 +69,8 @@ import {
   isContentNode,
 } from '../types/node';
 import { useUserIdentification } from '../hooks/useUserIdentification';
-import { HorizontalDividerHandle, VerticalDividerHandle } from '../components/Deviders';
+import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Deviders';
+import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
 
 // ============================================================================
 // CONSTANTS
@@ -139,10 +140,20 @@ export default function Editor() {
       return '';
     }
 
-    const contentNodes = getContentNodesInOrder(nodeMap, rootId);
+    const contentNodes = getContentNodesInDocumentOrder(nodeMap, rootId);
     console.log(`[Editor] Reconstructing from ${contentNodes.length} content nodes`);
     
-    const reconstructed = contentNodes.map(n => n.content).join(' ');
+    const reconstructed = contentNodes
+      .map((node, idx) => {
+        const isLastNode = idx === contentNodes.length - 1;
+        const node_textRep = node.textRep || {};
+        const delimiter = node_textRep.delimiter || (isLastNode ? '' : 'space');
+        const delimiterContent = node_textRep.delimiterContent || (delimiter === 'space' ? ' ' : delimiter === 'newline' ? '\n' : '');
+
+        return node.content + delimiterContent;
+      })
+      .join('')
+      .trim();
     console.log('[Editor] Reconstructed text length:', reconstructed.length);
     console.log('[Editor] Reconstructed preview:', reconstructed.substring(0, 100));
     
@@ -237,7 +248,7 @@ export default function Editor() {
    *
    * @type {[string, Function]}
    */
-  const [pendingText, setPendingText] = useState('');
+  const [draftText, setDraftText] = useState('');
 
   /**
    * Debounce timer for text processing
@@ -279,11 +290,11 @@ export default function Editor() {
     console.log('[Editor DEBUG] State changed:');
     console.log('  nodeMap.size:', nodeMap.size);
     console.log('  text length:', text.length);
-    console.log('  pendingText length:', pendingText.length);
-    console.log('  text === pendingText:', text === pendingText);
+    console.log('  pendingText length:', draftText.length);
+    console.log('  text === pendingText:', text === draftText);
     console.log('  text preview:', text.substring(0, 100));
-    console.log('  pendingText preview:', pendingText.substring(0, 100));
-  }, [nodeMap, text, pendingText]);
+    console.log('  pendingText preview:', draftText.substring(0, 100));
+  }, [nodeMap, text, draftText]);
 
 
   /**
@@ -320,7 +331,7 @@ export default function Editor() {
       return;
     }
 
-    const contentNodes = getContentNodesInOrder(nodeMap, rootId);
+    const contentNodes = getContentNodeIdsInDocumentOrder(nodeMap, rootId);
     if (contentNodes.length === 0) {
       setHierarchyState('none');
       return;
@@ -559,8 +570,8 @@ export default function Editor() {
   const processTextToNodes = useCallback(
     (newText) => {
       console.log('[Editor] Processing text:', newText.substring(0, 50));
-
-      const sentences = parseTextToSentences(newText);
+      
+      const sentenceData = parseTextToSentences(newText);
 
       setNodeMap((prevNodeMap) => {
         const updated = new Map(prevNodeMap);
@@ -582,11 +593,13 @@ export default function Editor() {
           .map((g) => g.id);
 
         // Content nodes in document order (robust)
-        let existingContentIdsOrdered = getContentNodesInOrder(updated, rootId).map(
-          (n) => n.id
-        );
+        let existingContentIdsOrdered = getContentNodeIdsInDocumentOrder(updated, rootId);
 
-        // Fallback if tree is temporarily inconsistent
+        if (existingContentIdsOrdered == undefined) {
+          console.log("Error in processTextToNodes");
+          return;
+        }
+
         if (existingContentIdsOrdered.length === 0) {
           existingContentIdsOrdered = Array.from(updated.values())
             .filter(isContentNode)
@@ -616,6 +629,7 @@ export default function Editor() {
               `[Editor] New content will use same parent as last content node: ${contentParentId.substring(0, 8)} (level ${updated.get(contentParentId)?.hierarchy.level || 0})`
             );
           } else {
+            console.error('[Editor] FALLBACK TRIGGERED');
             // Fallback: find ANY group at the target parent level
             const groupAtTargetLevel = Array.from(updated.values()).find(
               n => isGroupNode(n) && n.hierarchy.level === targetParentLevel
@@ -631,6 +645,7 @@ export default function Editor() {
             }
           }
         } else if (targetParentLevel > 0 && existingContentIdsOrdered.length === 0) {
+          console.error('[Editor] FALLBACK 2 TRIGGERED');
           // No existing content - follow the chain from root
           let current = rootId;
 
@@ -661,7 +676,7 @@ export default function Editor() {
         }
 
         // Handle empty text: delete all content and all groups
-        if (sentences.length === 0) {
+        if (sentenceData.length === 0) {
           console.log(
             `[Editor] Empty text - clearing ${existingContentIdsOrdered.length} content nodes`
           );
@@ -678,10 +693,14 @@ export default function Editor() {
           return updated;
         }
 
-        console.log(`[Editor] Parsed ${sentences.length} sentences`);
+        console.log(`[Editor] Parsed ${sentenceData.length} sentences`);
 
         // Update or create content nodes
-        const newContentIds = sentences.map((sentence, index) => {
+        const newContentIds = sentenceData.map((sentenceObj, index) => {
+          const sentence = sentenceObj.content;
+          const delimiter = sentenceObj.delimiter;
+          const delimiterContent = sentenceObj.delimiterContent;
+
           // Check if this is a list item and extract the marker
           const listMatch = sentence.match(/^(\d+\.|[a-zA-Z]\.) (.+)$/);
           let content = sentence;
@@ -701,11 +720,15 @@ export default function Editor() {
               updatedNode.content = sentence;
 
               // Store list marker in metadata or structure
+              if (!updatedNode.textRep) updatedNode.textRep = {};
+              updatedNode.textRep.delimiter = delimiter;
+              updatedNode.textRep.delimiterContent = delimiterContent;
+
               if (listMarker) {
                 updatedNode.structure = {
                   type: 'list-item',
                   marker: listMarker,
-                  content: content
+                  content: content,
                 };
               }
 
@@ -726,8 +749,15 @@ export default function Editor() {
             listMarker ? 'list-item' : 'sentence',
             sentence,
             contentParentId,
+            maxDepth,
             {
-              metadata: { isDirty: true },
+              metadata: {
+                isDirty: true,
+              },
+              textRep: {
+                delimiter: delimiter,
+                delimiterContent: delimiterContent,
+              },
               structure: listMarker ? {
                 type: 'list-item',
                 marker: listMarker,
@@ -751,10 +781,9 @@ export default function Editor() {
             const parent = updated.get(contentParentId);
             if (parent && isGroupNode(parent)) {
               const patchedParent = cloneNode(parent);
-              patchedParent.hierarchy.childIds = [
-                ...patchedParent.hierarchy.childIds,
-                nodeId,
-              ];
+              if (!patchedParent.hierarchy.childIds.includes(nodeId)) {
+                patchedParent.hierarchy.childIds.push(nodeId);
+              }
               updated.set(contentParentId, patchedParent);
             }
           }
@@ -796,28 +825,28 @@ export default function Editor() {
         updated.set(rootId, newRoot);
 
         // Ensure content nodes have correct level (and parentId if root has no groups)
-        if (topGroupIds.length === 0) {
-          for (const id of newContentIds) {
-            const node = updated.get(id);
-            if (!node || !isContentNode(node)) continue;
+        // if (topGroupIds.length === 0) {
+        //   for (const id of newContentIds) {
+        //     const node = updated.get(id);
+        //     if (!node || !isContentNode(node)) continue;
 
-            const patched = cloneNode(node);
-            patched.hierarchy.parentId = rootId;
-            patched.hierarchy.level = contentLevel;
-            updated.set(id, patched);
-          }
-        } else {
-          for (const id of newContentIds) {
-            const node = updated.get(id);
-            if (!node || !isContentNode(node)) continue;
+        //     const patched = cloneNode(node);
+        //     patched.hierarchy.parentId = rootId;
+        //     patched.hierarchy.level = contentLevel;
+        //     updated.set(id, patched);
+        //   }
+        // } else {
+        //   for (const id of newContentIds) {
+        //     const node = updated.get(id);
+        //     if (!node || !isContentNode(node)) continue;
 
-            if (node.hierarchy.level !== contentLevel) {
-              const patched = cloneNode(node);
-              patched.hierarchy.level = contentLevel;
-              updated.set(id, patched);
-            }
-          }
-        }
+        //     if (node.hierarchy.level !== contentLevel) {
+        //       const patched = cloneNode(node);
+        //       patched.hierarchy.level = contentLevel;
+        //       updated.set(id, patched);
+        //     }
+        //   }
+        // }
 
         console.log(
           `[Editor] Updated: ${topGroupIds.length} top groups, ${newContentIds.length} content`
@@ -848,7 +877,7 @@ export default function Editor() {
       console.log('[Editor] Text changed, length:', newText.length);
 
       // Store pending text
-      setPendingText(newText);
+      setDraftText(newText);
 
       // Clear previous timer
       if (textDebounceTimerRef.current) {
@@ -881,9 +910,9 @@ export default function Editor() {
     if (textDebounceTimerRef.current) {
       clearTimeout(textDebounceTimerRef.current);
       console.log('[Editor] Blur - processing pending text immediately');
-      processTextToNodes(pendingText);
+      processTextToNodes(draftText);
     }
-  }, [pendingText, processTextToNodes]);
+  }, [draftText, processTextToNodes]);
 
   // =========================================================================
   // HISTORY & COMMITS
@@ -1094,35 +1123,58 @@ export default function Editor() {
     
     // Calculate new text from updated nodes
     const root = updatedNodes.get(rootId);
+
+    // DEV NODEMAP 
+    const contentCount = Array.from(updatedNodes.values()).filter(isContentNode).length;
+    const reachable = getContentNodesInDocumentOrder(updatedNodes, rootId).length;
+    if (contentCount > 0 && reachable === 0) {
+      console.error('nodeMap has content nodes but none are reachable from root!');
+      console.log('root childIds:', root?.hierarchy.childIds);
+      throw new Error('Invariant failed: content nodes unreachable from root');
+    }
+
     if (root) {
-      const contentNodes = getContentNodesInOrder(updatedNodes, rootId);
-      const newText = contentNodes.map(n => n.content).join(' ');
+      const contentNodes = getContentNodesInDocumentOrder(updatedNodes, rootId);
+      const newText = contentNodes
+        .map((node, idx) => {
+          const isLastNode = idx === contentNodes.length - 1;
+          const node_textRep = node.textRep || {};
+          const delimiter = node_textRep.delimiter || (isLastNode ? '' : 'space');
+          const delimiterContent = node_textRep.delimiterContent || 
+            (delimiter === 'space' ? ' ' : delimiter === 'newline' ? '\n' : '');
+
+          return node.content + delimiterContent;
+        })
+        .join('')
+        .trim();
       
       console.log('[Editor DEBUG] Tree update - syncing text:');
-      console.log('  old pendingText length:', pendingText.length);
-      console.log('  old pendingText preview:', pendingText.substring(0, 100));
+      console.log('  old draftText length:', draftText.length);
+      console.log('  old draftText preview:', draftText.substring(0, 100));
       console.log('  new text length:', newText.length);
       console.log('  new text preview:', newText.substring(0, 100));
-      console.log('  texts are equal:', pendingText === newText);
+      console.log('  texts are equal:', draftText === newText);
       
       // Check first few content nodes for order
       console.log('  First 5 nodes in new order:');
       contentNodes.slice(0, 5).forEach((node, i) => {
-        console.log(`    ${i}: "${node.content.substring(0, 40)}"`);
+        console.log(`    ${i}: "${node.content?.substring(0, 40)}"`);
       });
       
-      // Sync pendingText with the new order
-      setPendingText(newText);
-      console.log('[Editor DEBUG] setPendingText called with new text');
-      
-      // Clear any pending debounce timer since we're updating directly
+
+      // Clear timer FIRST
       if (textDebounceTimerRef.current) {
-        console.log('[Editor DEBUG] Clearing existing debounce timer');
         clearTimeout(textDebounceTimerRef.current);
         textDebounceTimerRef.current = null;
-      } else {
-        console.log('[Editor DEBUG] No debounce timer to clear');
       }
+
+      // "Atomic" udpate
+      setDraftText(newText);
+      setNodeMap(updatedNodes);
+
+      addCommit(updatedNodes, 'Tree updated');
+      console.log('[Editor DEBUG] setPendingText called with new text');
+      
     } else {
       console.error('[Editor] Root not found in updated nodes!');
     }
@@ -1131,16 +1183,14 @@ export default function Editor() {
       node_count: updatedNodes.size,
     });
     
-    setNodeMap(updatedNodes);
-    addCommit(updatedNodes, 'Tree updated');
   }, [rootId, addCommit]);
 
   // Add this effect near your other useEffect hooks
   useEffect(() => {
     console.log('[Editor DEBUG] pendingText changed:');
-    console.log('  new length:', pendingText.length);
-    console.log('  preview:', pendingText.substring(0, 100));
-  }, [pendingText]);
+    console.log('  new length:', draftText.length);
+    console.log('  preview:', draftText.substring(0, 100));
+  }, [draftText]);
 
   
   // =========================================================================
@@ -1428,7 +1478,7 @@ export default function Editor() {
             style={{ flexBasis: `${leftPct}%`, minWidth: 0 }}
           >
             <RichTextEditor
-              value={pendingText}
+              value={draftText}
               onChange={handleTextChange}
               onBlur={handleTextBlur}
               placeholder="Enter your text here..."
@@ -1527,14 +1577,10 @@ export default function Editor() {
  * Parse text into sentences
  *
  * Splits on newlines, then on sentence punctuation
- * Returns array of sentence strings
+ * Returns array of sentence objects with delimiter metadata
  *
  * @param {string} text - Raw text input
- * @returns {string[]} Array of sentence strings
- *
- * @example
- * parseTextToSentences("Hello. World! How are you?")
- * // → ["Hello.", "World!", "How are you?"]
+ * @returns {Array<{content: string, delimiter: string, delimiterContent: string}>}
  */
 function parseTextToSentences(text) {
   if (!text.trim()) return [];
@@ -1542,9 +1588,19 @@ function parseTextToSentences(text) {
   const lines = text.split('\n');
   const sentences = [];
 
-  lines.forEach(line => {
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx];
     const trimmed = line.trim();
-    if (!trimmed) return;
+    
+    // SKIP empty lines instead of returning empty array
+    if (!trimmed) {
+      // Check if previous sentence exists - if so, mark it as followed by newline
+      if (sentences.length > 0 && sentences[sentences.length - 1].delimiter === 'space') {
+        sentences[sentences.length - 1].delimiter = 'newline';
+        sentences[sentences.length - 1].delimiterContent = '\n';
+      }
+      continue;  // ← CONTINUE, don't return!
+    }
 
     // Split on sentence punctuation, but preserve numbered lists
     const parts = [];
@@ -1566,77 +1622,36 @@ function parseTextToSentences(text) {
         // If we have whitespace and more content after
         if (spaceStart > i + 1 && spaceStart < trimmed.length) {
           // Check if this is NOT a list marker
-          // List markers: "1.", "2.", "a.", "A.", etc. at the start of current segment
           const currentTrimmed = current.trim();
           const isListMarker = /^[0-9]+\.$|^[a-zA-Z]\.$/.test(currentTrimmed);
 
           if (!isListMarker) {
             // This is a sentence ending, split here
-            parts.push(current.trim());
+            parts.push({
+              content: current.trim(),
+              delimiter: 'space',
+              delimiterContent: ' ',
+            });
             current = '';
-            i = spaceStart - 1; // Position before next content (will be incremented)
+            i = spaceStart - 1;
           }
         }
       }
       i++;
     }
 
-    // Add remaining content
+    // Remaining content on this line
     if (current.trim()) {
-      parts.push(current.trim());
+      parts.push({
+        content: current.trim(),
+        delimiter: lineIdx < lines.length - 1 ? 'newline' : 'none',
+        delimiterContent: lineIdx < lines.length - 1 ? '\n' : '',
+      });
     }
 
-    sentences.push(...parts.filter(part => part.length > 0));
-  });
-
-  return sentences.filter(s => s.length > 0);
-}
-
-/**
- * Get all content nodes in order
- *
- * Traverses tree from root, collecting content nodes in breadth-first order
- *
- * @param {Map<string, Node>} nodeMap - All nodes
- * @param {string} rootId - Root node ID
- * @returns {Node[]} Array of content nodes in order
- */
-function getContentNodesInOrder(nodeMap, rootId) {
-  console.log('[DEBUG getContentNodesInOrder] Starting traversal from root:', rootId);
-  
-  const root = nodeMap.get(rootId);
-  if (!root) {
-    console.log('[DEBUG getContentNodesInOrder] Root not found!');
-    return [];
+    sentences.push(...parts);
   }
 
-  console.log('[DEBUG getContentNodesInOrder] Root children:', root.hierarchy.childIds);
-
-  const nodes = [];
-  const queue = [...root.hierarchy.childIds];
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    const node = nodeMap.get(nodeId);
-    
-    console.log(`[DEBUG getContentNodesInOrder] Processing node ${nodeId}:`, 
-                node ? `${node.hierarchy.role} - "${node.content?.substring(0, 30)}"` : 'NOT FOUND');
-    
-    if (!node) continue;
-
-    if (isContentNode(node)) {
-      nodes.push(node);
-      console.log(`[DEBUG getContentNodesInOrder] Added content node: "${node.content.substring(0, 30)}"`);
-    } else if (isGroupNode(node)) {
-      console.log(`[DEBUG getContentNodesInOrder] Expanding group node, children:`, node.hierarchy.childIds);
-      queue.push(...node.hierarchy.childIds);
-    }
-  }
-
-  console.log(`[DEBUG getContentNodesInOrder] Final order: ${nodes.length} content nodes`);
-  nodes.forEach((node, i) => {
-    console.log(`  ${i}: "${node.content.substring(0, 30)}"`);
-  });
-
-  return nodes;
+  // ✅ Filter correctly on object property
+  return sentences.filter(s => s.content && s.content.length > 0);
 }

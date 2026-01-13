@@ -11,8 +11,8 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import * as AiPrompt from '../../types/aiPrompt.js';
-import * as NodeOps from '../../utils/nodeOperations.js';
-import * as DirtyTracking from '../../utils/dirtyTracking.js';
+import * as NodeOps from '@utils/nodeOperations.js';
+import * as DirtyTracking from '@utils/dirtyTracking.js';
 import { EMOTION_AXES } from '../../types/node.js';
 
 /**

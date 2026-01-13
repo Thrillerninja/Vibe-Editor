@@ -34,11 +34,11 @@ import ReactFlow, {
 import { AnimatedNodeComponent } from './AnimatedNodeComponent';
 
 // Utils
-import posthog from '../../utils/posthog';
-import { LOGGING_ENABLED, LOG_PREFIX } from '../../utils/constants';
-import { runElk } from '../../utils/layoutEngine';
-import { useFlowScreenConverters } from '../../utils/coords';
-import { mergeNodes } from '../../utils/nodeMerge';
+import posthog from '@utils/posthog';
+import { LOGGING_ENABLED, LOG_PREFIX } from '@utils/constants';
+import { runElk } from '@utils/layoutEngine';
+import { useFlowScreenConverters } from '@utils/coords';
+import { mergeNodes } from '@utils/nodeMerge';
 import { evaluateSentenceEmotions, evaluateHierarchyNodeEmotions } from '../../services/claude';
 
 // Hooks
@@ -49,10 +49,14 @@ import { useReordering } from '../../hooks/useReordering';
 // Node Utils
 import {
   cloneNode,
-  markNodeDirty,
+  reparentNode,
   getDescendants,
   isGroupNode,
   isContentNode,
+  removeChildId,
+  insertChildId,
+  markDirtyUp,
+  pruneEmptyGroupsUp,
 } from '../../types/node';
 
 // Constants
@@ -229,57 +233,13 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @param {string} nodeId - Node to reparent
    * @param {string} newParentId - New parent ID
    */
-  const reparentNode = useCallback(
+  const reparentNodeCallback = useCallback(
     (nodeId, newParentId) => {
-      const updated = new Map(nodeMapRef.current);
-      const node = updated.get(nodeId);
-      const newParent = updated.get(newParentId);
-
-      if (!node) {
-        console.error(`[TreeInner] Cannot reparent: node ${nodeId} not found`);
-        return;
-      }
-
-      if (!newParent) {
-        console.error(
-          `[TreeInner] Cannot reparent: parent ${newParentId} not found`
-        );
-        return;
-      }
-
-      if (nodeId === newParentId) {
-        console.warn('[TreeInner] Cannot reparent node to itself');
-        return;
-      }
-
-      // Remove from old parent
-      if (node.hierarchy.parentId) {
-        const oldParent = updated.get(node.hierarchy.parentId);
-        if (oldParent) {
-          const oldParentClone = cloneNode(oldParent);
-          oldParentClone.hierarchy.childIds =
-            oldParentClone.hierarchy.childIds.filter((id) => id !== nodeId);
-          updated.set(oldParent.id, oldParentClone);
-        }
-      }
-
-      // Update node
-      const nodeClone = cloneNode(node);
-      nodeClone.hierarchy.parentId = newParentId;
-      nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
-      nodeClone.metadata.isDirty = true;
-      nodeClone.metadata.modifiedAt = new Date().toISOString();
-      updated.set(nodeId, nodeClone);
-
-      // Add to new parent
-      const newParentClone = cloneNode(newParent);
-      if (!newParentClone.hierarchy.childIds.includes(nodeId)) {
-        newParentClone.hierarchy.childIds.push(nodeId);
-      }
-      updated.set(newParentId, newParentClone);
+      const updatedNodeMap = new Map(nodeMapRef.current);
+      reparentNode(updatedNodeMap, nodeId, newParentId)
 
       treeChangedRef.current = true;
-      onTreeUpdate(updated);
+      onTreeUpdate(updatedNodeMap);
     },
     [onTreeUpdate]
   );
@@ -300,10 +260,11 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       const updated = new Map(nodeMapRef.current);
+
       const node = updated.get(nodeId);
       const sibling = updated.get(targetSiblingId);
 
-      // ===== VALIDATION =====
+      // Action validation
       if (!node) {
         console.error(`[TreeInner] ❌ Node ${nodeId} not found`);
         return false;
@@ -314,51 +275,28 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         return false;
       }
 
-      const targetParentId = sibling.hierarchy.parentId;
       const oldParentId = node.hierarchy.parentId;
-
-      // ===== REMOVE FROM OLD PARENT =====
-      if (oldParentId) {
-        const oldParent = updated.get(oldParentId);
-        if (oldParent) {
-          const oldParentClone = cloneNode(oldParent);
-          oldParentClone.hierarchy.childIds = oldParentClone.hierarchy.childIds.filter(
-            (id) => id !== nodeId
-          );
-          oldParentClone.metadata.isDirty = true;
-          oldParentClone.metadata.modifiedAt = new Date().toISOString();
-          updated.set(oldParentId, oldParentClone);
-
-          // Mark all ancestors as dirty
-          let currentParentId = oldParentId;
-          while (currentParentId) {
-            const parent = updated.get(currentParentId);
-            if (!parent) break;
-            const parentClone = cloneNode(parent);
-            parentClone.metadata.isDirty = true;
-            parentClone.metadata.modifiedAt = new Date().toISOString();
-            updated.set(currentParentId, parentClone);
-            currentParentId = parent.hierarchy.parentId;
-          }
-
-          // Remove parent if it has no leaves attached
-          if (oldParentClone.hierarchy.childIds.length === 0) {
-            deleteNode(oldParentId);
-            updated.delete(oldParentId);
-            console.log(`[TreeInner] Removed empty parent: ${oldParentId.substring(0, 8)}`);
-          }
-        }
+      if (!oldParentId) {
+        console.error(`[TreeInner] ❌ Original parent ID ${oldParentId} not found`);
+        return false;
       }
-
-      // ===== ADD TO NEW PARENT =====
-      const newParent = updated.get(targetParentId);
-      if (!newParent) {
-        console.error(`[TreeInner] ❌ Target parent ${targetParentId} not found`);
+      const newParentId = sibling.hierarchy.parentId;
+      if (!newParentId) {
+        console.error(`[TreeInner] ❌ Target parent ID ${newParentId} not found`);
         return false;
       }
 
-      const newParentClone = cloneNode(newParent);
-      const childIds = [...newParentClone.hierarchy.childIds];
+      // 1) Remove node from old parent (if any)
+      removeChildId(updated, oldParentId, nodeId);
+
+      // 2) Insert into new parent relative to sibling (compute index AFTER removal)
+      const newParent = updated.get(newParentId);
+      if (!newParent) {
+        console.error(`[TreeInner] ❌ Target parent ${newParentId} not found`);
+        return false;
+      }
+
+      const childIds = [...newParent.hierarchy.childIds];
 
       const siblingIndex = childIds.indexOf(targetSiblingId);
       if (siblingIndex === -1) {
@@ -370,48 +308,37 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       console.log(
         `[TreeInner] Inserting at index ${insertIndex} (insertBefore=${insertBefore})`
       );
+      insertChildId(updated, newParentId, nodeId, insertIndex);
 
-      childIds.splice(insertIndex, 0, nodeId);
-      newParentClone.hierarchy.childIds = childIds;
-      newParentClone.metadata.isDirty = true;
-      newParentClone.metadata.modifiedAt = new Date().toISOString();
-      updated.set(targetParentId, newParentClone);
+      // 3) Patch the moved node (parentId + level)
+      const patchedNode = cloneNode(node);
+      patchedNode.hierarchy.parentId = newParentId;
 
-      // Mark all ancestors of new parent as dirty
-      let currentParentId = targetParentId;
-      while (currentParentId) {
-        const parent = updated.get(currentParentId);
-        if (!parent) break;
-        const parentClone = cloneNode(parent);
-        parentClone.metadata.isDirty = true;
-        parentClone.metadata.modifiedAt = new Date().toISOString();
-        updated.set(currentParentId, parentClone);
-        currentParentId = parent.hierarchy.parentId;
-      }
+      const newParentAfter = updated.get(newParentId);
+      patchedNode.hierarchy.level =
+        (newParentAfter?.hierarchy.level ?? 0) + 1;
 
-      // ===== UPDATE NODE =====
-      const nodeClone = cloneNode(node);
-      nodeClone.hierarchy.parentId = targetParentId;
-      nodeClone.hierarchy.level = newParent.hierarchy.level + 1;
-      nodeClone.metadata.isDirty = true;
-      nodeClone.metadata.modifiedAt = new Date().toISOString();
-      updated.set(nodeId, nodeClone);
+      patchedNode.metadata.isDirty = true;
+      patchedNode.metadata.modifiedAt = new Date().toISOString();
+      updated.set(nodeId, patchedNode);
 
-      // ===== MARK SIBLING AND AFFECTED NODES AS DIRTY =====
-      const siblingClone = cloneNode(sibling);
-      siblingClone.metadata.isDirty = true;
-      siblingClone.metadata.modifiedAt = new Date().toISOString();
-      updated.set(targetSiblingId, siblingClone);
+      // 4) Dirty-mark affected ancestors
+      if (oldParentId) markDirtyUp(updated, oldParentId);
+      markDirtyUp(updated, newParentId);
+      markDirtyUp(updated, nodeId);
+
+      // 5) Prune empty groups on the OLD parent chain (optional, but replaces your deleteNode side-effect)
+      if (oldParentId) pruneEmptyGroupsUp(updated, oldParentId, rootId);
 
       console.log(
-        `[TreeInner] ✅ Reorder complete: moved to parent ${targetParentId.substring(0, 8)}`
+        `[TreeInner] ✅ Reorder complete: moved to parent ${newParentId.substring(0, 8)}`
       );
 
       treeChangedRef.current = true;
       onTreeUpdate(updated);
       return true;
     },
-    [onTreeUpdate]
+    [onTreeUpdate, rootId]
   );
 
   // =========================================================================
@@ -425,8 +352,8 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @returns {boolean}
    */
   const hasNodeMapStructureChanged = useCallback(() => {
-    if (!prevNodeMapKeyRef.current) return true;
 
+    // Run even when the tree is empty to avoid a update loop
     const structureKey = Array.from(nodeMap.values())
       .map((n) => {
         const children = (n.hierarchy.childIds ?? []).join(',');
@@ -435,10 +362,10 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       .sort()
       .join('|');
 
-    const changed = structureKey !== prevNodeMapKeyRef.current;
+    const prev = prevNodeMapKeyRef.current;
     prevNodeMapKeyRef.current = structureKey;
 
-    return changed;
+    return prev !== structureKey;
   }, [nodeMap]);
 
   /**
@@ -480,19 +407,19 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       flowNodes.push({
         id: node.id,
+        type: 'animatedNode',
+        position: { x: 0, y: 0 },
+        style: { width: 'auto', height: 'auto' },
+
         data: {
-          label: node.content,
-          content: node.content,
+          id: node.id,
           type: node.type,
-          level: node.hierarchy.level,
+          content: node.content ?? '',
+          hierarchy: node.hierarchy,
+          structure: node.structure,
           emotion: node.emotion,
           metadata: node.metadata,
-          isDirty: node.metadata.isDirty,
-          structure: node.structure,
         },
-        position: { x: 0, y: 0 },
-        type: 'animatedNode',
-        style: { width: 'auto', height: 'auto' },
       });
 
       if (node.hierarchy.parentId && nodeMap.has(node.hierarchy.parentId)) {
@@ -511,13 +438,8 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /**
    * Apply layout to nodes using ELK algorithm
    * Skips if structure hasn't changed or dragging
-   */
-  const layoutRunIdRef = useRef(0);
+   */  
   const applyLayout = useCallback(async () => {
-    const runId = ++layoutRunIdRef.current;
-    if (isDraggingRef.current) return;
-
-    if (!hasNodeMapStructureChanged()) return;
 
     try {
       const { nodes: flowNodes, edges: flowEdges } = buildFlowStructure();
@@ -525,10 +447,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       if (flowNodes.length === 0) return;
 
       const laidOut = await runElk(flowNodes, flowEdges);
-
-
-      if (runId !== layoutRunIdRef.current) return; // discard stale result
-      if (isDraggingRef.current) return;
 
       if (!isDraggingRef.current) {
         if (animateNextRef.current && containerRef.current) {
@@ -693,13 +611,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       setReorderIndicator(null);
       animateNextRef.current = true;
 
-      // // Only allow reordering for leaf nodes
-      // if (!isLeafNode(rfNode.id, rfRef.current?.getNodes() || [])) {
-      //   console.log(`${LOG_PREFIX.DRAG} Leaf node check failed, skipping reorder`);
-      //   physics.stop();
-      //   return;
-      // }
-
       // Check for reordering
       const reorderInfo = checkReorderDrop(
         rfNode.id,
@@ -718,14 +629,15 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         const target = findReparentTarget(rfNode.id, rfNode.position.x, rfNode.position.y);
 
         if (target) {
-          reparentNode(rfNode.id, target.id);
+          reparentNodeCallback(rfNode.id, target.id);
           animateNextRef.current = true;
         }
       }
 
       physics.stop();
+      applyLayout();
     },
-    [checkReorderDrop, physics, onTreeUpdate, reparentNode, findReparentTarget]
+    [checkReorderDrop, physics, onTreeUpdate, reparentNodeCallback, findReparentTarget]
   );
 
   /**

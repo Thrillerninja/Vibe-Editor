@@ -254,8 +254,8 @@ export function validateNodeTypeConsistency(node) {
       if (node.hierarchy?.role !== 'group') {
         errors.push('Group node must have role = group');
       }
-      if (typeof node.hierarchy?.level !== 'number' || node.hierarchy.level < 2) {
-        errors.push('Group node must have level >= 2');
+      if (typeof node.hierarchy?.level !== 'number' || node.hierarchy.level < 1) {
+        errors.push('Group node must have level >= 1');
       }
       break;
     }

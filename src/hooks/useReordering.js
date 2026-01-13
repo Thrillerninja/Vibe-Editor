@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useReactFlow } from 'reactflow';
-import posthog from '../utils/posthog';
-import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
+import posthog from '@utils/posthog';
+import { LOGGING_ENABLED, LOG_PREFIX } from '@utils/constants';
 
 const REORDER_THRESHOLD = 60;
 

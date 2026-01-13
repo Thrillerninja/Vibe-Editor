@@ -1,35 +1,13 @@
 /**
  * Adapter between node-based system and existing Claude service
  * Converts nodeMap to sentence-like format for Claude integration
+ * 
+ * @typedef {import('../types/node').Node} Node
  */
 
+import { getContentNodeIdsInDocumentOrder } from '@utils/nodeHelpers';
 import { isContentNode, isGroupNode, createGroupNode, cloneNode } from '../types/node';
 import { v4 as uuidv4 } from 'uuid';
-
-function getContentIdsInDocumentOrder(nodeMap, rootId) {
-  const root = nodeMap.get(rootId);
-  if (!root) return [];
-
-  const out = [];
-  const queue = [...root.hierarchy.childIds];
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    const node = nodeMap.get(nodeId);
-    if (!node) continue;
-
-    if (isContentNode(node)) {
-      out.push(nodeId);
-      continue;
-    }
-
-    if (isGroupNode(node)) {
-      queue.unshift(...node.hierarchy.childIds);
-    }
-  }
-
-  return out;
-}
 
 
 /**
@@ -39,7 +17,7 @@ function getContentIdsInDocumentOrder(nodeMap, rootId) {
  * @param {Map<string, Node>} nodeMap - Current node map
  * @param {string} rootId - Root node ID
  * @param {number} maxDepth - Hierarchy depth
- * @returns {Array} Sentences-like array with _hierarchyMeta
+ * @returns {Array<string>} Sentences-like array with _hierarchyMeta
  */
 export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
   console.log('[Adapter] Converting nodeMap to sentence format');
@@ -51,7 +29,7 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
   const toClaudeLevel = (appLevel) => maxDepth - appLevel;
 
   // Extract content nodes in document order
-  const contentIds = getContentIdsInDocumentOrder(nodeMap, rootId);
+  const contentIds = getContentNodeIdsInDocumentOrder(nodeMap, rootId);
   const contentNodes = contentIds
     .map((id) => nodeMap.get(id))
     .filter(Boolean)

@@ -6,7 +6,7 @@ import {
   angleToPlutchikColor,
   PLUTCHIK_COLORS
 } from "./plutchikMapping";
-import { EMOTION_LABELS, EMOTION_COLORS } from "../../utils/constants";
+import { EMOTION_LABELS, EMOTION_COLORS } from "@utils/constants";
 
 export default function EmotionPad({
   size = 320,
@@ -67,13 +67,12 @@ export default function EmotionPad({
     onChange({ label, intensityPercent: Math.round(intensity) });
   };
 
-  const dotColor = useMemo(
-    () => intensityPercent > 5 ?
-      angleToPlutchikColor(-currentAngleRad - 1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
-      :
-      "#000"
-      [currentAngleRad]
-  );
+  const dotColor = useMemo(() => {
+    intensityPercent > 5 ?
+    angleToPlutchikColor(-currentAngleRad - 1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
+    :
+    "#000"
+  }, [currentAngleRad]);
 
   const onMouseDown = (e) => {
     e.preventDefault();

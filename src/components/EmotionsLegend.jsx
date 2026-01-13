@@ -1,4 +1,4 @@
-import { EMOTION_COLORS, EMOTION_LABELS, EMOTIONS } from "../utils/constants";
+import { EMOTION_COLORS, EMOTION_LABELS, EMOTIONS } from "@utils/constants";
 import React from "react";
 import { useState } from "react";
 

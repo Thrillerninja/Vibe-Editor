@@ -20,6 +20,7 @@ import { LOG_PREFIX } from './constants.js';
  * Creates a complete tree with root + content nodes
  * 
  * @param {string} text - Full document text
+ * @param {number} maxDepth - maxDepth of the node tree
  * @param {string} [rootId] - Use existing root ID or create new
  * @returns {{root: NodeTypes.Node, nodes: NodeTypes.Node[]}}
  * 
@@ -29,7 +30,7 @@ import { LOG_PREFIX } from './constants.js';
  * 3. Create root node
  * 4. Return both root and flat array
  */
-export function parseTextToNodes(text, rootId = null) {
+export function parseTextToNodes(text, maxDepth, rootId = null) {
   if (!text || text.trim() === '') {
     // Empty document - just root
     const root = NodeTypes.createRootNode(rootId || uuidv4(), 'Untitled Document', []);
@@ -55,6 +56,7 @@ export function parseTextToNodes(text, rootId = null) {
       'sentence',
       data.content,
       rootNodeId,
+      maxDepth,
       {
         textRep: {
           punctuation: data.punctuation,
@@ -82,6 +84,7 @@ export function parseTextToNodes(text, rootId = null) {
  * @param {NodeTypes.Node[]} existingNodes - Current nodes
  * @param {string} newText - New full text
  * @param {string} rootId - Root node ID
+ * @param {number} maxDepth - maxDepth of the node tree
  * @returns {NodeTypes.Node[]} - Updated nodes
  * 
  * STRATEGY:
@@ -91,7 +94,7 @@ export function parseTextToNodes(text, rootId = null) {
  * 4. Create new nodes for new sentences
  * 5. Mark changed nodes as dirty
  */
-export function applySentenceEdit(existingNodes, newText, rootId) {
+export function applySentenceEdit(existingNodes, newText, rootId, maxDepth) {
   console.log(`${LOG_PREFIX.PARSER} Applying edit at cursor position`);
 
   // Handle empty text
@@ -147,6 +150,7 @@ export function applySentenceEdit(existingNodes, newText, rootId) {
         'sentence',
         data.content,
         rootId,
+        maxDepth,
         {
           textRep: {
             punctuation: data.punctuation,

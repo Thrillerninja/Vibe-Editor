@@ -26,7 +26,7 @@ export async function runElk(nodes, edges) {
     id: 'root',
     layoutOptions: ELK_OPTIONS,
     children: nodes.map((n) => {
-      const size = measureLabel(n.data.label);
+      const size = measureLabel(n.data?.content ?? n.data?.label ?? '');
       return {
         id: n.id,
         width: size.width,

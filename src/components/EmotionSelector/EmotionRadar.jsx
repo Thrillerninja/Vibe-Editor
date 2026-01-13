@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { EMOTION_AXES, EMOTION_COLORS } from '../../utils/constants';
-import { normalizeEmotionProfile } from '../../utils/emotionProfiles';
+import { EMOTION_AXES, EMOTION_COLORS } from '@utils/constants';
+import { normalizeEmotionProfile } from '@utils/emotionProfiles';
 
 const clamp01 = (v) => Math.max(0, Math.min(1, v));
 const toPct = (v) => Math.max(0, Math.min(100, Math.round(v)));

@@ -1,8 +1,100 @@
 /**
  * @fileoverview Helper functions for working with SentenceNode structure
+ * 
+ * @typedef {import('../types/node').Node} Node
  */
 
 import { LOG_PREFIX } from './constants';
+import { isContentNode, isGroupNode, isRootNode } from '../types/node';
+
+
+/**
+ * Gets nodes in Document order
+ * @param {Map<string, Node>} nodeMap
+ * @param {string} rootId
+ */
+export function getContentNodeIdsInDocumentOrder(nodeMap, rootId) {
+  console.log(
+    '[DEBUG getContentNodeIdsInDocumentOrder] Starting traversal from root:',
+    rootId
+  );
+
+  const root = nodeMap.get(rootId);
+  if (!root) {
+    console.warn('[DEBUG getContentNodeIdsInDocumentOrder] Root not found');
+    return [];
+  }
+
+  console.log(
+    '[DEBUG getContentNodeIdsInDocumentOrder] Root children:',
+    root.hierarchy.childIds
+  );
+
+  const out = [];
+  const stack = [...(root.hierarchy.childIds || [])].reverse(); // keep order
+  const visited = new Set();
+  const unreachable = new Set(nodeMap.keys());
+
+  while (stack.length) {
+    const id = stack.pop();
+    if (!id) {
+      console.log(
+        `[DEBUG getContentNodeIdsInDocumentOrder] Returning Early`
+      );
+      return;
+    }
+    
+    if (visited.has(id)) continue;
+    visited.add(id);
+    unreachable.delete(id);
+
+    const node = nodeMap.get(id);
+    if (!node) {
+      console.warn(`[WARNING] Node ${id} referenced but not found in nodeMap`);
+      continue;
+    }
+
+    if (isContentNode(node)) {
+      out.push(id);
+    }
+
+    if (isGroupNode(node) || isRootNode(node)) {
+      const kids = node.hierarchy.childIds || [];
+      for (let i = kids.length - 1; i >= 0; i--) {
+        stack.push(kids[i]);
+      }
+    }
+  }
+
+  console.log(
+    `[DEBUG getContentNodeIdsInDocumentOrder] Final order: ${out.length} content nodes`
+  );
+
+  // Check for unreachable content nodes
+  const unreachableContent = Array.from(unreachable)
+    .map(id => nodeMap.get(id))
+    .filter(n => isContentNode(n));
+  
+  if (unreachableContent.length > 0) {
+    console.error('[ERROR] Found unreachable content nodes:', unreachableContent.map(n => n.id));
+    throw new Error(`Invariant violated: ${unreachableContent.length} content nodes unreachable from root`);
+  }
+
+  return out;
+}
+
+/**
+ * Retrieves content nodes in document order.
+ * @param {Map} nodeMap - A map of node IDs to node objects
+ * @param {string|number} rootId - The ID of the root node to start traversal from
+ * @returns {Array<Object>} An array of content node objects in document order, excluding any null or undefined values
+ */
+export function getContentNodesInDocumentOrder(nodeMap, rootId) {
+  return getContentNodeIdsInDocumentOrder(nodeMap, rootId)
+    .map((id) => nodeMap.get(id))
+    .filter(Boolean);
+}
+
 
 /**
  * Gets the display text for a node
@@ -64,8 +156,8 @@ export function extractLinks(node) {
   if (!node.inlineElements) return [];
 
   return node.inlineElements
-    .filter((el) => el.type === 'link')
-    .map((el) => ({
+    .filter((/** @type {{ type: string; }} */ el) => el.type === 'link')
+    .map((/** @type {{ url: any; alt: any; start: any; end: any; }} */ el) => ({
       url: el.url,
       text: el.alt || node.content.substring(el.start, el.end),
     }));
