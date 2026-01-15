@@ -417,6 +417,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           content: node.content ?? '',
           hierarchy: node.hierarchy,
           structure: node.structure,
+          formatting: node.formatting,
           emotion: node.emotion,
           metadata: node.metadata,
         },
@@ -800,7 +801,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       nodes.map((rfNode) => ({
         ...rfNode,
         data: {
-          ...rfNode.data,
+          ...rfNode,
           applyNodeEdit,
           applyEmotionToSubtree,
           applySubtreeChanges,

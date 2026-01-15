@@ -153,16 +153,16 @@ function parseEnumeration(text) {
  *   alt?: string,
  *   title?: string,
  *   email?: string
- * }>} inlineElements - Array of inline format specifications
+ * }>} formatting - Array of inline format specifications
  * @returns {string} Markdown-formatted text
  */
-function applyInlineElements(content, inlineElements) {
-  if (!inlineElements || inlineElements.length === 0) {
+function applyformatting(content, formatting) {
+  if (!formatting || formatting.length === 0) {
     return content;
   }
 
   // Process from end to start to avoid index shifts
-  const sorted = [...inlineElements].sort((a, b) => b.start - a.start);
+  const sorted = [...formatting].sort((a, b) => b.start - a.start);
   let result = content;
 
   for (const element of sorted) {
@@ -220,11 +220,11 @@ function applyInlineElements(content, inlineElements) {
  * @param {boolean} [structure.taskChecked] - Task checkbox state
  * @param {string} [structure.codeLanguage] - Language identifier
  * @param {number} [structure.quoteDepth] - Blockquote nesting level
- * @param {Array} [inlineElements] - Inline formatting elements
+ * @param {Array} [formatting] - Inline formatting elements
  * @returns {string} Formatted markdown string
  */
-function buildMarkdownFromStructure(content, structure, inlineElements) {
-  let markdown = applyInlineElements(content, inlineElements);
+function buildMarkdownFromStructure(content, structure, formatting) {
+  let markdown = applyformatting(content, formatting);
 
   if (structure) {
     if (structure.headingLevel) {
@@ -264,13 +264,13 @@ function buildMarkdownFromStructure(content, structure, inlineElements) {
  * @param {string} content - Content text
  * @param {string} type - Node type
  * @param {Object} [structure] - Structure metadata
- * @param {Array} [inlineElements] - Inline format elements
+ * @param {Array} [formatting] - Inline format elements
  * @returns {React.ReactElement} Rendered markdown content
  */
-function renderNodeContent(content, type, structure, inlineElements) {
+function renderNodeContent(content, type, structure, formatting) {
   // Special handling for list items with custom markers
   if (structure?.marker) {
-    const markdown = applyInlineElements(content, inlineElements);
+    const markdown = applyformatting(content, formatting);
 
     return (
       <div
@@ -345,7 +345,7 @@ function renderNodeContent(content, type, structure, inlineElements) {
   const markdown = buildMarkdownFromStructure(
     content,
     structure,
-    inlineElements
+    formatting
   );
 
   return (
@@ -571,6 +571,13 @@ export function AnimatedNodeComponent({ id, data }) {
 
   /** @type {[string[], Function]} */
   const [leafOrder, setLeafOrder] = useState([]);
+
+  // =========================================================================
+  // STATE: Debug tooltip
+  // =========================================================================
+
+  const [isTooltipEnabled] = useState(true);
+  const [isTooltipOpen, setIsTooltipOpen] = useState(false);
 
   // =========================================================================
   // COMPUTED VALUES
@@ -854,6 +861,50 @@ export function AnimatedNodeComponent({ id, data }) {
       },
     }));
   };
+
+  // =========================================================================
+  // Debug tooltip
+  // =========================================================================
+
+  const tooltipJson = JSON.stringify(
+    { id, ...data }, // include id + full data payload
+    null,
+    3
+  );
+
+  const copyTooltipJson = async () => {
+    try {
+      await navigator.clipboard.writeText(tooltipJson);
+    } catch (e) {
+      console.error("Failed to copy node JSON:", e);
+    }
+  };
+
+  const closeTooltipTimerRef = useRef(null);
+
+  const openTooltip = () => {
+    if (closeTooltipTimerRef.current) {
+      clearTimeout(closeTooltipTimerRef.current);
+      closeTooltipTimerRef.current = null;
+    }
+    setIsTooltipOpen(true);
+  };
+
+  const scheduleCloseTooltip = () => {
+    if (closeTooltipTimerRef.current) return;
+    closeTooltipTimerRef.current = setTimeout(() => {
+      closeTooltipTimerRef.current = null;
+      setIsTooltipOpen(false);
+    }, 200); // 150–300ms feels good
+  };
+
+  useEffect(() => {
+    return () => {
+      if (closeTooltipTimerRef.current) {
+        clearTimeout(closeTooltipTimerRef.current);
+      }
+    };
+  }, []);
 
   // =========================================================================
   // RENDER: Edit Dialog
@@ -1400,119 +1451,200 @@ export function AnimatedNodeComponent({ id, data }) {
 
   return (
     <>
-      <motion.div
-        transition={{ type: 'spring', stiffness: 520, damping: 44 }}
-        onDoubleClick={() => setIsDialogOpen(true)}
-        style={{
-          padding: 12,
-          borderRadius: 24,
-          color: "black",
-          textAlign: "center",
-          cursor: "pointer",
-          width: 220,
-          background: emotionColor,
-          border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
-          position: 'relative',
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
-          userSelect: 'none',
-          transition: 'box-shadow 0.2s, transform 0.2s',
-          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-        }}
+      <div
+        style={{ position: "relative", display: "inline-block" }}
+        onMouseEnter={openTooltip}
+        onMouseLeave={scheduleCloseTooltip}
       >
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-        <div
+        <motion.div
+          transition={{ type: 'spring', stiffness: 520, damping: 44 }}
+          onDoubleClick={() => setIsDialogOpen(true)}
           style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
-            textAlign: 'center',
-            fontSize: 13,
-            fontWeight: data.type === 'root' ? 600 : 500,
-            color: '#000',
-            lineHeight: 1.45,
-            wordWrap: 'break-word',
-            overflowWrap: 'break-word',
+            padding: 12,
+            borderRadius: 24,
+            color: "black",
+            textAlign: "center",
+            cursor: "pointer",
+            width: 220,
+            background: emotionColor,
+            border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
+            position: 'relative',
+            fontFamily:
+              '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
+            userSelect: 'none',
+            transition: 'box-shadow 0.2s, transform 0.2s',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
           }}
         >
-          {data.content}{"\n"}
-        </div>
-        {nodeModified && (
-          <>
-            <div className="modified-indicator" title="This node has been modified.">
-              !
-            </div>
-            {/* SVG based animated border for proper rounded corners */}
-            <svg className="animated-border-svg">
-              <rect
-                x="3" y="3"
-                style={{
-                  width: 'calc(100% - 6px)',
-                  height: 'calc(100% - 6px)'
-                }}
-                className="animated-border-rect"
-              />
-            </svg>
-          </>
-        )}
-        {/* Emotion badges - show additional emotions */}
-        {significantEmotions.length > 0 && (
+          <Handle type="target" position={Position.Left} />
+          <Handle type="source" position={Position.Right} />
           <div
             style={{
-              position: 'absolute',
-              bottom: -20,
-              right: -20,
+              flex: 1,
               display: 'flex',
-              gap: 6,
-              flexDirection: 'row',
               alignItems: 'center',
-              pointerEvents: 'none',
-              zIndex: 10,
+              justifyContent: 'center',
+              padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
+              textAlign: 'center',
+              fontSize: 13,
+              fontWeight: data.type === 'root' ? 600 : 500,
+              color: '#000',
+              lineHeight: 1.45,
+              wordWrap: 'break-word',
+              overflowWrap: 'anywhere',
+              whiteSpace: 'pre-wrap',
             }}
-            title={significantEmotions
-              .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
-              .join('\n')}
           >
-            {significantEmotions.slice(0, 3).map((emotionData, idx) => (
-              <div
-                key={emotionData.emotion}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  backgroundColor: emotionData.color,
-                  border: '4px solid #fff',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
-                }}
-              />
-            ))}
-            {significantEmotions.length > 3 && (
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  backgroundColor: '#9ca3af',
-                  border: '4px solid #fff',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: '#fff',
-                }}
-              >
-                +{significantEmotions.length - 3}
-              </div>
+            {renderNodeContent(
+              data.content,
+              data.type,
+              data.structure,
+              data.formatting
             )}
           </div>
+          {nodeModified && (
+            <>
+              <div className="modified-indicator" title="This node has been modified.">
+                !
+              </div>
+              {/* SVG based animated border for proper rounded corners */}
+              <svg className="animated-border-svg">
+                <rect
+                  x="3" y="3"
+                  style={{
+                    width: 'calc(100% - 6px)',
+                    height: 'calc(100% - 6px)'
+                  }}
+                  className="animated-border-rect"
+                />
+              </svg>
+            </>
+          )}
+          {/* Emotion badges - show additional emotions */}
+          {significantEmotions.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: -20,
+                right: -20,
+                display: 'flex',
+                gap: 6,
+                flexDirection: 'row',
+                alignItems: 'center',
+                pointerEvents: 'none',
+                zIndex: 10,
+              }}
+              title={significantEmotions
+                .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
+                .join('\n')}
+            >
+              {significantEmotions.slice(0, 3).map((emotionData, idx) => (
+                <div
+                  key={emotionData.emotion}
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: emotionData.color,
+                    border: '4px solid #fff',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                  }}
+                />
+              ))}
+              {significantEmotions.length > 3 && (
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: '#9ca3af',
+                    border: '4px solid #fff',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: '#fff',
+                  }}
+                >
+                  +{significantEmotions.length - 3}
+                </div>
+              )}
+            </div>
+          )}
+        </motion.div>
+
+
+
+        {isTooltipEnabled && isTooltipOpen && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: "absolute",
+              left: "50%",
+              transform: "translateX(-50%)",
+              top: "calc(100% + 10px)",
+              zIndex: 999999999999,
+              width: 520,
+              maxWidth: "80vw",
+              overflow: "auto",
+              background: "rgba(17, 24, 39, 0.96)", // gray-900
+              color: "#e5e7eb", // gray-200
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 12,
+              boxShadow: "0 12px 30px rgba(0,0,0,0.35)",
+              padding: 12,
+              pointerEvents: "auto",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                marginBottom: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#9ca3af" }}>
+                Node debug tooltip
+              </div>
+
+              <button
+                onClick={copyTooltipJson}
+                style={{
+                  fontSize: 12,
+                  padding: "6px 10px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(255,255,255,0.16)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "#e5e7eb",
+                  cursor: "pointer",
+                }}
+              >
+                Copy JSON
+              </button>
+            </div>
+
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap", // keeps line breaks + wraps long lines
+                wordBreak: "break-word",
+                fontSize: 14,
+                lineHeight: 1.35,
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+              }}
+            >
+              {tooltipJson}
+            </pre>
+          </div>
         )}
-      </motion.div>
+      </div>
+
       {dialog}
     </>
-  );
+  )
 }
