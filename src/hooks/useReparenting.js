@@ -194,13 +194,15 @@ export function useReparenting() {
 
         if (targetNode) {
           console.log(`Reparenting disabled: Would attach ${draggedId} to ${targetNode.id}`);
+          console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode.id}`);
+          posthog.capture('node_reparented', {
+            dragged_node_id: draggedId,
+            new_parent_id: targetNode.id,
+            operation: 'reparent',
+          });
+        } else {
+          console.log(`${LOG_PREFIX.REPARENT} No valid reparent target found`);
         }
-        console.log(`${LOG_PREFIX.REPARENT} Target node: ${targetNode.id}`);
-        posthog.capture('node_reparented', {
-          dragged_node_id: draggedId,
-          new_parent_id: targetNode.id,
-          operation: 'reparent',
-        });
       } catch (error) {
         console.error(`${LOG_PREFIX.REPARENT} Error during reparenting:`, error);
       }

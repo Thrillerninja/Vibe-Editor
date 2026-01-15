@@ -121,5 +121,19 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
         console.warn(`[Claude Service] Missing sentences:`, missingSentences.map(s => `[${sentences.indexOf(s)}] "${s.content.substring(0, 50)}..."`));
     }
 
+    // CRITICAL: Sort subtrees by document order (minimum sentence position)
+    // This ensures the restructuredSubtrees array will be in document order
+    dirtySubtrees.sort((a, b) => {
+        const minOrderA = Math.min(...a.sentences.map(s => s.order));
+        const minOrderB = Math.min(...b.sentences.map(s => s.order));
+        return minOrderA - minOrderB;
+    });
+
+    console.log(`[Claude Service] Sorted ${dirtySubtrees.length} subtrees by document order`);
+    dirtySubtrees.forEach((st, idx) => {
+        const minOrder = Math.min(...st.sentences.map(s => s.order));
+        console.log(`[Claude Service]   ${idx}: Subtree ${st.rootNodeId} starts at position ${minOrder}`);
+    });
+
     return dirtySubtrees;
 }

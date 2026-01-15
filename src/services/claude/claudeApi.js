@@ -61,11 +61,42 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
     console.log('[Claude Service] Dirty root nodes to restructure:', dirtyRootNodes.length);
     console.log('[Claude Service] Dirty root node IDs:', dirtyRootNodes.map(n => n.id).join(', '));
 
+    // If there are no dirty nodes and root is not dirty, return early
+    if (dirtyRootNodes.length === 0 && !isRootDirty) {
+        console.log('[Claude Service] No dirty nodes to restructure - returning empty result');
+        return {
+            dirtyRootNodes: [],
+            restructuredSubtrees: [],
+            newRootTitle: undefined,
+            newRootEmotion: undefined,
+            newRootIntensity: undefined,
+            newRootEmotions: undefined,
+        };
+    }
+
     // Build subtree information for each dirty root
     const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);
 
-    // Build the prompt
-    const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
+    // Filter out empty subtrees (nodes with no sentences)
+    const nonEmptySubtrees = dirtySubtrees.filter(subtree => subtree.sentences && subtree.sentences.length > 0);
+
+    console.log('[Claude Service] Filtered subtrees:', nonEmptySubtrees.length, 'non-empty out of', dirtySubtrees.length, 'total');
+
+    // If all subtrees are empty and root is not dirty, return early
+    if (nonEmptySubtrees.length === 0 && !isRootDirty) {
+        console.log('[Claude Service] All subtrees are empty and root is not dirty - returning empty result');
+        return {
+            dirtyRootNodes: [],
+            restructuredSubtrees: [],
+            newRootTitle: undefined,
+            newRootEmotion: undefined,
+            newRootIntensity: undefined,
+            newRootEmotions: undefined,
+        };
+    }
+
+    // Build the prompt with non-empty subtrees
+    const prompt = buildDirtyRestructurePrompt(nonEmptySubtrees, maxDepth, isRootDirty);
 
     try {
         const message = await client.messages.create({
@@ -81,8 +112,8 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         const responseText = message.content[0].text;
         console.log('[Claude Service] Received dirty subtree restructure:', responseText);
 
-        // Parse and validate the response
-        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
+        // Parse and validate the response (use nonEmptySubtrees for validation)
+        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, nonEmptySubtrees, isRootDirty);
         // Derive legacy fields if only profile was provided
         let resolvedRootEmotion = newRootEmotion;
         let resolvedRootIntensity = newRootIntensity;
@@ -450,5 +481,75 @@ Output format: ["rewritten version 1", "rewritten version 2", "rewritten version
     } catch (error) {
         console.error('[Claude Service] Error rewriting sentence (multi):', error);
         throw new Error(`Failed to rewrite sentence (multi): ${error.message}`);
+    }
+}
+
+/**
+ * Merge two sentences into one coherent sentence using AI
+ * @param {string} sentence1 - First sentence to merge
+ * @param {string} sentence2 - Second sentence to merge
+ * @param {Object} emotionProfileInput - Target emotion profile for merged sentence
+ * @returns {Promise<string>} Merged sentence
+ */
+export async function mergeTwoSentences(sentence1, sentence2, emotionProfileInput) {
+    const client = getClient();
+
+    const profile = coerceEmotionProfile(emotionProfileInput);
+    const legacy = deriveLegacyFromProfile(profile);
+    const profileText = describeEmotionProfile(profile);
+    const profileJson = formatProfileForPrompt(profile);
+
+    console.log(`[Claude Service] Merging two sentences with emotion profile: ${profileText}`);
+    console.log(`[Claude Service] Sentence 1: "${sentence1}"`);
+    console.log(`[Claude Service] Sentence 2: "${sentence2}"`);
+
+    const prompt = `Merge these two sentences into ONE coherent sentence that preserves the key information from both.
+
+Sentence 1: "${sentence1}"
+Sentence 2: "${sentence2}"
+
+Target emotion profile (0-100 per axis): ${profileText}
+Profile JSON (authoritative): ${profileJson}
+The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
+
+The Differential Emotions Scale (DES) by Izard (1997) includes:
+- INTEREST: curiosity, excitement, engagement
+- JOY: happiness, delight, pleasure
+- SURPRISE: amazement, astonishment
+- SADNESS: sorrow, distress, grief
+- ANGER: hostility, rage, frustration
+- DISGUST: revulsion, distaste
+- CONTEMPT: scorn, disdain
+- FEAR: anxiety, worry, terror
+- SHAME: embarrassment, humiliation
+- GUILT: remorse, regret, self-blame
+
+Requirements:
+1. Combine both sentences into ONE single sentence
+2. Preserve the essential meaning and information from BOTH sentences
+3. Create a natural, flowing sentence (not just concatenation)
+4. Apply the emotion profile through tone, word choice, and phrasing
+5. Keep the length reasonable (similar to the combined length of both originals)
+6. Return ONLY the merged sentence, no explanations or quotes
+
+Merged sentence:`;
+
+    try {
+        const message = await client.messages.create({
+            model: 'claude-3-5-haiku-20241022',
+            max_tokens: 1024,
+            messages: [{
+                role: 'user',
+                content: prompt
+            }]
+        });
+
+        const mergedSentence = stripOuterQuotes(message.content[0].text.trim());
+        console.log('[Claude Service] Sentences merged successfully:', mergedSentence);
+
+        return mergedSentence;
+    } catch (error) {
+        console.error('[Claude Service] Error merging sentences:', error);
+        throw new Error(`Failed to merge sentences: ${error.message}`);
     }
 }

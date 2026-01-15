@@ -162,14 +162,15 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     // Add new restructured subtrees
     const newNodesToAdd = [];
     const existingNodeIds = new Set(nodes.map(n => n.id));
+    const newNodeIds = new Set(); // Track IDs we're adding to detect duplicates within the response
 
     for (const subtree of restructuredSubtrees) {
         console.log(`${LOG_PREFIX.PARSER} Adding ${subtree.newNodes.length} new nodes for subtree ${subtree.rootNodeId}`);
 
         // Collect all new nodes (Claude provides UUIDs)
         for (const newNode of subtree.newNodes) {
-            // CRITICAL: Check for ID collisions with existing clean nodes
-            if (existingNodeIds.has(newNode.id)) {
+            // CRITICAL: Check for ID collisions with existing clean nodes OR with nodes we're adding
+            if (existingNodeIds.has(newNode.id) || newNodeIds.has(newNode.id)) {
                 console.error(`${LOG_PREFIX.PARSER} ⚠️ ERROR: Claude generated node ID ${newNode.id} that already exists!`);
                 console.error(`${LOG_PREFIX.PARSER} This would cause duplicate nodes and data loss.`);
                 console.error(`${LOG_PREFIX.PARSER} Existing node:`, nodes.find(n => n.id === newNode.id));
@@ -177,7 +178,10 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
 
                 // Generate a fresh UUID to avoid collision
                 const freshId = uuidv4();
-                console.warn(`${LOG_PREFIX.PARSER} Replacing colliding ID ${newNode.id} with fresh UUID ${freshId}`);
+                const oldId = newNode.id;
+                console.warn(`${LOG_PREFIX.PARSER} Replacing colliding ID ${oldId} with fresh UUID ${freshId}`);
+                
+                // Add the node with fresh ID
                 newNodesToAdd.push(ensureEmotionShape({
                     id: freshId, // Use fresh UUID instead of colliding one
                     type: 'group',
@@ -188,7 +192,44 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
                 }));
+                
+                // Track the new ID
+                newNodeIds.add(freshId);
+                
+                // Update any references to the old ID in other nodes we're adding
+                for (const addedNode of newNodesToAdd) {
+                    addedNode.childIds = addedNode.childIds.map(childId => 
+                        childId === oldId ? freshId : childId
+                    );
+                }
+            } else if (newNode.id.startsWith('NEW-UUID')) {
+                // Claude copied example placeholder instead of generating real UUID
+                const freshId = uuidv4();
+                console.warn(`${LOG_PREFIX.PARSER} Claude used placeholder ID ${newNode.id}, replacing with fresh UUID ${freshId}`);
+                
+                // Add the node with fresh ID
+                newNodesToAdd.push(ensureEmotionShape({
+                    id: freshId,
+                    type: 'group',
+                    level: newNode.level,
+                    label: newNode.title,
+                    childIds: newNode.childIds,
+                    emotions: newNode.emotions,
+                    emotion: newNode.emotion,
+                    intensity: newNode.intensity,
+                }));
+                
+                // Track the new ID
+                newNodeIds.add(freshId);
+                
+                // Update any references to the placeholder ID in other nodes we're adding
+                for (const addedNode of newNodesToAdd) {
+                    addedNode.childIds = addedNode.childIds.map(childId => 
+                        childId === newNode.id ? freshId : childId
+                    );
+                }
             } else {
+                // No collision, use Claude's ID
                 newNodesToAdd.push(ensureEmotionShape({
                     id: newNode.id, // Use UUID from Claude
                     type: 'group',
@@ -199,6 +240,9 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
                 }));
+                
+                // Track this ID
+                newNodeIds.add(newNode.id);
             }
         }
     }

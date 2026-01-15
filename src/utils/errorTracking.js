@@ -9,6 +9,12 @@ export function initErrorTracking() {
   window.addEventListener('error', (event) => {
     const { error, message, filename, lineno, colno } = event;
     
+    // Filter out ResizeObserver warning - this is a known benign issue with rapid layout changes
+    if (message && message.includes('ResizeObserver loop completed with undelivered notifications')) {
+      // This is a non-critical browser warning, ignore it
+      return;
+    }
+    
     console.error('🔴 Uncaught error:', message);
     
     posthog.capture('error_uncaught', {
@@ -24,6 +30,11 @@ export function initErrorTracking() {
 
   // Unhandled promise rejections
   window.addEventListener('unhandledrejection', (event) => {
+    // Filter out ResizeObserver related rejections
+    if (event.reason && String(event.reason).includes('ResizeObserver loop completed')) {
+      return;
+    }
+    
     console.error('🔴 Unhandled rejection:', event.reason);
     
     posthog.capture('error_unhandled_rejection', {

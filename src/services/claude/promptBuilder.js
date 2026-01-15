@@ -142,14 +142,14 @@ Given these input sentences:
 Your response for topLevel=2:
 [
   {
-    "id": "f1a2b3c4-d5e6-7890-new1-000000000001",
+    "id": "NEW-UUID-1",
     "level": 2,
     "title": "Positive Aspects of Cat Ownership",
     "emotions": { "interest": 50, "joy": 70, "surprise": 10, "sadness": 5, "anger": 0, "disgust": 0, "contempt": 0, "fear": 5, "shame": 0, "guilt": 0 },
     "childIds": ["a1b2c3d4-e5f6-7890-abcd-111111111111", "b2c3d4e5-f6a7-8901-bcde-222222222222"]
   },
   {
-    "id": "f2a3b4c5-d6e7-8901-new2-000000000002",
+    "id": "NEW-UUID-2",
     "level": 2,
     "title": "Dog Loyalty and Effort",
     "emotions": { "interest": 40, "joy": 35, "surprise": 5, "sadness": 20, "anger": 10, "disgust": 0, "contempt": 5, "fear": 10, "shame": 5, "guilt": 5 },
@@ -172,16 +172,16 @@ Given these input sentences:
 Your response for topLevel=4 MUST include ALL levels 2, 3, and 4:
 [
   // Level 2: Direct sentence groups (IN DOCUMENT ORDER!)
-  {"id": "n1", "level": 2, "title": "Market Surge and Record Profits", "emotions": {"interest": 60, "joy": 75, "surprise": 40, "sadness": 0, "anger": 0, "disgust": 0, "contempt": 0, "fear": 5, "shame": 0, "guilt": 0}, "childIds": ["s1", "s2"]},
-  {"id": "n2", "level": 2, "title": "Labor Market Decline", "emotions": {"interest": 30, "joy": 5, "surprise": 45, "sadness": 60, "anger": 25, "disgust": 10, "contempt": 5, "fear": 50, "shame": 15, "guilt": 10}, "childIds": ["s3", "s4"]},
-  {"id": "n3", "level": 2, "title": "Cautious Central Bank Response", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["s5", "s6"]},
+  {"id": "NEW-UUID-1", "level": 2, "title": "Market Surge and Record Profits", "emotions": {"interest": 60, "joy": 75, "surprise": 40, "sadness": 0, "anger": 0, "disgust": 0, "contempt": 0, "fear": 5, "shame": 0, "guilt": 0}, "childIds": ["s1", "s2"]},
+  {"id": "NEW-UUID-2", "level": 2, "title": "Labor Market Decline", "emotions": {"interest": 30, "joy": 5, "surprise": 45, "sadness": 60, "anger": 25, "disgust": 10, "contempt": 5, "fear": 50, "shame": 15, "guilt": 10}, "childIds": ["s3", "s4"]},
+  {"id": "NEW-UUID-3", "level": 2, "title": "Cautious Central Bank Response", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["s5", "s6"]},
 
   // Level 3: Group level 2 nodes by related topics (IN DOCUMENT ORDER!)
-  {"id": "n4", "level": 3, "title": "Economic Extremes", "emotions": {"interest": 45, "joy": 40, "surprise": 43, "sadness": 30, "anger": 13, "disgust": 5, "contempt": 3, "fear": 28, "shame": 8, "guilt": 5}, "childIds": ["n1", "n2"]},
-  {"id": "n5", "level": 3, "title": "Monetary Policy & Outlook", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["n3"]},
+  {"id": "NEW-UUID-4", "level": 3, "title": "Economic Extremes", "emotions": {"interest": 45, "joy": 40, "surprise": 43, "sadness": 30, "anger": 13, "disgust": 5, "contempt": 3, "fear": 28, "shame": 8, "guilt": 5}, "childIds": ["NEW-UUID-1", "NEW-UUID-2"]},
+  {"id": "NEW-UUID-5", "level": 3, "title": "Monetary Policy & Outlook", "emotions": {"interest": 40, "joy": 10, "surprise": 15, "sadness": 20, "anger": 5, "disgust": 0, "contempt": 5, "fear": 25, "shame": 5, "guilt": 5}, "childIds": ["NEW-UUID-3"]},
 
   // Level 4: Top level grouping all level 3 nodes
-  {"id": "n6", "level": 4, "title": "Overview of Current Economic Status", "emotions": {"interest": 43, "joy": 28, "surprise": 32, "sadness": 26, "anger": 10, "disgust": 3, "contempt": 4, "fear": 27, "shame": 7, "guilt": 5}, "childIds": ["n4", "n5"]}
+  {"id": "NEW-UUID-6", "level": 4, "title": "Overview of Current Economic Status", "emotions": {"interest": 43, "joy": 28, "surprise": 32, "sadness": 26, "anger": 10, "disgust": 3, "contempt": 4, "fear": 27, "shame": 7, "guilt": 5}, "childIds": ["NEW-UUID-4", "NEW-UUID-5"]}
 ]
 
 Notice in Example 2:

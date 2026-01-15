@@ -24,6 +24,9 @@ import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
 import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
 import { normalizeEmotionProfile, deriveLegacyFromProfile } from '../../utils/emotionProfiles';
+import { mergeTwoSentences } from '../../services/claude/claudeApi';
+import { sortNodesByDocumentOrder } from '../../utils/hierarchyIntegration';
+import { v4 as uuidv4 } from 'uuid';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
 
@@ -39,6 +42,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [reorderIndicator, setReorderIndicator] = useState(null);
   const [reparentTarget, setReparentTarget] = useState(null);
+  const [mergeTarget, setMergeTarget] = useState(null);
   const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
   const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
   const rfRef = useRef(null);
@@ -285,12 +289,102 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   );
 
   /**
+   * Helper to check if a node is a leaf sentence
+   */
+  const isSentenceNode = useCallback((node) => {
+    return node && node.data && node.data.type === 'sentence';
+  }, []);
+
+  /**
+   * Helper to check if a node is a group/parent node
+   */
+  const isGroupNode = useCallback((node) => {
+    return node && node.data && node.data.type === 'group';
+  }, []);
+
+  /**
+   * Find merge target - checks if dragging a node over another node of the same type
+   * Supports both sentence-to-sentence and group-to-group merging
+   */
+  const findMergeTarget = useCallback((draggedId, x, y) => {
+    const draggedNode = nodes.find(n => n.id === draggedId);
+    if (!draggedNode) return null;
+
+    const isDraggedSentence = isSentenceNode(draggedNode);
+    const isDraggedGroup = isGroupNode(draggedNode);
+
+    // Only allow merging for sentences or groups
+    if (!isDraggedSentence && !isDraggedGroup) {
+      return null;
+    }
+
+    // Find if hovering over another node of the same type
+    for (const node of nodes) {
+      if (node.id === draggedId) continue;
+      
+      // Check type compatibility: sentence with sentence, or group with group
+      const isTargetSentence = isSentenceNode(node);
+      const isTargetGroup = isGroupNode(node);
+      
+      const canMerge = (isDraggedSentence && isTargetSentence) || (isDraggedGroup && isTargetGroup);
+      if (!canMerge) continue;
+
+      const nodeWidth = node.width || 200;
+      const nodeHeight = node.height || 60;
+
+      // Check if dragged position is within this node's bounds
+      if (
+        x >= node.position.x &&
+        x <= node.position.x + nodeWidth &&
+        y >= node.position.y &&
+        y <= node.position.y + nodeHeight
+      ) {
+        return node;
+      }
+    }
+
+    return null;
+  }, [nodes, isSentenceNode, isGroupNode]);
+
+  /**
  * Node drag handler (during drag)
  */
   const onNodeDrag = useCallback(
     (event, node) => {
       // Sync physics simulation
       physics.updateDraggedPosition(node.position.x, node.position.y);
+
+      // Check for merge target first (highest priority for sentences)
+      const mergeTargetNode = findMergeTarget(node.id, node.position.x, node.position.y);
+      
+      if (mergeTargetNode) {
+        // Merge takes priority for sentence nodes
+        const screenPos = toScreenPoint({ x: mergeTargetNode.position.x, y: mergeTargetNode.position.y });
+        const screenSize = toScreenSize({
+          width: mergeTargetNode.width || 200,
+          height: mergeTargetNode.height || 60,
+        });
+        
+        console.log(
+          `${LOG_PREFIX.DRAG} 🟣 MERGE INDICATOR ACTIVE:`,
+          `\n  Dragged: ${node.id}`,
+          `\n  Target: ${mergeTargetNode.id}`,
+          `\n  Target label: "${mergeTargetNode.data.label.substring(0, 30)}..."`,
+          `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`
+        );
+
+        setMergeTarget({
+          node: mergeTargetNode,
+          screenPosition: screenPos,
+          screenSize: screenSize,
+        });
+        setReorderIndicator(null);
+        setReparentTarget(null);
+        return;
+      }
+
+      // Clear merge target if not hovering
+      setMergeTarget(null);
 
       // Check for closest sibling to show reorder indicator
       const closest = findClosestSibling(node.id, node.position.y);
@@ -348,7 +442,362 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         }
       }
     },
-    [physics, findClosestSibling, findReparentTarget, flowToScreenPosition]
+    [physics, findClosestSibling, findReparentTarget, findMergeTarget, toScreenPoint, toScreenSize, flowToScreenPosition]
+  );
+
+  /**
+   * Merge two sentence nodes into one
+   * Creates immediate merged node, then updates with AI result
+   */
+  const mergeSentenceNodes = useCallback(
+    async (draggedId, targetId) => {
+      console.log(`${LOG_PREFIX.DRAG} Merging sentences: ${draggedId} + ${targetId}`);
+
+      const current = sentencesRef.current;
+      const draggedSentence = current.find(s => s.id === draggedId);
+      const targetSentence = current.find(s => s.id === targetId);
+
+      if (!draggedSentence || !targetSentence) {
+        console.error(`${LOG_PREFIX.DRAG} Cannot merge: sentence not found`);
+        return;
+      }
+
+      // Create immediate merged sentence (concatenated)
+      const mergedId = uuidv4();
+      const immediateMergedContent = `${draggedSentence.content} ${targetSentence.content}`;
+      
+      // Use target sentence's emotion profile
+      const mergedSentence = {
+        id: mergedId,
+        type: 'sentence',
+        content: immediateMergedContent,
+        emotion: targetSentence.emotion,
+        intensity: targetSentence.intensity,
+        emotions: targetSentence.emotions,
+        punctuation: targetSentence.punctuation,
+        delimiter: targetSentence.delimiter,
+        delimiterContent: targetSentence.delimiterContent,
+      };
+
+      console.log(`${LOG_PREFIX.DRAG} Immediate merged content: "${immediateMergedContent}"`);
+
+      // Remove both old sentences and insert merged one at target position
+      const targetIndex = current.indexOf(targetSentence);
+      const filtered = current.filter(s => s.id !== draggedId && s.id !== targetId);
+      filtered.splice(targetIndex, 0, mergedSentence);
+
+      // Update hierarchy metadata
+      let updatedSentences = filtered;
+      if (current._hierarchyMeta) {
+        const meta = { ...current._hierarchyMeta };
+        const nodes = meta.nodes ? meta.nodes.map(n => ({ ...n, childIds: [...n.childIds] })) : [];
+
+        // Find parent nodes containing the old sentences
+        const draggedParent = nodes.find(n => n.childIds.includes(draggedId));
+        const targetParent = nodes.find(n => n.childIds.includes(targetId));
+
+        if (draggedParent && targetParent) {
+          // Remove dragged sentence from its parent
+          const draggedIdx = draggedParent.childIds.indexOf(draggedId);
+          if (draggedIdx !== -1) {
+            draggedParent.childIds.splice(draggedIdx, 1);
+          }
+
+          // Replace target sentence with merged sentence in target parent
+          const targetIdx = targetParent.childIds.indexOf(targetId);
+          if (targetIdx !== -1) {
+            targetParent.childIds[targetIdx] = mergedId;
+          }
+
+          // Mark parents as dirty
+          const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
+          const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
+          
+          dirtyNodeIds.add(draggedParent.id);
+          dirtyNodeIds.add(targetParent.id);
+          dirtySentenceIds.add(mergedId);
+
+          // Mark ancestors dirty
+          let currentId = targetParent.id;
+          while (currentId && currentId !== 'root') {
+            const parent = nodes.find(n => n.childIds.includes(currentId));
+            if (parent) {
+              dirtyNodeIds.add(parent.id);
+              currentId = parent.id;
+            } else {
+              dirtyNodeIds.add('root');
+              break;
+            }
+          }
+
+          meta.nodes = nodes;
+          meta.dirtyNodeIds = Array.from(dirtyNodeIds);
+          meta.dirtySentenceIds = Array.from(dirtySentenceIds);
+        }
+
+        updatedSentences._hierarchyMeta = meta;
+      }
+
+      // Update UI immediately with concatenated version
+      console.log(`${LOG_PREFIX.DRAG} Updating UI with immediate merged sentence`);
+      onTreeUpdate(updatedSentences);
+
+      // Call AI to get intelligent merge (async, don't block UI)
+      console.log(`${LOG_PREFIX.DRAG} Starting AI merge in background...`);
+      try {
+        const aiMergedContent = await mergeTwoSentences(
+          draggedSentence.content,
+          targetSentence.content,
+          targetSentence.emotions || { interest: 50 }
+        );
+
+        console.log(`${LOG_PREFIX.DRAG} AI merge complete: "${aiMergedContent}"`);
+
+        // Update the merged sentence with AI result
+        const currentSentences = sentencesRef.current;
+        const edited = editSentence(mergedId, aiMergedContent, currentSentences);
+        const marked = markSentenceAndAncestorsDirty(edited, mergedId);
+
+        console.log(`${LOG_PREFIX.DRAG} Updating UI with AI-merged sentence`);
+        onTreeUpdate(marked);
+      } catch (error) {
+        console.error(`${LOG_PREFIX.DRAG} AI merge failed:`, error);
+        // Keep the concatenated version if AI fails
+      }
+    },
+    [onTreeUpdate]
+  );
+
+  /**
+   * Merge two group nodes into one
+   * Combines their children and updates hierarchy metadata
+   */
+  const mergeGroupNodes = useCallback(
+    async (draggedId, targetId) => {
+      console.log(`${LOG_PREFIX.DRAG} Merging group nodes: ${draggedId} + ${targetId}`);
+
+      const current = sentencesRef.current;
+      if (!current._hierarchyMeta) {
+        console.error(`${LOG_PREFIX.DRAG} Cannot merge groups: no hierarchy metadata`);
+        return;
+      }
+
+      const meta = { ...current._hierarchyMeta };
+      const nodes = meta.nodes ? meta.nodes.map(n => ({ ...n, childIds: [...n.childIds] })) : [];
+
+      // Find the dragged and target group nodes
+      const draggedNode = nodes.find(n => n.id === draggedId);
+      const targetNode = nodes.find(n => n.id === targetId);
+
+      if (!draggedNode || !targetNode) {
+        console.error(`${LOG_PREFIX.DRAG} Cannot merge: group node not found`);
+        return;
+      }
+
+      console.log(`${LOG_PREFIX.DRAG} Dragged node: ${draggedNode.label} (${draggedNode.childIds.length} children)`);
+      console.log(`${LOG_PREFIX.DRAG} Target node: ${targetNode.label} (${targetNode.childIds.length} children)`);
+
+      // Create merged group node
+      const mergedId = uuidv4();
+      const immediateMergedLabel = `${draggedNode.label} & ${targetNode.label}`;
+      
+      // Combine children from both nodes IN DOCUMENT ORDER
+      // We need to sort the children by their minimum sentence position
+      const sentenceIds = new Set(current.map(s => s.id));
+      const sentencePositions = new Map();
+      current.forEach((s, idx) => {
+        sentencePositions.set(s.id, idx);
+      });
+
+      // Helper to get minimum sentence position for a node (recursively)
+      const getMinPosition = (nodeId) => {
+        // If it's a sentence, return its position
+        if (sentenceIds.has(nodeId)) {
+          return sentencePositions.get(nodeId);
+        }
+        
+        // It's a group node - find min position from children
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) return Infinity;
+        
+        let minPos = Infinity;
+        for (const childId of node.childIds) {
+          const childMinPos = getMinPosition(childId);
+          minPos = Math.min(minPos, childMinPos);
+        }
+        return minPos;
+      };
+
+      // Determine which node comes first in document order
+      const draggedMinPos = getMinPosition(draggedId);
+      const targetMinPos = getMinPosition(targetId);
+      
+      // Combine children in document order (earlier node's children first)
+      const allChildren = draggedMinPos < targetMinPos 
+        ? [...draggedNode.childIds, ...targetNode.childIds]
+        : [...targetNode.childIds, ...draggedNode.childIds];
+      
+      // Sort all children by document order to ensure correctness
+      const mergedChildren = allChildren.sort((a, b) => {
+        const posA = getMinPosition(a);
+        const posB = getMinPosition(b);
+        return posA - posB;
+      });
+
+      console.log(`${LOG_PREFIX.DRAG} Merged ${mergedChildren.length} children in document order`);
+      console.log(`${LOG_PREFIX.DRAG} Dragged node min position: ${draggedMinPos}, Target node min position: ${targetMinPos}`);
+
+      const mergedNode = {
+        id: mergedId,
+        type: 'group',
+        level: targetNode.level,
+        label: immediateMergedLabel,
+        childIds: mergedChildren,
+        emotion: targetNode.emotion,
+        intensity: targetNode.intensity,
+        emotions: targetNode.emotions,
+      };
+
+      console.log(`${LOG_PREFIX.DRAG} Merged node will have ${mergedChildren.length} children`);
+
+      // Find parent of target node to insert merged node
+      const targetParent = nodes.find(n => n.childIds.includes(targetId));
+      const draggedParent = nodes.find(n => n.childIds.includes(draggedId));
+
+      // Remove both old nodes from the nodes array
+      let updatedNodes = nodes.filter(n => n.id !== draggedId && n.id !== targetId);
+
+      // Add the merged node
+      updatedNodes.push(mergedNode);
+
+      // Update parent references
+      if (targetParent) {
+        const targetParentNode = updatedNodes.find(n => n.id === targetParent.id);
+        if (targetParentNode) {
+          // Replace target node with merged node in parent's childIds
+          const targetIdx = targetParentNode.childIds.indexOf(targetId);
+          if (targetIdx !== -1) {
+            targetParentNode.childIds[targetIdx] = mergedId;
+          }
+        }
+      } else {
+        // If no parent, this is a top-level node - no parent update needed
+        console.log(`${LOG_PREFIX.DRAG} Target node ${targetId} is top-level (no parent)`);
+      }
+
+      if (draggedParent && draggedParent.id !== targetParent?.id) {
+        const draggedParentNode = updatedNodes.find(n => n.id === draggedParent.id);
+        if (draggedParentNode) {
+          // Remove dragged node from its parent's childIds
+          draggedParentNode.childIds = draggedParentNode.childIds.filter(id => id !== draggedId);
+        }
+      } else if (draggedParent && draggedParent.id === targetParent?.id) {
+        // Both nodes have the same parent - already handled above
+        console.log(`${LOG_PREFIX.DRAG} Both nodes share parent ${draggedParent.id}`);
+      } else if (!draggedParent) {
+        // Dragged node is also top-level
+        console.log(`${LOG_PREFIX.DRAG} Dragged node ${draggedId} is top-level (no parent)`);
+      }
+
+      // DON'T mark the merged node as dirty - it's a final result, not something to regenerate
+      // Also clear dirty flags from all descendants to prevent AI from restructuring them
+      const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
+      const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
+      
+      // Remove the old nodes from dirty tracking if they were there
+      dirtyNodeIds.delete(draggedId);
+      dirtyNodeIds.delete(targetId);
+      
+      // CRITICAL: Remove all descendants from dirty tracking to preserve the merge
+      // If any child is marked dirty, AI will restructure and potentially split the merge
+      const clearDirtyDescendants = (nodeId) => {
+        // If it's a sentence, remove from dirty sentences
+        if (sentenceIds.has(nodeId)) {
+          dirtySentenceIds.delete(nodeId);
+          return;
+        }
+        
+        // If it's a node, remove from dirty nodes and recurse to children
+        const node = updatedNodes.find(n => n.id === nodeId);
+        if (node) {
+          dirtyNodeIds.delete(node.id);
+          for (const childId of node.childIds) {
+            clearDirtyDescendants(childId);
+          }
+        }
+      };
+      
+      // Clear dirty flags from all children of the merged node
+      for (const childId of mergedChildren) {
+        clearDirtyDescendants(childId);
+      }
+      
+      // CRITICAL: Also clear dirty flag from the parent of the merged node
+      // If the parent is dirty, AI will restructure the entire parent's subtree,
+      // which would undo the merge by regenerating the structure
+      if (targetParent) {
+        dirtyNodeIds.delete(targetParent.id);
+        console.log(`${LOG_PREFIX.DRAG} Cleared dirty flag from parent ${targetParent.id}`);
+      }
+      if (draggedParent && draggedParent.id !== targetParent?.id) {
+        dirtyNodeIds.delete(draggedParent.id);
+        console.log(`${LOG_PREFIX.DRAG} Cleared dirty flag from dragged parent ${draggedParent.id}`);
+      }
+      
+      console.log(`${LOG_PREFIX.DRAG} Cleared dirty flags from merged node, all descendants, and parents`);
+      
+      // Don't mark anything as dirty to preserve the merge
+
+      // CRITICAL: Sort all nodes by document order to ensure hierarchy consistency
+      const sortedNodes = sortNodesByDocumentOrder(updatedNodes, current);
+      
+      meta.nodes = sortedNodes;
+      meta.dirtyNodeIds = Array.from(dirtyNodeIds);
+      meta.dirtySentenceIds = Array.from(dirtySentenceIds);
+
+      // CRITICAL: Rebuild sentence order from the updated hierarchy
+      // This ensures sentences are in the correct document order after the merge
+      console.log(`${LOG_PREFIX.DRAG} Rebuilding sentence order from merged hierarchy`);
+      const { rebuildSentenceOrderFromHierarchy } = await import('../../utils/sentenceEditor');
+      const reorderedSentences = rebuildSentenceOrderFromHierarchy(current, sortedNodes, meta.maxLevel);
+      reorderedSentences._hierarchyMeta = meta;
+
+      // Update UI immediately
+      console.log(`${LOG_PREFIX.DRAG} Updating UI with merged group node and reordered sentences`);
+      onTreeUpdate(reorderedSentences);
+
+      // Call AI to get intelligent merged label (async, don't block UI)
+      console.log(`${LOG_PREFIX.DRAG} Starting AI merge for group labels in background...`);
+      try {
+        const aiMergedLabel = await mergeTwoSentences(
+          draggedNode.label,
+          targetNode.label,
+          targetNode.emotions || { interest: 50 }
+        );
+
+        console.log(`${LOG_PREFIX.DRAG} AI merge complete for group: "${aiMergedLabel}"`);
+
+        // Update the merged node's label with AI result
+        const currentSentences = sentencesRef.current;
+        if (currentSentences._hierarchyMeta) {
+          const currentMeta = { ...currentSentences._hierarchyMeta };
+          const currentNodes = currentMeta.nodes.map(n => 
+            n.id === mergedId ? { ...n, label: aiMergedLabel } : n
+          );
+          currentMeta.nodes = currentNodes;
+
+          const updated = [...currentSentences];
+          updated._hierarchyMeta = currentMeta;
+
+          console.log(`${LOG_PREFIX.DRAG} Updating UI with AI-merged group label`);
+          onTreeUpdate(updated);
+        }
+      } catch (error) {
+        console.error(`${LOG_PREFIX.DRAG} AI merge failed for group:`, error);
+        // Keep the concatenated version if AI fails
+      }
+    },
+    [onTreeUpdate]
   );
 
   /**
@@ -360,10 +809,41 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       isDraggingRef.current = false;
       setReorderIndicator(null);
       setReparentTarget(null);
+      setMergeTarget(null);
       // Animate the next layout update triggered by this drop
       animateNextRef.current = true;
 
-      // Check for reordering first (tighter threshold)
+      // Check for merge first (highest priority)
+      if (mergeTarget) {
+        const isSentenceMerge = isSentenceNode(node) && isSentenceNode(mergeTarget.node);
+        const isGroupMerge = isGroupNode(node) && isGroupNode(mergeTarget.node);
+
+        if (isSentenceMerge) {
+          console.log(`${LOG_PREFIX.DRAG} Sentence merge detected: merging sentences`);
+          
+          // Stop physics
+          physics.stop();
+
+          // Perform sentence merge
+          mergeSentenceNodes(node.id, mergeTarget.node.id);
+          
+          // Re-layout will happen automatically via useEffect when sentences change
+          return;
+        } else if (isGroupMerge) {
+          console.log(`${LOG_PREFIX.DRAG} Group merge detected: merging group nodes`);
+          
+          // Stop physics
+          physics.stop();
+
+          // Perform group merge
+          mergeGroupNodes(node.id, mergeTarget.node.id);
+          
+          // Re-layout will happen automatically via useEffect when hierarchy changes
+          return;
+        }
+      }
+
+      // Check for reordering (tighter threshold)
       const reorderInfo = checkReorderDrop(node.id, node.position.y);
 
       if (reorderInfo) {
@@ -426,7 +906,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         }, 50);
       }
     },
-    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, onTreeUpdate]
+    [checkReorderDrop, reorderNodes, onDropToReparent, physics, setNodes, onTreeUpdate, mergeTarget, isSentenceNode, isGroupNode, mergeSentenceNodes, mergeGroupNodes]
   );
 
   /**
@@ -830,50 +1310,49 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         </div>
       )}
 
-      {/* Reparent indicator - green highlight on target parent */}
-      {reparentTarget && (
-        <div
-          style={{
-            position: 'fixed', // Changed from absolute to fixed
-            left: reparentTarget.screenPosition.x,
-            top: reparentTarget.screenPosition.y,
-            width: reparentTarget.screenSize.width || 200,
-            height: reparentTarget.screenSize.height || 60,
-            border: '3px solid #10b981',
-            borderRadius: 10,
-            pointerEvents: 'none',
-            zIndex: 9999,
-            boxShadow: '0 0 20px rgba(16, 185, 129, 0.6)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
-          }}
-        >
-          {/* Corner indicators */}
-          <div style={{ position: 'absolute', top: -8, left: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', top: -8, right: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', bottom: -8, left: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-          <div style={{ position: 'absolute', bottom: -8, right: -8, width: 16, height: 16, backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)' }} />
-
-          {/* Label */}
+      {/* Merge indicator - purple highlight on target node */}
+      {mergeTarget && (() => {
+        const isGroupMerge = mergeTarget.node.data.type === 'group';
+        const mergeLabel = isGroupMerge ? 'Drop to merge groups (children will be combined)' : 'Drop to merge sentences';
+        
+        return (
           <div
             style={{
-              position: 'absolute',
-              top: -28,
-              left: '50%',
-              transform: 'translateX(-50%)',
-              backgroundColor: '#10b981',
-              color: 'white',
-              padding: '4px 12px',
-              borderRadius: 6,
-              fontSize: 11,
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              boxShadow: '0 2px 8px rgba(16, 185, 129, 0.4)',
+              position: 'fixed',
+              left: mergeTarget.screenPosition.x,
+              top: mergeTarget.screenPosition.y,
+              width: mergeTarget.screenSize.width || 200,
+              height: mergeTarget.screenSize.height || 60,
+              border: '3px solid #a855f7',
+              borderRadius: 10,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              boxShadow: '0 0 20px rgba(168, 85, 247, 0.6)',
+              backgroundColor: 'rgba(168, 85, 247, 0.05)',
             }}
           >
-            Drop to attach here
+            {/* Label */}
+            <div
+              style={{
+                position: 'absolute',
+                top: -28,
+                left: '50%',
+                transform: 'translateX(-50%)',
+                backgroundColor: '#a855f7',
+                color: 'white',
+                padding: '4px 12px',
+                borderRadius: 6,
+                fontSize: 11,
+                fontWeight: 600,
+                whiteSpace: 'nowrap',
+                boxShadow: '0 2px 8px rgba(168, 85, 247, 0.4)',
+              }}
+            >
+              {mergeLabel}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {/* Debug: Show all node hitboxes (press 'D' to toggle) */}
       {showDebugHitboxes && nodes.map((node) => {
         const screenPos = toScreenPoint({

@@ -114,6 +114,7 @@ export function useReordering() {
   /**
    * Find closest node at same level during drag for indicator
    * Now supports cross-parent reordering on same level
+   * Also supports inserting after the last child
    */
   const findClosestSibling = useCallback(
     (draggedId, currentY) => {
@@ -133,6 +134,7 @@ export function useReordering() {
       let minDistance = Infinity;
       let insertBefore = false;
 
+      // Find the node with minimum distance
       for (const nodeId of nodesAtLevel) {
         const node = nodes.find((n) => n.id === nodeId);
         if (!node) continue;
@@ -146,11 +148,33 @@ export function useReordering() {
         }
       }
 
+      // Check if we're within threshold of the closest node
       if (closestNode && minDistance < REORDER_THRESHOLD) {
         console.log(
           `${LOG_PREFIX.DRAG}   ✅ Found closest node at same level: ${closestNode.id} (${minDistance.toFixed(1)}px, threshold=${REORDER_THRESHOLD}px)`
         );
         return { node: closestNode, insertBefore };
+      }
+
+      // Special case: Check if we're below the last child (to insert after it)
+      // Find the bottommost node at this level
+      const nodesWithPositions = nodesAtLevel
+        .map(nodeId => nodes.find(n => n.id === nodeId))
+        .filter(Boolean)
+        .sort((a, b) => b.position.y - a.position.y); // Sort descending by Y
+
+      if (nodesWithPositions.length > 0) {
+        const lastNode = nodesWithPositions[0];
+        const nodeHeight = lastNode.height || 60;
+        const distanceBelowLast = currentY - (lastNode.position.y + nodeHeight);
+
+        // If we're below the last node and within a reasonable distance, show indicator
+        if (distanceBelowLast > 0 && distanceBelowLast < REORDER_THRESHOLD * 2) {
+          console.log(
+            `${LOG_PREFIX.DRAG}   ✅ Below last child: ${lastNode.id} (${distanceBelowLast.toFixed(1)}px below)`
+          );
+          return { node: lastNode, insertBefore: false };
+        }
       }
 
       console.log(
