@@ -703,8 +703,10 @@ export default function Editor() {
 
           // Check if this is a list item and extract the marker
           const listMatch = sentence.match(/^(\d+\.|[a-zA-Z]\.) (.+)$/);
-          let content = sentence;
-          let listMarker = null;
+          
+          let nodeType = "sentence";
+          let nodeContent = sentence;
+          let structure;
 
           if (listMatch) {
             listMarker = listMatch[1]; // "1.", "2.", "a.", etc.

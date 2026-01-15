@@ -9,8 +9,8 @@ export const NODE_PADDING = 24;
 
 // Typography
 export const FONT_SIZE = 13;
-export const LINE_HEIGHT_MULTIPLIER = 1.5;
-export const AVG_CHAR_WIDTH_MULTIPLIER = 0.55;
+export const LINE_HEIGHT_MULTIPLIER = 1;
+export const AVG_CHAR_WIDTH_MULTIPLIER = 0.5;
 
 // Layout settings
 export const LAYER_GAP = 240;

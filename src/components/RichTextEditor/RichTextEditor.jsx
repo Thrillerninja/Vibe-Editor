@@ -43,6 +43,7 @@ import { LinkNode } from '@lexical/link';
 import ToolbarPlugin from './plugins/ToolbarPlugin';
 import LinkHoverPlugin from './plugins/LinkHoverPlugin';
 import './styles/editor.css';
+import PasteSanitizerPlugin from './plugins/PasteSanitizerPlugin';
 
 // ============================================================================
 // LEXICAL CONFIGURATION
@@ -353,6 +354,7 @@ function EditorContent({
 
           {/* Plugins */}
           <OnChangePlugin onChange={handleEditorChange} />
+          <PasteSanitizerPlugin />
           <HistoryPlugin />
           <ListPlugin />
           <LinkPlugin />

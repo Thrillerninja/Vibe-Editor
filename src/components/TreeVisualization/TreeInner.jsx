@@ -25,7 +25,6 @@ import ReactFlow, {
   Controls,
   MiniMap,
   ConnectionMode,
-  useReactFlow,
   useEdgesState,
   useNodesState,
   addEdge,
@@ -38,11 +37,8 @@ import posthog from '@utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '@utils/constants';
 import { runElk } from '@utils/layoutEngine';
 import { useFlowScreenConverters } from '@utils/coords';
-import { mergeNodes } from '@utils/nodeMerge';
-import { evaluateSentenceEmotions, evaluateHierarchyNodeEmotions } from '../../services/claude';
 
 // Hooks
-import { useReparenting } from '../../hooks/useReparenting';
 import { useLocalPhysics } from '../../hooks/useLocalPhysics';
 import { useReordering } from '../../hooks/useReordering';
 
@@ -51,8 +47,6 @@ import {
   cloneNode,
   reparentNode,
   getDescendants,
-  isGroupNode,
-  isContentNode,
   removeChildId,
   insertChildId,
   markDirtyUp,
@@ -179,17 +173,8 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   // =========================================================================
 
   const { toScreenPoint, toScreenSize } = useFlowScreenConverters();
-  const { onDropToReparent, findReparentTarget } = useReparenting();
   const physics = useLocalPhysics();
   const { checkReorderDrop, findClosestSibling, isLeafNode } = useReordering();
-  const {
-    flowToScreenPosition,
-    setCenter,
-    getZoom,
-    zoomIn,
-    zoomOut,
-    fitView,
-  } = useReactFlow();
 
   // =========================================================================
   // INITIALIZATION
@@ -625,20 +610,12 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           reorderInfo.targetSiblingId,
           reorderInfo.insertBefore
         );
-      } else {
-        // If we dropped on another node, try reparenting
-        const target = findReparentTarget(rfNode.id, rfNode.position.x, rfNode.position.y);
-
-        if (target) {
-          reparentNodeCallback(rfNode.id, target.id);
-          animateNextRef.current = true;
-        }
       }
 
       physics.stop();
       applyLayout();
     },
-    [checkReorderDrop, physics, onTreeUpdate, reparentNodeCallback, findReparentTarget]
+    [checkReorderDrop, physics, onTreeUpdate]
   );
 
   /**
@@ -801,7 +778,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       nodes.map((rfNode) => ({
         ...rfNode,
         data: {
-          ...rfNode,
+          ...rfNode.data,
           applyNodeEdit,
           applyEmotionToSubtree,
           applySubtreeChanges,
