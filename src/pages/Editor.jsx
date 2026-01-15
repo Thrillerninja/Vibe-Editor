@@ -13,6 +13,7 @@ import LogoMenu from '../components/LogoMenu/LogoMenu';
 import DepthRecommendationSnackbar from '../components/DepthRecommendation/DepthRecommendationSnackbar';
 import DepthChangeConfirmationModal from '../components/DepthRecommendation/DepthChangeConfirmationModal';
 import { shouldShowRecommendation } from '../utils/depthRecommendation';
+import getPoemLines from '../utils/poetry';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -45,6 +46,9 @@ export default function Editor() {
     const [recommendedDepth, setRecommendedDepth] = useState(3);
     const [showDepthConfirmation, setShowDepthConfirmation] = useState(false);
     const lastRecommendedDepthRef = useRef(null);
+
+    // Poetry loading state
+    const [isLoadingPoetry, setIsLoadingPoetry] = useState(false);
 
     // When maxDepth changes, create placeholder hierarchy (even before initial generation)
     useEffect(() => {
@@ -198,6 +202,38 @@ export default function Editor() {
         });
         setSentences(newSentences);
         addCommit(newSentences, 'Example inserted');
+    };
+
+    const insertPoetry = async () => {
+        setIsLoadingPoetry(true);
+        try {
+            const poemLines = await getPoemLines(10);
+            const poetryText = poemLines.join('\n');
+
+            // Parse poetry into sentences
+            let newSentences = applySentenceEdit([], poetryText, 0);
+
+            // Create placeholder hierarchy immediately before committing
+            newSentences = createPlaceholderHierarchy(newSentences, maxDepth);
+            setHierarchyState('has-dirty-nodes');
+
+            // Log event
+            posthog.capture('poetry_inserted', {
+                text_length: poetryText.length,
+                sentence_count: newSentences.length,
+                poem_lines: poemLines.length,
+            });
+
+            setSentences(newSentences);
+            addCommit(newSentences, 'Poetry inserted');
+        } catch (error) {
+            console.error('Failed to load poetry:', error);
+            posthog.capture('poetry_load_error', {
+                error: error.message,
+            });
+        } finally {
+            setIsLoadingPoetry(false);
+        }
     };
 
     const clearText = () => {
@@ -420,7 +456,7 @@ export default function Editor() {
 
     return (
         <div className="flex flex-col h-screen bg-gray-50">
-            <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} />
+            <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry} />
 
             {/* Depth Recommendation Snackbar */}
             <DepthRecommendationSnackbar

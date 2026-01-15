@@ -163,6 +163,20 @@ export const EMOTION_COLORS = {
   },
 };
 
+// Single color per emotion for button displays
+export const ALTERNATIVE_EMOTION_COLORS = {
+  [EMOTIONS.INTEREST]: '#ffd700',   // Gold/Yellow
+  [EMOTIONS.JOY]: '#7cb342',        // Lime Green
+  [EMOTIONS.SURPRISE]: '#00a651',   // Green
+  [EMOTIONS.SADNESS]: '#00bcd4',    // Cyan
+  [EMOTIONS.ANGER]: '#1976d2',      // Blue
+  [EMOTIONS.DISGUST]: '#4527a0',    // Indigo
+  [EMOTIONS.CONTEMPT]: '#7b1fa2',   // Purple
+  [EMOTIONS.FEAR]: '#c2185b',       // Magenta
+  [EMOTIONS.SHAME]: '#e60000',      // Red
+  [EMOTIONS.GUILT]: '#ff6600',      // Orange
+};
+
 // Logging configuration
 export const LOGGING_ENABLED = false;
 export const LOG_PREFIX = {
@@ -173,3 +187,53 @@ export const LOG_PREFIX = {
   NODE: '[Node]',
   DRAG: '[Drag]',
 };
+
+/**
+ * Calculate secondary emotions from an emotion profile
+ * Secondary emotions are positive outliers: emotions with intensity > mean + 0.5 * stddev
+ * Only includes emotions with intensity > 0
+ * @param {Object} profile - Emotion profile object with axes as keys and intensities (0-100) as values
+ * @returns {Array<{emotion: string, intensity: number}>} - Sorted array of secondary emotions (highest first)
+ */
+export function getSecondaryEmotions(profile) {
+  if (!profile || typeof profile !== 'object') return [];
+
+  // Get all emotion values that are > 0
+  const values = EMOTION_AXES
+    .map(axis => ({
+      emotion: axis,
+      intensity: Math.max(0, Math.min(100, profile[axis] || 0))
+    }))
+    .filter(item => item.intensity > 0);
+
+  if (values.length === 0) return [];
+
+  // Calculate mean
+  const mean = values.reduce((sum, item) => sum + item.intensity, 0) / values.length;
+
+  // Calculate standard deviation
+  const variance = values.reduce((sum, item) => sum + Math.pow(item.intensity - mean, 2), 0) / values.length;
+  const stddev = Math.sqrt(variance);
+
+  // Find positive outliers: values > mean + 0.5 * stddev
+  const threshold = mean + 0.5 * stddev;
+  const secondaryEmotions = values
+    .filter(item => item.intensity > threshold)
+    .sort((a, b) => b.intensity - a.intensity);
+
+  return secondaryEmotions;
+}
+
+/**
+ * Get a tooltip description for an emotion button
+ * @param {string} emotion - The emotion key
+ * @param {number} intensity - Optional intensity value (0-100)
+ * @returns {string} - Tooltip text
+ */
+export function getEmotionTooltip(emotion, intensity = null) {
+  const label = EMOTION_LABELS[emotion] || emotion;
+  if (intensity !== null && intensity !== undefined) {
+    return `${label} (${Math.round(intensity)}%)`;
+  }
+  return `Select ${label}`;
+}

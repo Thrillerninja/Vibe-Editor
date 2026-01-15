@@ -2,7 +2,7 @@ import { Handle, Position } from "reactflow";
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion } from 'framer-motion';
-import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS } from "../../utils/constants";
+import { ALTERNATIVE_EMOTION_COLORS, EMOTION_COLORS, EMOTIONS, EMOTION_LABELS, getEmotionTooltip } from "../../utils/constants";
 import { col, em, s } from "framer-motion/client";
 import { rewriteTextWithEmotion } from "../../ClaudeAlternative/claudeAPI";
 import "./TreeNode.css";
@@ -154,6 +154,7 @@ export default function TreeNode({ data }) {
                       key={emotion}
                       onClick={() => applyEmotion(emotion)}
                       disabled={!editable || isNodeRewriting || emotion == nodeEmotion}
+                      title={getEmotionTooltip(emotion)}
                       style={{
                         flex: 1,
                         padding: "8px 0",

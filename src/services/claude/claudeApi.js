@@ -71,6 +71,7 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
         const message = await client.messages.create({
             model: 'claude-3-5-haiku-20241022',
             max_tokens: 4096,
+            temperature: 0,
             messages: [{
                 role: 'user',
                 content: prompt

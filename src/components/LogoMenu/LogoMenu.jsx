@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function LogoMenu({ maxDepth, setMaxDepth }) {
+export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoadingPoetry }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [theme, setTheme] = useState('light');
     const [isDragActive, setIsDragActive] = useState(false);
@@ -200,7 +200,7 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                 {/* IMPORT SECTION */}
                 <div style={sectionStyle}>
                     <div style={sectionTitleStyle}>Import</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', padding: '0 16px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', padding: '0 16px' }}>
                         {/* Import Button */}
                         <button
                             onClick={handleImportClick}
@@ -245,6 +245,45 @@ export default function LogoMenu({ maxDepth, setMaxDepth }) {
                             </svg>
                             <span style={{ fontSize: '13px', fontWeight: 500 }}>Drop File</span>
                         </div>
+
+                        {/* Poetry Button */}
+                        <button
+                            onClick={onInsertPoetry}
+                            disabled={isLoadingPoetry}
+                            style={{
+                                ...buttonBaseStyle,
+                                padding: '16px',
+                                gap: '8px',
+                                opacity: isLoadingPoetry ? 0.7 : 1,
+                                cursor: isLoadingPoetry ? 'not-allowed' : 'pointer',
+                            }}
+                            onMouseEnter={(e) => {
+                                if (!isLoadingPoetry) {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)';
+                                }
+                            }}
+                            onMouseLeave={(e) => {
+                                e.currentTarget.style.transform = 'translateY(0)';
+                                e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
+                            }}
+                            title="Load random poetry from PoetryDB"
+                        >
+                            {isLoadingPoetry ? (
+                                <svg className="animate-spin" width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d="M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2z" />
+                                    <path d="M12 6v6m0 4h.01" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
+                            <span style={{ fontSize: '13px', fontWeight: 500 }}>
+                                {isLoadingPoetry ? 'Loading...' : 'Poetry'}
+                            </span>
+                        </button>
                     </div>
                 </div>
 

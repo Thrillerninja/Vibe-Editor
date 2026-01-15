@@ -11,6 +11,7 @@ import '../../components/TreeVisualization/TreeNode.css';
 import { EMOTION_LABELS } from '../../utils/constants';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
 import { normalizeEmotionProfile, deriveLegacyFromProfile, profileFromLegacy } from '../../utils/emotionProfiles.js';
+import { getSecondaryEmotions, getSecondaryEmotionTooltip } from '../../utils/secondaryEmotions.js';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 
 /**
@@ -43,22 +44,16 @@ function getBorderColor(emotion, intensity, type) {
  */
 function getSignificantEmotions(profile, threshold = 30) {
   const normalized = normalizeEmotionProfile(profile);
-  const significant = [];
-
-  for (const emotion of EMOTION_AXES) {
-    const intensity = normalized[emotion] || 0;
-    if (intensity >= threshold) {
-      const colors = EMOTION_COLORS[emotion];
-      // Choose color based on intensity
-      const color = colors ?
-        (intensity >= 66 ? colors.strong : intensity >= 33 ? colors.medium : colors.light) :
-        '#e5e7eb';
-      significant.push({ emotion, intensity, color });
-    }
-  }
-
-  // Sort by intensity descending
-  return significant.sort((a, b) => b.intensity - a.intensity);
+  const secondary = getSecondaryEmotions(normalized);
+  
+  // Enrich with colors
+  return secondary.map(item => {
+    const colors = EMOTION_COLORS[item.emotion];
+    const color = colors ?
+      (item.intensity >= 66 ? colors.strong : item.intensity >= 33 ? colors.medium : colors.light) :
+      '#e5e7eb';
+    return { emotion: item.emotion, intensity: item.intensity, color };
+  });
 }
 
 /**
@@ -894,13 +889,11 @@ export function AnimatedNodeComponent({ id, data }) {
               pointerEvents: 'none',
               zIndex: 10,
             }}
-            title={significantEmotions
-              .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
-              .join('\n')}
           >
-            {significantEmotions.slice(0, 3).map((emotionData, idx) => (
+            {significantEmotions.slice(0, 5).map((emotionData, idx) => (
               <div
                 key={emotionData.emotion}
+                title={getSecondaryEmotionTooltip(emotionData.emotion, emotionData.intensity)}
                 style={{
                   width: 40,
                   height: 40,
@@ -908,11 +901,13 @@ export function AnimatedNodeComponent({ id, data }) {
                   backgroundColor: emotionData.color,
                   border: '4px solid #fff',
                   boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                  pointerEvents: 'auto',
                 }}
               />
             ))}
-            {significantEmotions.length > 3 && (
+            {significantEmotions.length > 5 && (
               <div
+                title={`${significantEmotions.length - 5} more secondary emotions`}
                 style={{
                   width: 40,
                   height: 40,
@@ -926,9 +921,10 @@ export function AnimatedNodeComponent({ id, data }) {
                   fontSize: 16,
                   fontWeight: 700,
                   color: '#fff',
+                  pointerEvents: 'auto',
                 }}
               >
-                +{significantEmotions.length - 3}
+                +{significantEmotions.length - 5}
               </div>
             )}
           </div>
