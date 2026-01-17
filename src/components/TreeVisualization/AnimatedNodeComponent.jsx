@@ -11,6 +11,13 @@
  * - emotion.dominantIntensity: number (0-100)
  * - emotion.source: 'manual' | 'ai' | 'aggregated'
  * - emotion.timestamp: ISO datetime string
+ *
+ * @typedef {import('../../types/node.js').Node} TreeNode
+ * @typedef {import('../../types/node.js').NodeEmotion} NodeEmotion
+ * @typedef {import('../../types/node.js').SemanticStructure} SemanticStructure
+ * @typedef {import('../../types/node.js').InlineElement} InlineElement
+ * @typedef {import('../../types/node.js').TextRepresentation} TextRepresentation
+ * @typedef {import('../../types/node.js').OperationalMetadata} OperationalMetadata
  */
 
 import React, { useRef, useEffect, useState } from 'react';
@@ -22,7 +29,7 @@ import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeA
 import { EMOTION_AXES, EMOTION_COLORS, EMOTION_LABELS } from '@utils/constants';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 import { createEmptyEmotionProfile } from '../../types/node.js';
-import { normalizeEmotionProfile } from '@utils/emotionProfiles.js';
+import { deriveLegacyFromProfile, normalizeEmotionProfile } from '@utils/emotionProfiles.js';
 import {
   getIndentPadding,
   renderIndentationGuide,
@@ -41,15 +48,6 @@ import '@components/TreeVisualization/TreeNode.css';
  * @property {string[]} options - Rewrite suggestions
  * @property {number} selectedIdx - Currently selected option index
  * @property {string} editedText - Edited content text
- */
-
-/**
- * @typedef {Object} NodeEmotion
- * @property {Object} profile - 10-axis emotion profile
- * @property {string} [dominantEmotion] - Primary emotion name
- * @property {number} [dominantIntensity] - Intensity 0-100
- * @property {'manual'|'ai'|'aggregated'} [source] - Assignment source
- * @property {string} [timestamp] - ISO timestamp
  */
 
 // ============================================================================
@@ -509,9 +507,13 @@ function renderNodeContent(content, type, structure, formatting) {
  * @param {string} props.id - Node UUID
  * @param {Object} props.data - Node data (new unified Node type)
  * @param {string} props.data.content - Node text content
- * @param {string} props.data.type - Node type (sentence|heading|list-item|etc)
+ * @param {'sentence'|'heading'|'list-item'|'code-block'|'blockquote'|'horizontal-rule'|'root'|'group'} props.data.type - Node type (sentence|heading|list-item|etc)
+ * @param {SemanticStructure} [props.data.structure] - Type-specific structure
+ * @param {InlineElement[]} [props.data.formatting] - Links, bold, italic, etc.
+ * @param {TextRepresentation} [props.data.textRep] - How it appears in text
  * @param {NodeEmotion} [props.data.emotion] - Emotion metadata
- * @param {Object} [props.data.metadata] - Operational metadata
+ * @param {OperationalMetadata} [props.data.metadata] - Operational metadata
+ * @param {object} props.data.metadata
  * @param {boolean} [props.data.metadata.isDirty] - Needs regeneration
  * @param {Function} [props.data.applyNodeEdit] - Edit handler
  * @param {Function} [props.data.applySubtreeChanges] - Subtree update handler
@@ -604,7 +606,6 @@ export function AnimatedNodeComponent({ id, data }) {
     data.type
   );
   const modalAccentColor = data.type === 'sentence' ? emotionColor : subtreeEmotionColor;
-  const indentLevel = data.structure?.indentLevel || 0;
 
   // =========================================================================
   // EFFECTS: Sync External Data
@@ -1114,8 +1115,8 @@ export function AnimatedNodeComponent({ id, data }) {
                       onClick={(e) => {
                         e.stopPropagation();
                         const ok = window.confirm('Delete this sentence? This cannot be undone.');
-                        if (ok && typeof data.deleteNodeSentence === 'function') {
-                          data.deleteNodeSentence(id);
+                        if (ok && typeof data.deleteNode === 'function') {
+                          data.deleteNode(id);
                           setIsDialogOpen(false);
                         }
                       }}

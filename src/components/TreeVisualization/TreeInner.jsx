@@ -10,7 +10,7 @@
  * - Physics engine for drag-drop feedback
  * - nodeMap as single source of truth
  *
- * @typedef {import('../types/node').Node} Node
+ * @typedef {import('../../types/node.js').Node} Node
  */
 
 import React, {
@@ -52,6 +52,7 @@ import {
   markDirtyUp,
   pruneEmptyGroupsUp,
 } from '../../types/node';
+import { normalizeListItemMarker } from '@utils/nodeHelpers';
 
 // Constants
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
@@ -245,7 +246,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       const updated = new Map(nodeMapRef.current);
-
       const node = updated.get(nodeId);
       const sibling = updated.get(targetSiblingId);
 
@@ -296,7 +296,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       insertChildId(updated, newParentId, nodeId, insertIndex);
 
       // 3) Patch the moved node (parentId + level)
-      const patchedNode = cloneNode(node);
+      let patchedNode = cloneNode(node);
       patchedNode.hierarchy.parentId = newParentId;
 
       const newParentAfter = updated.get(newParentId);
@@ -305,6 +305,15 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       patchedNode.metadata.isDirty = true;
       patchedNode.metadata.modifiedAt = new Date().toISOString();
+
+      if (patchedNode.type === 'list-item') {
+        patchedNode = normalizeListItemMarker(
+          patchedNode,
+          newParent,
+          updated
+        );
+      }
+
       updated.set(nodeId, patchedNode);
 
       // 4) Dirty-mark affected ancestors
@@ -552,8 +561,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       // Check for reorder (same parent)
       const closest = findClosestSibling(
         rfNode.id,
-        rfNode.position.y,
-        nodeMapRef.current
+        rfNode.position.y
       );
 
       if (closest) {
@@ -601,8 +609,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       // Check for reordering
       const reorderInfo = checkReorderDrop(
         rfNode.id,
-        rfNode.position.y,
-        nodeMapRef.current
+        rfNode.position.y
       );
 
       if (reorderInfo) {

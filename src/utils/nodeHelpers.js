@@ -5,7 +5,7 @@
  */
 
 import { LOG_PREFIX } from './constants';
-import { isContentNode, isGroupNode, isRootNode } from '../types/node';
+import { cloneNode, isContentNode, isGroupNode, isRootNode } from '../types/node';
 
 
 /**
@@ -188,4 +188,63 @@ export function validateNode(node) {
     valid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * Helper: Normalize list item marker based on its position in the new parent's children
+ * Updates structure.marker if the node is a list item
+ * 
+ * @param {Node} node - The node being moved
+ * @param {Node} newParent - The new parent node
+ * @param {Map<string, Node>} nodeMap - For context
+ * @returns {Node} Updated node with normalized marker
+ */
+export function normalizeListItemMarker(node, newParent, nodeMap) {
+  // Only normalize list items
+  if (node.type !== 'list-item' || !node.structure) {
+    return node;
+  }
+
+  const patchedNode = cloneNode(node);
+  const newParentChildren = newParent.hierarchy.childIds || [];
+  const positionInParent = newParentChildren.indexOf(node.id);
+
+  // Determine new marker based on list type
+  if (node.structure.type === 'ordered') {
+    // For ordered lists, use position + 1
+    patchedNode.structure = {
+      ...patchedNode.structure,
+      marker: `${positionInParent + 1}.`,
+    };
+  } else if (node.structure.type === 'unordered') {
+    // Keep the marker from sibling context or default to '-'
+    const siblingMarker = newParentChildren
+      .slice(0, positionInParent)
+      .reverse()
+      .find(siblingId => {
+        const sibling = nodeMap.get(siblingId);
+        return sibling?.type === 'list-item' && sibling.structure?.marker;
+      });
+
+    if (siblingMarker) {
+      const sibling = nodeMap.get(siblingMarker);
+      patchedNode.structure = {
+        ...patchedNode.structure,
+        marker: sibling.structure.marker || '-',
+      };
+    } else {
+      patchedNode.structure = {
+        ...patchedNode.structure,
+        marker: '-',
+      };
+    }
+  } else if (node.structure.type === 'task') {
+    // Keep task format but sync with siblings
+    patchedNode.structure = {
+      ...patchedNode.structure,
+      marker: '- ',
+    };
+  }
+
+  return patchedNode;
 }

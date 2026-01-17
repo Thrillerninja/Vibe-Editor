@@ -15,7 +15,7 @@
  * - headIndex: current position in history
  * - redoStack: indices for redo functionality
  *
- * @typedef {import('../types/node').Node} Node
+ * @typedef {import('../../types/node').Node} Node
  */
 
 import React, {

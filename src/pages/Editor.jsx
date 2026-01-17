@@ -695,7 +695,11 @@ export default function Editor() {
         level,
         parentId,
         [], // childIds filled below
-        { metadata: { isDirty: true } }
+        { metadata: {
+          isDirty: true,
+          createdAt: new Date().toISOString(),
+          version: 1
+        } }
       );
 
       groups.push(group);
@@ -972,7 +976,11 @@ export default function Editor() {
           i + 1,
           currentParent,
           [],
-          { metadata: { isDirty: false } }
+          { metadata: {
+            isDirty: false,
+            createdAt: new Date().toISOString(),
+            version: 1
+          } }
         );
         updated.set(newGroupId, newGroup);
         newGroupIds.push(newGroupId);
@@ -1173,6 +1181,7 @@ export default function Editor() {
                   style={{
                     ...floatingButtonStyle,
                     backgroundColor:
+                      // @ts-ignore
                       hierarchyState !== 'generated' ? ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff') : '#10b981',
                     color: 'white',
                   }}
