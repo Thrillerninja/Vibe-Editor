@@ -5,11 +5,11 @@
  * similar to standard code diff viewers.
  *
  * DIFF STRUCTURE:
- * Array<{
- *   type: 'added' | 'removed' | 'unchanged' | 'skip',
- *   content: string,
- *   count?: number  // for skip type
- * }>
+ * Array<DiffItem>
+ */
+
+/**
+ * @typedef {{ type: 'added' | 'removed' | 'unchanged'; content: string } | { type: 'skip'; count: number }} DiffItem
  */
 
 import React from 'react';
@@ -18,7 +18,7 @@ import React from 'react';
  * DiffView - Text-based diff display with inline highlighting
  *
  * @param {Object} props
- * @param {Array<{type: string, content: string, count?: number}>} props.diff - Diff segments
+ * @param {DiffItem[]} props.diff - Diff segments
  * @returns {React.ReactElement}
  */
 const DiffView = ({ diff }) => {
@@ -39,9 +39,10 @@ const DiffView = ({ diff }) => {
     );
 };
 
+
 /**
  * Individual diff segment with appropriate styling
- * @param {{item: {type: string, content: string, count?: number}}} props
+ * @param {{item: DiffItem}} props
  * @returns {React.ReactElement}
  */
 const DiffSegment = ({ item }) => {

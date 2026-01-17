@@ -18,6 +18,15 @@
  * @typedef {import('../../types/node').Node} Node
  */
 
+/**
+ * @typedef {Object} HistoryGraphProps
+ * @property {string} rootId
+ * @property {Map<string, Node>} nodeMap
+ * @property {string} [className]
+ * @property {(snapshot: {nodeMap: Map<string, Node>, rootId: string}) => void} [onRevertComplete]
+ * @property {(nodeMap: Map<string, Node>) => void} [onCommitComplete]
+ */
+
 import React, {
   useRef,
   useState,
@@ -52,32 +61,28 @@ import { getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
 /**
  * HistoryGraph - Git-style history visualization for node documents
  * Manages commits, reverts, undo/redo with visual graph
+ * 
+ * Props:
+ * - className: optional container class
+ * - onRevertComplete(data): function(data) called when a revert is confirmed
  *
- * @param {Object} props
+ * @param {HistoryGraphProps} props
  * @param {string} props.rootId - Root node ID
  * @param {Map<string, Node>} props.nodeMap - Current document nodes
  * @param {string} [props.className='history-graph'] - Container class
  * @param {(snapshot: {nodeMap: Map<string, Node>, rootId: string}) => void} [props.onRevertComplete]
  * @param {(nodeMap: Map<string, Node>) => void} [props.onCommitComplete]
- * @param {React.Ref} ref - Imperative handle for addCommit
+ * @param {React.Ref<any>} ref - Imperative handle for addCommit
  * @returns {React.ReactElement}
  */
-
-// Responsive git-style history graph.
-// Props:
-// - className: optional container class
-// - onRevertComplete(data): function(data) called when a revert is confirmed
 const HistoryGraph = forwardRef(
-  (
-    {
-      className = 'history-graph',
-      rootId,
-      nodeMap,
-      onRevertComplete = () => { },
-      onCommitComplete = () => { },
-    },
-    ref
-  ) => {
+  /** @param {HistoryGraphProps} props */
+  (props, ref) => {
+    const className = props.className || 'history-graph';
+    const rootId = props.rootId;
+    const nodeMap = props.nodeMap;
+    const onRevertComplete = props.onRevertComplete || (() => { });
+    const onCommitComplete = props.onCommitComplete || (() => { });
     /** @type {React.MutableRefObject<HTMLDivElement>} */
     const rootRef = useRef(null);
 
@@ -177,7 +182,6 @@ const HistoryGraph = forwardRef(
           level: node.hierarchy.level,
           parentId: node.hierarchy.parentId,
           childIds: [...node.hierarchy.childIds],
-          role: node.hierarchy.role,
         },
         structure: node.structure ? { ...node.structure } : undefined,
         formatting: node.formatting ? [...node.formatting] : undefined,
@@ -247,7 +251,7 @@ const HistoryGraph = forwardRef(
      *
      * @param {Map<string, Node>} oldMap
      * @param {Map<string, Node>} newMap
-     * @returns {Array<{type: 'added'|'removed'|'unchanged'|'skip', content: string, count?: number}>}
+     * @returns {Array<import('./DiffView').DiffItem>}
      */
     function computeTextDiff(oldMap, newMap) {
       const oldText = reconstructTextFromNodes(oldMap);
@@ -267,7 +271,7 @@ const HistoryGraph = forwardRef(
      * @returns {string}
      */
     function reconstructTextFromNodes(nodeMap) {
-      const root = Array.from(nodeMap.values()).find(n => n.hierarchy.role === 'root');
+      const root = Array.from(nodeMap.values()).find(n => n.type === 'root');
       if (!root) return '';
 
       const contentNodes = getContentNodesInDocumentOrder(nodeMap, root.id);
@@ -278,7 +282,7 @@ const HistoryGraph = forwardRef(
      * Simple line-by-line diff using longest common subsequence
      * @param {string[]} oldLines
      * @param {string[]} newLines
-     * @returns {Array<{type: string, content: string, count?: number}>}
+     * @returns {Array<import('./DiffView').DiffItem>}
      */
     function simpleLineDiff(oldLines, newLines) {
       const result = [];
@@ -292,7 +296,7 @@ const HistoryGraph = forwardRef(
           if (skipCount > 0 && skipCount < 3) {
             // Show skip indicator if there are 3+ unchanged lines
             if (skipCount > 2) {
-              result.push({ type: 'skip', count: skipCount });
+              result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'skip', count: skipCount }));
             }
             skipCount = 0;
           }
@@ -300,10 +304,10 @@ const HistoryGraph = forwardRef(
           skipCount++;
           if (skipCount > 2) {
             if (result[result.length - 1]?.type !== 'skip') {
-              result.push({ type: 'skip', count: skipCount - 1 });
+              result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'skip', count: skipCount - 1 }));
             }
           } else {
-            result.push({ type: 'unchanged', content: oldLines[oldIdx] });
+            result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'unchanged', content: oldLines[oldIdx] }));
           }
 
           oldIdx++;
@@ -311,12 +315,12 @@ const HistoryGraph = forwardRef(
         } else if (newIdx >= newLines.length || (oldIdx < oldLines.length && oldLines[oldIdx] !== newLines[newIdx])) {
           // Removed line
           skipCount = 0;
-          result.push({ type: 'removed', content: oldLines[oldIdx] });
+          result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'removed', content: oldLines[oldIdx] }));
           oldIdx++;
         } else {
           // Added line
           skipCount = 0;
-          result.push({ type: 'added', content: newLines[newIdx] });
+          result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'added', content: newLines[newIdx] }));
           newIdx++;
         }
       }

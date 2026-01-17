@@ -176,6 +176,10 @@ export function createEmptyEmotionProfile() {
  * @property {OperationalMetadata} metadata - Status and tracking
  */
 
+/**
+ * @typedef {Map<string, Node>} NodeMap
+ */
+
 // ==================== NODE CREATION ====================
 
 /**
@@ -636,13 +640,13 @@ export function isRootNode(node) {
 export function nodeToString(node) {
   switch (node.type) {
     case 'heading':
-      return `${'#'.repeat(node.structure?.level || 1)} ${node.content}`;
+      return `${'#'.repeat(/** @type {HeadingStructure} */ (node.structure)?.level || 1)} ${node.content}`;
     case 'list-item':
-      return `${'  '.repeat(node.structure?.indentLevel || 0)}${node.structure?.marker || '-'} ${node.content}`;
+      return `${'  '.repeat(/** @type {ListItemStructure} */ (node.structure)?.indentLevel || 0)}${/** @type {ListItemStructure} */ (node.structure)?.marker || '-'} ${node.content}`;
     case 'code-block':
-      return `\`\`\`${node.structure?.language || ''}\n${node.content}\n\`\`\``;
+      return `\`\`\`${/** @type {CodeBlockStructure} */ (node.structure)?.language || ''}\n${node.content}\n\`\`\``;
     case 'blockquote':
-      return `${'> '.repeat(node.structure?.depth || 1)}${node.content}`;
+      return `${'> '.repeat(/** @type {BlockquoteStructure} */ (node.structure)?.depth || 1)}${node.content}`;
     case 'root':
       return `📄 ${node.content}`;
     case 'group':

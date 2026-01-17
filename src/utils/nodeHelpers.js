@@ -1,7 +1,11 @@
 /**
- * @fileoverview Helper functions for working with SentenceNode structure
+ * @fileoverview Helper functions for working with Node structure
  * 
  * @typedef {import('../types/node').Node} Node
+ * @typedef {import('../types/node').InlineElement} InlineElement
+ * @typedef {import('../types/node').HeadingStructure} HeadingStructure
+ * @typedef {import('../types/node').ListItemStructure} ListItemStructure
+ * @typedef {import('../types/node').BlockquoteStructure} BlockquoteStructure
  */
 
 import { LOG_PREFIX } from './constants';
@@ -99,25 +103,28 @@ export function getContentNodesInDocumentOrder(nodeMap, rootId) {
 
 /**
  * Gets the display text for a node
- * @param {SentenceNode} node
+ * @param {Node} node
  * @returns {string}
  */
 export function getNodeDisplayText(node) {
   if (node.type === 'heading') {
-    return `${'#'.repeat(node.structure?.headingLevel || 1)} ${node.content}`;
+    const structure = /** @type {HeadingStructure} */ (node.structure);
+    return `${'#'.repeat(structure.level || 1)} ${node.content}`;
   }
 
   if (node.type === 'list-item') {
-    const indent = '  '.repeat(node.structure?.listIndentLevel || 0);
-    const marker = node.structure?.listMarker || '-';
-    const taskBox = node.structure?.taskChecked !== undefined
-      ? (node.structure.taskChecked ? '[x]' : '[ ]') + ' '
+    const structure = /** @type {ListItemStructure} */ (node.structure);
+    const indent = '  '.repeat(structure.indentLevel || 0);
+    const marker = structure.marker || '-';
+    const taskBox = structure.taskChecked !== undefined
+      ? (structure.taskChecked ? '[x]' : '[ ]') + ' '
       : '';
     return `${indent}${marker} ${taskBox}${node.content}`;
   }
 
   if (node.type === 'blockquote') {
-    const depth = node.structure?.quoteDepth || 1;
+    const structure = /** @type {BlockquoteStructure} */ (node.structure);
+    const depth = structure.depth || 1;
     return `${'> '.repeat(depth)}${node.content}`;
   }
 
@@ -126,7 +133,7 @@ export function getNodeDisplayText(node) {
 
 /**
  * Checks if a node type can have emotions
- * @param {SentenceNode} node
+ * @param {Node} node
  * @returns {boolean}
  */
 export function canHaveEmotion(node) {
@@ -135,30 +142,30 @@ export function canHaveEmotion(node) {
 
 /**
  * Merges inline elements from old and new content
- * @param {SentenceNode} oldNode
+ * @param {Node} oldNode
  * @param {string} newContent
- * @param {InlineElement[]} newInlineElements
- * @returns {SentenceNode}
+ * @param {InlineElement[]} newFormattingElements
+ * @returns {Node}
  */
-export function mergeNodeContent(oldNode, newContent, newInlineElements) {
+export function mergeNodeContent(oldNode, newContent, newFormattingElements) {
   return {
     ...oldNode,
     content: newContent,
-    inlineElements: newInlineElements || oldNode.inlineElements,
+    formatting: newFormattingElements || oldNode.formatting,
   };
 }
 
 /**
  * Gets all inline links from a node
- * @param {SentenceNode} node
- * @returns {Array<{url: string, text: string}>}
+ * @param {Node} node
+ * @returns {Array<{url: string | undefined, text: string}>}
  */
 export function extractLinks(node) {
-  if (!node.inlineElements) return [];
+  if (!node.formatting) return [];
 
-  return node.inlineElements
+  return node.formatting
     .filter((/** @type {{ type: string; }} */ el) => el.type === 'link')
-    .map((/** @type {{ url: any; alt: any; start: any; end: any; }} */ el) => ({
+    .map( (el) => ({
       url: el.url,
       text: el.alt || node.content.substring(el.start, el.end),
     }));
@@ -166,7 +173,7 @@ export function extractLinks(node) {
 
 /**
  * Validates a node structure
- * @param {SentenceNode} node
+ * @param {Node} node
  * @returns {{valid: boolean, errors: string[]}}
  */
 export function validateNode(node) {
@@ -176,12 +183,12 @@ export function validateNode(node) {
   if (!node.type) errors.push('Missing type');
   if (typeof node.content !== 'string') errors.push('Invalid content');
 
-  if (node.type === 'heading' && !node.structure?.headingLevel) {
-    errors.push('Heading missing headingLevel');
+  if (node.type === 'heading' && !(/** @type {HeadingStructure} */ (node.structure))?.level) {
+    errors.push('Heading missing level');
   }
 
-  if (node.type === 'list-item' && !node.structure?.listMarker) {
-    errors.push('List item missing listMarker');
+  if (node.type === 'list-item' && !(/** @type {ListItemStructure} */ (node.structure))?.marker) {
+    errors.push('List item missing marker');
   }
 
   return {
@@ -206,44 +213,34 @@ export function normalizeListItemMarker(node, newParent, nodeMap) {
   }
 
   const patchedNode = cloneNode(node);
+  const structure = /** @type {ListItemStructure} */ (patchedNode.structure);
   const newParentChildren = newParent.hierarchy.childIds || [];
   const positionInParent = newParentChildren.indexOf(node.id);
 
   // Determine new marker based on list type
-  if (node.structure.type === 'ordered') {
+  if (structure.type === 'ordered') {
     // For ordered lists, use position + 1
-    patchedNode.structure = {
-      ...patchedNode.structure,
-      marker: `${positionInParent + 1}.`,
-    };
-  } else if (node.structure.type === 'unordered') {
+    structure.marker = `${positionInParent + 1}.`;
+  } else if (structure.type === 'unordered') {
     // Keep the marker from sibling context or default to '-'
     const siblingMarker = newParentChildren
       .slice(0, positionInParent)
       .reverse()
       .find(siblingId => {
         const sibling = nodeMap.get(siblingId);
-        return sibling?.type === 'list-item' && sibling.structure?.marker;
+        return sibling?.type === 'list-item' && (/** @type {ListItemStructure} */ (sibling.structure))?.marker;
       });
 
     if (siblingMarker) {
       const sibling = nodeMap.get(siblingMarker);
-      patchedNode.structure = {
-        ...patchedNode.structure,
-        marker: sibling.structure.marker || '-',
-      };
+      const siblingStructure = /** @type {ListItemStructure} */ (sibling.structure);
+      structure.marker = siblingStructure.marker || '-';
     } else {
-      patchedNode.structure = {
-        ...patchedNode.structure,
-        marker: '-',
-      };
+      structure.marker = '-';
     }
-  } else if (node.structure.type === 'task') {
+  } else if (structure.type === 'task') {
     // Keep task format but sync with siblings
-    patchedNode.structure = {
-      ...patchedNode.structure,
-      marker: '- ',
-    };
+    structure.marker = '- ';
   }
 
   return patchedNode;

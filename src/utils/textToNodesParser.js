@@ -23,6 +23,8 @@ import {
 import { getContentNodeIdsInDocumentOrder } from './nodeHelpers';
 import { addChildToNode } from './nodeOperations';
 
+/** @typedef {import('../types/node').Node} Node */
+
 /**
  * @typedef {'none'|'space'|'newline'|'paragraph'} Delimiter
  */
@@ -174,7 +176,7 @@ function splitLineIntoSentenceParts(trimmedLine) {
         if (!isListMarker) {
           parts.push({
             content: current.trim(),
-            delimiter: 'space',
+            delimiter: /** @type {Delimiter} */ ('space'),
             delimiterContent: ' ',
           });
           current = '';
@@ -189,7 +191,7 @@ function splitLineIntoSentenceParts(trimmedLine) {
   if (current.trim()) {
     parts.push({
       content: current.trim(),
-      delimiter: 'none',
+      delimiter: /** @type {Delimiter} */ ('none'),
       delimiterContent: '',
     });
   }
@@ -494,7 +496,7 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
       contentParentId,
       maxDepth,
       {
-        metadata: { isDirty: true },
+        metadata: { isDirty: true, createdAt: options.nowIso(), version: 1 },
         textRep: unit.textRep,
         structure: unit.structure,
       }

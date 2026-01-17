@@ -357,7 +357,7 @@ export default function Editor() {
       );
 
       // Step 1: Convert nodeMap to sentence format for Claude
-      const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
+      /** @type {any} */ const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
 
       console.log('[Editor] Converted nodeMap to sentence format');
 

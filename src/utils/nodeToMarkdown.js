@@ -4,6 +4,11 @@
  * Reconstructs full markdown including all structure metadata.
  * This is the inverse of parseTextToContentUnits.
  * 
+ * @typedef {import('../types/node.js').HeadingStructure} HeadingStructure
+ * @typedef {import('../types/node.js').ListItemStructure} ListItemStructure
+ * @typedef {import('../types/node.js').BlockquoteStructure} BlockquoteStructure
+ * @typedef {import('../types/node.js').CodeBlockStructure} CodeBlockStructure
+ * 
  * 
  */
 import * as NodeTypes from '../types/node.js';
@@ -28,17 +33,17 @@ export function nodeToMarkdown(node) {
   if (node.structure) {
     switch (node.type) {
       case 'heading': {
-        const hashes = '#'.repeat(node.structure.level || 1);
+        const hashes = '#'.repeat(/** @type {HeadingStructure} */ (node.structure).level || 1);
         markdown = `${hashes} ${markdown}`;
         break;
       }
 
       case 'list-item': {
-        const indent = '  '.repeat(node.structure.indentLevel || 0);
-        const marker = node.structure.marker || '- ';
+        const indent = '  '.repeat(/** @type {ListItemStructure} */ (node.structure).indentLevel || 0);
+        const marker = /** @type {ListItemStructure} */ (node.structure).marker || '- ';
 
-        if (node.structure.type === 'task') {
-          const checked = node.structure.taskChecked ? 'x' : ' ';
+        if (/** @type {ListItemStructure} */ (node.structure).type === 'task') {
+          const checked = /** @type {ListItemStructure} */ (node.structure).taskChecked ? 'x' : ' ';
           markdown = `${indent}- [${checked}] ${markdown}`;
         } else {
           markdown = `${indent}${marker} ${markdown}`;
@@ -47,7 +52,7 @@ export function nodeToMarkdown(node) {
       }
 
       case 'blockquote': {
-        const depth = node.structure.depth || 1;
+        const depth = /** @type {BlockquoteStructure} */ (node.structure).depth || 1;
         const prefix = '> '.repeat(depth);
         markdown = markdown
           .split('\n')
@@ -58,7 +63,7 @@ export function nodeToMarkdown(node) {
 
       case 'code-block': {
         const fence = '```';
-        const lang = node.structure.language || '';
+        const lang = /** @type {CodeBlockStructure} */ (node.structure).language || '';
         markdown = `${fence}${lang}\n${markdown}\n${fence}`;
         break;
       }
