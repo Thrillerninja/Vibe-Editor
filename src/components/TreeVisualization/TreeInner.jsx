@@ -403,6 +403,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           hierarchy: node.hierarchy,
           structure: node.structure,
           formatting: node.formatting,
+          textRep: node.textRep,
           emotion: node.emotion,
           metadata: node.metadata,
         },

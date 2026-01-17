@@ -908,7 +908,7 @@ export function AnimatedNodeComponent({ id, data }) {
     closeTooltipTimerRef.current = setTimeout(() => {
       closeTooltipTimerRef.current = null;
       setIsTooltipOpen(false);
-    }, 200); // 150–300ms feels good
+    }, 30); // 30 ms delay
   };
 
   useEffect(() => {

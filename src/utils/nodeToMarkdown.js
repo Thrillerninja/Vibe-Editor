@@ -89,11 +89,16 @@ export function nodeMapToMarkdown(nodeMap, rootId) {
 
       // Add delimiter after each node
       const isLastNode = idx === contentNodes.length - 1;
-      const textRep = node.textRep || {};
+      const textRep = node.textRep || {
+        delimiter: isLastNode ? 'none' : 'newline',
+        delimiterContent: isLastNode ? '' : '\n',
+      };
       let delimiter = '';
 
       if (!isLastNode) {
-        if (textRep.delimiter === 'paragraph') {
+        if (textRep.delimiterContent) {
+          delimiter = textRep.delimiterContent;
+        } else if (textRep.delimiter === 'paragraph') {
           delimiter = '\n\n';
         } else if (textRep.delimiter === 'newline') {
           delimiter = '\n';
