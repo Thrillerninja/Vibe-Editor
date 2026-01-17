@@ -22,8 +22,13 @@ import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeA
 import { EMOTION_AXES, EMOTION_COLORS, EMOTION_LABELS } from '@utils/constants';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
 import { createEmptyEmotionProfile } from '../../types/node.js';
-import '@components/TreeVisualization/TreeNode.css';
 import { normalizeEmotionProfile } from '@utils/emotionProfiles.js';
+import {
+  getIndentPadding,
+  renderIndentationGuide,
+  getIndentationStyle
+} from './indentationRenderer';
+import '@components/TreeVisualization/TreeNode.css';
 
 // ============================================================================
 // TYPE DEFINITIONS & CONSTANTS
@@ -271,6 +276,8 @@ function renderNodeContent(content, type, structure, formatting) {
   // Special handling for list items with custom markers
   if (structure?.marker) {
     const markdown = applyformatting(content, formatting);
+    const indentLevel = structure.indentLevel || 0;
+    const indentPadding = getIndentPadding(indentLevel, 12); // 12px per level
 
     return (
       <div
@@ -280,14 +287,20 @@ function renderNodeContent(content, type, structure, formatting) {
           display: 'flex',
           alignItems: 'flex-start',
           gap: '0.5em',
+          paddingLeft: indentPadding,
+          position: 'relative',
         }}
       >
+        {/* Indentation guide for nested lists */}
+        {indentLevel > 0 && renderIndentationGuide(indentLevel, 'dots')}
+
         <span
           style={{
             flexShrink: 0,
             fontFamily: 'monospace',
             fontWeight: 500,
-            color: '#4b5563',
+            color: '#30363f',
+            fontSize: '0.95em',
           }}
         >
           {structure.marker}
@@ -590,8 +603,8 @@ export function AnimatedNodeComponent({ id, data }) {
     subtreeIntensity,
     data.type
   );
-  const modalAccentColor =
-    data.type === 'sentence' ? emotionColor : subtreeEmotionColor;
+  const modalAccentColor = data.type === 'sentence' ? emotionColor : subtreeEmotionColor;
+  const indentLevel = data.structure?.indentLevel || 0;
 
   // =========================================================================
   // EFFECTS: Sync External Data
@@ -1484,7 +1497,10 @@ export function AnimatedNodeComponent({ id, data }) {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
+              paddingBottom: significantEmotions.length > 0 ? 28 : 8,
+              paddingTop: 8,
+              paddingLeft: 8,
+              paddingRight: 32,
               textAlign: 'center',
               fontSize: 13,
               fontWeight: data.type === 'root' ? 600 : 500,
@@ -1493,6 +1509,8 @@ export function AnimatedNodeComponent({ id, data }) {
               wordWrap: 'break-word',
               overflowWrap: 'anywhere',
               whiteSpace: 'pre-wrap',
+              minHeight: 'auto',
+              maxHeight: 'none',
             }}
           >
             {renderNodeContent(
@@ -1502,6 +1520,7 @@ export function AnimatedNodeComponent({ id, data }) {
               data.formatting
             )}
           </div>
+
           {nodeModified && (
             <>
               <div className="modified-indicator" title="This node has been modified.">

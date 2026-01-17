@@ -57,6 +57,7 @@ import {
   EMOTION_LABELS,
 } from '@utils/constants';
 import { shouldShowRecommendation } from '@utils/depthRecommendation';
+import { syncNodeMapWithText } from '@utils/textToNodesParser.js';
 
 import {
   createRootNode,
@@ -71,6 +72,7 @@ import {
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Deviders';
 import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
+import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
 
 // ============================================================================
 // CONSTANTS
@@ -134,30 +136,10 @@ export default function Editor() {
    */
   const text = useMemo(() => {
     console.log('[Editor] Reconstructing text from nodeMap');
-    const root = nodeMap.get(rootId);
-    if (!root) {
-      console.log('[Editor] No root found for text reconstruction');
-      return '';
-    }
-
-    const contentNodes = getContentNodesInDocumentOrder(nodeMap, rootId);
-    console.log(`[Editor] Reconstructing from ${contentNodes.length} content nodes`);
-    
-    const reconstructed = contentNodes
-      .map((node, idx) => {
-        const isLastNode = idx === contentNodes.length - 1;
-        const node_textRep = node.textRep || {};
-        const delimiter = node_textRep.delimiter || (isLastNode ? '' : 'space');
-        const delimiterContent = node_textRep.delimiterContent || (delimiter === 'space' ? ' ' : delimiter === 'newline' ? '\n' : '');
-
-        return node.content + delimiterContent;
-      })
-      .join('')
-      .trim();
-    console.log('[Editor] Reconstructed text length:', reconstructed.length);
-    console.log('[Editor] Reconstructed preview:', reconstructed.substring(0, 100));
-    
-    return reconstructed;
+    const markdown = nodeMapToMarkdown(nodeMap, rootId);
+    console.log('[Editor] Reconstructed text length:', markdown.length);
+    console.log('[Editor] Reconstructed preview:', markdown.substring(0, 100));
+    return markdown;
   }, [nodeMap, rootId]);
 
   // =========================================================================
@@ -514,48 +496,6 @@ export default function Editor() {
   // =========================================================================
   // TEXT EDITING: DEBOUNCED NODE CREATION
   // =========================================================================
-  /**
-   * Mark a node as dirty and propagate up the parent chain (inclusive to root)
-   * Only marks nodes that aren't already dirty
-   */
-  const markDirtyUpToRoot = useCallback(
-    (nodeId, updated) => {
-      const path = [];
-      let current = updated.get(nodeId);
-
-      // Collect the path to root
-      while (current) {
-        path.push(current.id);
-        if (current.id === rootId) break;
-        current = updated.get(current.hierarchy.parentId);
-      }
-
-      // Mark only nodes in the direct path
-      path.forEach(id => {
-        const node = updated.get(id);
-        if (node && !node.metadata.isDirty) {
-          const patched = cloneNode(node);
-          patched.metadata.isDirty = true;
-          patched.metadata.modifiedAt = new Date().toISOString();
-          updated.set(id, patched);
-          console.log(
-            `[Editor] Marked dirty: ${id.substring(0, 8)}`
-          );
-        }
-      });
-
-      // Explicitly mark root as dirty
-      const root = updated.get(rootId);
-      if (root && !root.metadata.isDirty) {
-        const patchedRoot = cloneNode(root);
-        patchedRoot.metadata.isDirty = true;
-        patchedRoot.metadata.modifiedAt = new Date().toISOString();
-        updated.set(rootId, patchedRoot);
-        console.log(`[Editor] Marked root dirty: ${rootId.substring(0, 8)}`);
-      }
-    },
-    [rootId]
-  );
 
   /**
    * Process text and update content nodes
@@ -571,293 +511,18 @@ export default function Editor() {
     (newText) => {
       console.log('[Editor] Processing text:', newText.substring(0, 50));
       
-      const sentenceData = parseTextToSentences(newText);
-
-      setNodeMap((prevNodeMap) => {
-        const updated = new Map(prevNodeMap);
-        const root = updated.get(rootId);
-        if (!root) {
-          console.error('[Editor] Root not found');
-          return prevNodeMap;
-        }
-
-        const contentLevel = maxDepth - 1;
-
-        // Groups + top-level groups (ONLY these should be root children)
-        const groupNodes = Array.from(updated.values())
-          .filter(isGroupNode)
-          .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
-
-        const topGroupIds = groupNodes
-          .filter((g) => g.hierarchy.parentId === rootId)
-          .map((g) => g.id);
-
-        // Content nodes in document order (robust)
-        let existingContentIdsOrdered = getContentNodeIdsInDocumentOrder(updated, rootId);
-
-        if (existingContentIdsOrdered == undefined) {
-          console.log("Error in processTextToNodes");
-          return;
-        }
-
-        if (existingContentIdsOrdered.length === 0) {
-          existingContentIdsOrdered = Array.from(updated.values())
-            .filter(isContentNode)
-            .sort((a, b) =>
-              String(a.metadata.createdAt).localeCompare(
-                String(b.metadata.createdAt)
-              )
-            )
-            .map((n) => n.id);
-        }
-
-        // Find the correct parent for NEW content nodes
-        // Strategy: Place them in the same group as the LAST existing content node
-        let contentParentId = rootId;
-        const targetParentLevel = maxDepth - 2;
-
-        if (targetParentLevel > 0 && existingContentIdsOrdered.length > 0) {
-          // Get the last existing content node
-          const lastExistingId = existingContentIdsOrdered[existingContentIdsOrdered.length - 1];
-          const lastExistingNode = updated.get(lastExistingId);
-
-          if (lastExistingNode && lastExistingNode.hierarchy.parentId) {
-            // Use the same parent as the last existing content node
-            contentParentId = lastExistingNode.hierarchy.parentId;
-
-            console.log(
-              `[Editor] New content will use same parent as last content node: ${contentParentId.substring(0, 8)} (level ${updated.get(contentParentId)?.hierarchy.level || 0})`
-            );
-          } else {
-            console.error('[Editor] FALLBACK TRIGGERED');
-            // Fallback: find ANY group at the target parent level
-            const groupAtTargetLevel = Array.from(updated.values()).find(
-              n => isGroupNode(n) && n.hierarchy.level === targetParentLevel
-            );
-
-            if (groupAtTargetLevel) {
-              contentParentId = groupAtTargetLevel.id;
-              console.log(
-                `[Editor] Found group at target level: ${contentParentId.substring(0, 8)}`
-              );
-            } else {
-              console.warn('[Editor] No suitable parent found, will use root');
-            }
-          }
-        } else if (targetParentLevel > 0 && existingContentIdsOrdered.length === 0) {
-          console.error('[Editor] FALLBACK 2 TRIGGERED');
-          // No existing content - follow the chain from root
-          let current = rootId;
-
-          while (true) {
-            const node = updated.get(current);
-            if (!node) break;
-
-            const nextGroup = node.hierarchy.childIds
-              .map(id => updated.get(id))
-              .find(child => isGroupNode(child) && child.hierarchy.level < maxDepth - 1);
-
-            if (!nextGroup) {
-              contentParentId = current;
-              break;
-            }
-
-            current = nextGroup.id;
-
-            if (nextGroup.hierarchy.level === targetParentLevel) {
-              contentParentId = nextGroup.id;
-              break;
-            }
-          }
-
-          console.log(
-            `[Editor] First content - following chain to: ${contentParentId === rootId ? 'root' : contentParentId.substring(0, 8)}`
-          );
-        }
-
-        // Handle empty text: delete all content and all groups
-        if (sentenceData.length === 0) {
-          console.log(
-            `[Editor] Empty text - clearing ${existingContentIdsOrdered.length} content nodes`
-          );
-
-          for (const id of existingContentIdsOrdered) updated.delete(id);
-          for (const g of groupNodes) updated.delete(g.id);
-
-          const newRoot = cloneNode(root);
-          newRoot.hierarchy.childIds = [];
-          newRoot.metadata.isDirty = true;
-          updated.set(rootId, newRoot);
-
-          console.log('[Editor] ✓ All content and groups cleared');
-          return updated;
-        }
-
-        console.log(`[Editor] Parsed ${sentenceData.length} sentences`);
-
-        // Update or create content nodes
-        const newContentIds = sentenceData.map((sentenceObj, index) => {
-          const sentence = sentenceObj.content;
-          const delimiter = sentenceObj.delimiter;
-          const delimiterContent = sentenceObj.delimiterContent;
-
-          // Check if this is a list item and extract the marker
-          const listMatch = sentence.match(/^(\d+\.|[a-zA-Z]\.) (.+)$/);
-          
-          let nodeType = "sentence";
-          let nodeContent = sentence;
-          let structure;
-
-          if (listMatch) {
-            listMarker = listMatch[1]; // "1.", "2.", "a.", etc.
-            content = listMatch[2]; // The actual content after the marker
-          }
-
-          if (index < existingContentIdsOrdered.length) {
-            const nodeId = existingContentIdsOrdered[index];
-            const existingNode = updated.get(nodeId);
-
-            if (existingNode && existingNode.content !== sentence) {
-              const updatedNode = cloneNode(existingNode);
-              updatedNode.content = sentence;
-
-              // Store list marker in metadata or structure
-              if (!updatedNode.textRep) updatedNode.textRep = {};
-              updatedNode.textRep.delimiter = delimiter;
-              updatedNode.textRep.delimiterContent = delimiterContent;
-
-              if (listMarker) {
-                updatedNode.structure = {
-                  type: 'list-item',
-                  marker: listMarker,
-                  content: content,
-                };
-              }
-
-              updatedNode.metadata.isDirty = true;
-              updatedNode.metadata.modifiedAt = new Date().toISOString();
-              updated.set(nodeId, updatedNode);
-
-              markDirtyUpToRoot(nodeId, updated);
-            }
-
-            return nodeId;
-          }
-
-          // Create new node
-          const nodeId = uuidv4();
-          const newNode = createContentNode(
-            nodeId,
-            listMarker ? 'list-item' : 'sentence',
-            sentence,
-            contentParentId,
-            maxDepth,
-            {
-              metadata: {
-                isDirty: true,
-              },
-              textRep: {
-                delimiter: delimiter,
-                delimiterContent: delimiterContent,
-              },
-              structure: listMarker ? {
-                type: 'list-item',
-                marker: listMarker,
-                content: content
-              } : undefined
-            }
-          );
-
-          newNode.hierarchy.level = contentLevel;
-          updated.set(nodeId, newNode);
-
-          console.log(
-            `[Editor] Created content node ${nodeId.substring(0, 8)} under ${contentParentId === rootId ? 'root' : contentParentId.substring(0, 8)}`
-          );
-
-          // Propagate dirty flag up
-          markDirtyUpToRoot(nodeId, updated);
-
-          // Append to parent's childIds
-          if (contentParentId !== rootId) {
-            const parent = updated.get(contentParentId);
-            if (parent && isGroupNode(parent)) {
-              const patchedParent = cloneNode(parent);
-              if (!patchedParent.hierarchy.childIds.includes(nodeId)) {
-                patchedParent.hierarchy.childIds.push(nodeId);
-              }
-              updated.set(contentParentId, patchedParent);
-            }
-          }
-
-          return nodeId;
-        });
-
-        // Delete excess content nodes and remove references from any groups
-        for (let i = newContentIds.length; i < existingContentIdsOrdered.length; i++) {
-          const idToDelete = existingContentIdsOrdered[i];
-          updated.delete(idToDelete);
-
-          // Remove from any group childIds
-          for (const g of groupNodes) {
-            const current = updated.get(g.id);
-            if (!current || !isGroupNode(current)) continue;
-
-            if (current.hierarchy.childIds.includes(idToDelete)) {
-              const patched = cloneNode(current);
-              patched.hierarchy.childIds = patched.hierarchy.childIds.filter(
-                (cid) => cid !== idToDelete
-              );
-              updated.set(g.id, patched);
-            }
-          }
-
-          console.log(
-            `[Editor] Deleted excess content node ${idToDelete.substring(0, 8)}`
-          );
-        }
-
-        // Root children must be:
-        // - top-level groups only (if any groups exist)
-        // - otherwise all content nodes
-        const updatedRoot = updated.get(rootId) || root; // Get the potentially-marked root
-        const newRoot = cloneNode(updatedRoot);
-        newRoot.hierarchy.childIds =
-          topGroupIds.length > 0 ? topGroupIds : newContentIds;
-        updated.set(rootId, newRoot);
-
-        // Ensure content nodes have correct level (and parentId if root has no groups)
-        // if (topGroupIds.length === 0) {
-        //   for (const id of newContentIds) {
-        //     const node = updated.get(id);
-        //     if (!node || !isContentNode(node)) continue;
-
-        //     const patched = cloneNode(node);
-        //     patched.hierarchy.parentId = rootId;
-        //     patched.hierarchy.level = contentLevel;
-        //     updated.set(id, patched);
-        //   }
-        // } else {
-        //   for (const id of newContentIds) {
-        //     const node = updated.get(id);
-        //     if (!node || !isContentNode(node)) continue;
-
-        //     if (node.hierarchy.level !== contentLevel) {
-        //       const patched = cloneNode(node);
-        //       patched.hierarchy.level = contentLevel;
-        //       updated.set(id, patched);
-        //     }
-        //   }
-        // }
-
-        console.log(
-          `[Editor] Updated: ${topGroupIds.length} top groups, ${newContentIds.length} content`
-        );
-
-        return updated;
+      const updated = syncNodeMapWithText(nodeMap, newText, {
+        rootId,
+        maxDepth,
+        createId: () => uuidv4(),
+        nowIso: () => new Date().toISOString(),
+        spacesPerIndent: 2,
       });
+
+      setNodeMap(updated);
+      console.log('[Editor] Updated nodeMap, new size:', updated.size);
     },
-    [rootId, maxDepth, nodeMap]
+    [nodeMap, rootId, maxDepth]
   );
 
   /**
@@ -1137,18 +802,7 @@ export default function Editor() {
 
     if (root) {
       const contentNodes = getContentNodesInDocumentOrder(updatedNodes, rootId);
-      const newText = contentNodes
-        .map((node, idx) => {
-          const isLastNode = idx === contentNodes.length - 1;
-          const node_textRep = node.textRep || {};
-          const delimiter = node_textRep.delimiter || (isLastNode ? '' : 'space');
-          const delimiterContent = node_textRep.delimiterContent || 
-            (delimiter === 'space' ? ' ' : delimiter === 'newline' ? '\n' : '');
-
-          return node.content + delimiterContent;
-        })
-        .join('')
-        .trim();
+      const newText = nodeMapToMarkdown(updatedNodes, rootId);
       
       console.log('[Editor DEBUG] Tree update - syncing text:');
       console.log('  old draftText length:', draftText.length);

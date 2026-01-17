@@ -12,6 +12,7 @@ import { isContentNode, isGroupNode, isRootNode } from '../types/node';
  * Gets nodes in Document order
  * @param {Map<string, Node>} nodeMap
  * @param {string} rootId
+ * @returns {string[]} out
  */
 export function getContentNodeIdsInDocumentOrder(nodeMap, rootId) {
   console.log(
@@ -41,7 +42,7 @@ export function getContentNodeIdsInDocumentOrder(nodeMap, rootId) {
       console.log(
         `[DEBUG getContentNodeIdsInDocumentOrder] Returning Early`
       );
-      return;
+      return [];
     }
     
     if (visited.has(id)) continue;
@@ -85,9 +86,9 @@ export function getContentNodeIdsInDocumentOrder(nodeMap, rootId) {
 
 /**
  * Retrieves content nodes in document order.
- * @param {Map} nodeMap - A map of node IDs to node objects
- * @param {string|number} rootId - The ID of the root node to start traversal from
- * @returns {Array<Object>} An array of content node objects in document order, excluding any null or undefined values
+ * @param {Map<string, Node>} nodeMap - A map of node IDs to node objects
+ * @param {string} rootId - The ID of the root node to start traversal from
+ * @returns {Array<Node|undefined>} An array of content node objects in document order, excluding any null or undefined values
  */
 export function getContentNodesInDocumentOrder(nodeMap, rootId) {
   return getContentNodeIdsInDocumentOrder(nodeMap, rootId)
