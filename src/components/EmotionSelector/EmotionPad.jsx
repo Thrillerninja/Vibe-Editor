@@ -71,7 +71,7 @@ export default function EmotionPad({
     intensityPercent > 5 ?
     angleToPlutchikColor(-currentAngleRad - 1.5708) // Switch to +90° ~+1.5708 to align dot color with background color
     :
-    "#000"
+    "#000";
   }, [currentAngleRad]);
 
   const onMouseDown = (e) => {
