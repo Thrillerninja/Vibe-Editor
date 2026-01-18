@@ -8,8 +8,8 @@
  */
 export default async function getPoemLines() {
   try {
-    // Fetch a random poem from PoetryDB
-    const response = await fetch('https://poetrydb.org/random/1');
+    // Fetch 8 random poems and pick the shortest
+    const response = await fetch('https://poetrydb.org/random/8');
     if (!response.ok) {
       throw new Error(`PoetryDB API error: ${response.status}`);
     }
@@ -19,10 +19,19 @@ export default async function getPoemLines() {
       throw new Error('No poems returned from PoetryDB');
     }
 
-    const poem = poems[0];
-    const title = poem.title || 'Untitled Poem';
-    const author = poem.author || 'Unknown Author';
-    let lines = poem.lines || [];
+    // Find the shortest poem
+    let shortestPoem = poems[0];
+    for (const poem of poems) {
+      const lines = (poem.lines || []).filter(line => line && line.trim());
+      const shortestLines = (shortestPoem.lines || []).filter(line => line && line.trim());
+      if (lines.length < shortestLines.length) {
+        shortestPoem = poem;
+      }
+    }
+    
+    const title = shortestPoem.title || 'Untitled Poem';
+    const author = shortestPoem.author || 'Unknown Author';
+    let lines = shortestPoem.lines || [];
 
     // Filter out empty lines and trim
     lines = lines.filter(line => line && line.trim()).map(line => line.trim());

@@ -161,7 +161,7 @@ export default function ToolbarPlugin() {
 
   return (
     <div
-      className="flex items-center min-w-[235px] max-w-[405px] gap-1 flex-wrap flex-1"
+      className="flex items-center min-w-[205px] max-w-[360px]  gap-1 flex-wrap flex-1"  // With Links Button: min-w-[235px] max-w-[405px]
       style={{
         padding: '0px 14px',
         backgroundColor: 'rgba(255,255,255,0.95)',
@@ -425,10 +425,10 @@ export default function ToolbarPlugin() {
         </button>
       </div>
 
-      <div style={separatorStyle} />
+      {/* <div style={separatorStyle} /> */}
 
       {/* Links */}
-      <button
+      {/* <button
         onClick={() => setShowLinkInput(!showLinkInput)}
         style={{
           ...toolbarButtonStyle,
@@ -453,7 +453,7 @@ export default function ToolbarPlugin() {
           <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-      </button>
+      </button> */}
 
       {showLinkInput && (
         <input

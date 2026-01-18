@@ -902,7 +902,7 @@ export default function Editor() {
   useEffect(() => {
     setDraftText(text);
   }, [text]);
-  
+
   // =========================================================================
   // LAYOUT MANAGEMENT
   // =========================================================================
@@ -1231,8 +1231,7 @@ export default function Editor() {
                   style={{
                     ...floatingButtonStyle,
                     backgroundColor:
-                      // @ts-ignore
-                      hierarchyState !== 'generated' ? ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff') : '#10b981',
+                       ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff'),
                     color: 'white',
                   }}
                 >
