@@ -56,7 +56,7 @@ export function nodeToMarkdown(node) {
         const prefix = '> '.repeat(depth);
         markdown = markdown
           .split('\n')
-          .map(line => `${prefix}${line}`)
+          .map(line => line.trim() === '' ? line : `${prefix}${line}`)  // ← Skip empty lines
           .join('\n');
         break;
       }
@@ -88,7 +88,28 @@ export function nodeMapToMarkdown(nodeMap, rootId) {
     return '';
   }
 
-  return contentNodes
+  // Combine consecutive blockquotes at same depth
+  const mergedNodes = [];
+  for (const node of contentNodes) {
+    const lastNode = mergedNodes[mergedNodes.length - 1];
+    
+    if (
+      node.type === 'blockquote' &&
+      lastNode &&
+      lastNode.type === 'blockquote' &&
+      node.structure?.depth === lastNode.structure?.depth &&
+      (lastNode.textRep?.delimiter === 'space' || lastNode.textRep?.delimiterContent === ' ')
+    ) {
+      // Merge: add space then content
+      lastNode.content += ' ' + node.content;
+      // Keep the current node's textRep (so newlines are preserved)
+      lastNode.textRep = node.textRep;
+    } else {
+      mergedNodes.push({ ...node });
+    }
+  }
+
+  return mergedNodes
     .map((node, idx) => {
       const markdown = nodeToMarkdown(node);
 

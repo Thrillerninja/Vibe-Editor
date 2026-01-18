@@ -36,6 +36,7 @@ import {
   getIndentationStyle
 } from './indentationRenderer';
 import '@components/TreeVisualization/TreeNode.css';
+import { getSecondaryEmotionTooltip } from '@utils/secondaryEmotios.js';
 
 // ============================================================================
 // TYPE DEFINITIONS & CONSTANTS
@@ -216,13 +217,13 @@ function applyformatting(content, formatting) {
  *
  * @param {string} content - Base content text
  * @param {Object} [structure] - Structure metadata
- * @param {number} [structure.headingLevel] - H1-H6 level
- * @param {string} [structure.listType] - 'ordered'|'unordered'|'task'
- * @param {number} [structure.listIndentLevel] - Nesting depth
+ * @param {number} [structure.level] - H1-H6 level
+ * @param {string} [structure.type] - 'ordered'|'unordered'|'task'
+ * @param {number} [structure.indentLevel] - Nesting depth
  * @param {string} [structure.marker] - Custom list marker (e.g., "3.")
  * @param {boolean} [structure.taskChecked] - Task checkbox state
- * @param {string} [structure.codeLanguage] - Language identifier
- * @param {number} [structure.quoteDepth] - Blockquote nesting level
+ * @param {string} [structure.language] - Language identifier
+ * @param {number} [structure.depth] - Blockquote nesting level
  * @param {Array} [formatting] - Inline formatting elements
  * @returns {string} Formatted markdown string
  */
@@ -230,30 +231,32 @@ function buildMarkdownFromStructure(content, structure, formatting) {
   let markdown = applyformatting(content, formatting);
 
   if (structure) {
-    if (structure.headingLevel) {
-      const hashes = '#'.repeat(structure.headingLevel);
+    if (structure.level) {
+      // Heading
+      const hashes = '#'.repeat(structure.level);
       markdown = `${hashes} ${markdown}`;
-    } else if (structure.listType) {
-      const indent = '  '.repeat(structure.listIndentLevel || 0);
+    } else if (structure.depth) {
+      // Blockquote
+      const prefix = '> '.repeat(structure.depth);
+      markdown = markdown
+        .split('\n')
+        .map(line => `${prefix}${line}`)
+        .join('\n');
+    } else if (structure.type) {
+      const indent = '  '.repeat(structure.indentLevel || 0);
       let marker =
         structure.marker ||
-        (structure.listType === 'ordered' ? '1.' : '-');
+        (structure.type === 'ordered' ? '1.' : '-');
 
-      if (structure.listType === 'task') {
+      if (structure.type === 'task') {
         const checked = structure.taskChecked ? 'x' : ' ';
         markdown = `${indent}- [${checked}] ${markdown}`;
       } else {
         markdown = `${indent}${marker} ${markdown}`;
       }
-    } else if (structure.codeLanguage) {
+    } else if (structure.language) {
       const fence = '```';
-      markdown = `${fence}${structure.codeLanguage}\n${markdown}\n${fence}`;
-    } else if (structure.quoteDepth) {
-      const prefix = '> '.repeat(structure.quoteDepth);
-      markdown = markdown
-        .split('\n')
-        .map(line => `${prefix}${line}`)
-        .join('\n');
+      markdown = `${fence}${structure.language}\n${markdown}\n${fence}`;
     }
   }
 
@@ -591,7 +594,7 @@ export function AnimatedNodeComponent({ id, data }) {
   // STATE: Debug tooltip
   // =========================================================================
 
-  const [isTooltipEnabled] = useState(true);
+  const [isTooltipEnabled, setIsTooltipEnabled] = useState(false);
   const [isTooltipOpen, setIsTooltipOpen] = useState(false);
 
   // =========================================================================
@@ -879,6 +882,20 @@ export function AnimatedNodeComponent({ id, data }) {
   // =========================================================================
   // Debug tooltip
   // =========================================================================
+
+  /**
+   * Toggle debug hitboxes with F8
+   */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'F9') {
+        setIsTooltipEnabled((prev) => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const tooltipJson = JSON.stringify(
     { id, ...data }, // include id + full data payload
@@ -1558,9 +1575,10 @@ export function AnimatedNodeComponent({ id, data }) {
                 .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
                 .join('\n')}
             >
-              {significantEmotions.slice(0, 3).map((emotionData, idx) => (
+              {significantEmotions.slice(0, 5).map((emotionData, idx) => (
                 <div
                   key={emotionData.emotion}
+                  title={getSecondaryEmotionTooltip(emotionData.emotion, emotionData.intensity)}
                   style={{
                     width: 40,
                     height: 40,
@@ -1571,8 +1589,9 @@ export function AnimatedNodeComponent({ id, data }) {
                   }}
                 />
               ))}
-              {significantEmotions.length > 3 && (
+              {significantEmotions.length > 5 && (
                 <div
+                  title={`${significantEmotions.length - 5} more secondary emotions`}
                   style={{
                     width: 40,
                     height: 40,
@@ -1588,7 +1607,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     color: '#fff',
                   }}
                 >
-                  +{significantEmotions.length - 3}
+                  +{significantEmotions.length - 5}
                 </div>
               )}
             </div>

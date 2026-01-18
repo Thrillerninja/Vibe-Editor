@@ -32,18 +32,11 @@ import { LOG_PREFIX } from './constants.js';
  */
 export function parseTextToNodes(text, maxDepth, rootId = null) {
   if (!text || text.trim() === '') {
-    // Empty document - just root
     const root = NodeTypes.createRootNode(rootId || uuidv4(), 'Untitled Document', []);
-    return {
-      root,
-      nodes: [root],
-    };
+    return { root, nodes: [root] };
   }
 
-  // Parse text into sentences
   const sentenceData = parseIntoSentences(text);
-
-  // Create Node objects with parent pointing to root
   const rootNodeId = rootId || uuidv4();
   const childIds = [];
 
@@ -51,31 +44,31 @@ export function parseTextToNodes(text, maxDepth, rootId = null) {
     const nodeId = uuidv4();
     childIds.push(nodeId);
 
+    // Create correct node type based on structure
+    let options = {
+      textRep: {
+        punctuation: data.punctuation,
+        delimiter: data.delimiter,
+        delimiterContent: data.delimiterContent,
+      },
+    };
+
+    if (data.structure) {
+      options.structure = data.structure;
+    }
+
     return NodeTypes.createContentNode(
       nodeId,
-      'sentence',
+      data.type,  // ← Now uses the parsed type!
       data.content,
       rootNodeId,
       maxDepth,
-      {
-        textRep: {
-          punctuation: data.punctuation,
-          delimiter: data.delimiter,
-          delimiterContent: data.delimiterContent,
-        },
-      }
+      options
     );
   });
 
-  // Create root node
   const root = NodeTypes.createRootNode(rootNodeId, 'Untitled Document', childIds);
-
-  console.log(`${LOG_PREFIX.PARSER} Parsed ${nodes.length} sentences, created root`);
-
-  return {
-    root,
-    nodes: [root, ...nodes],
-  };
+  return { root, nodes: [root, ...nodes] };
 }
 
 /**
@@ -199,97 +192,155 @@ export function applySentenceEdit(existingNodes, newText, rootId, maxDepth) {
  * 2. Double newlines (paragraph breaks)
  * 3. Single newlines
  */
+
 function parseIntoSentences(text) {
   const sentences = [];
+  const lines = text.split('\n');
   let currentIndex = 0;
-
-  // Split on punctuation + whitespace, or paragraph/line breaks
-  const parts = text.split(
-    /((?<=[.!?])[\s\n]+|\n\n+|\n(?!\s*$))/
-  );
-
-  for (let i = 0; i < parts.length; i++) {
-    const part = parts[i];
-
-    if (part === '') {
+  
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    
+    // Skip empty lines
+    if (line.trim() === '') {
+      currentIndex += line.length + 1; // +1 for newline
+      i++;
       continue;
     }
 
-    // Check if this is a delimiter
-    const isDelimiter = /^([\s\n]+|\n\n+|\n)$/.test(part);
-
-    if (isDelimiter) {
-      currentIndex += part.length;
+    // ============ CODE BLOCK ============
+    const codeMatch = line.match(/^```(\w*)?/);
+    if (codeMatch) {
+      const language = codeMatch[1] || '';
+      const codeLines = [line.replace(/^```\w*/, '').trim()];
+      currentIndex += line.length + 1;
+      i++;
+      
+      // Collect until closing fence
+      while (i < lines.length && !lines[i].match(/^```/)) {
+        codeLines.push(lines[i]);
+        currentIndex += lines[i].length + 1;
+        i++;
+      }
+      
+      if (i < lines.length) {
+        currentIndex += lines[i].length + 1; // closing fence
+        i++;
+      }
+      
+      const content = codeLines.join('\n').trim();
+      sentences.push({
+        type: 'code-block',
+        content,
+        structure: { language, isFenced: true },
+        delimiter: 'paragraph',
+        delimiterContent: '\n\n',
+      });
       continue;
     }
 
-    // Skip whitespace-only
-    if (part.trim() === '') {
-      currentIndex += part.length;
+    // ============ BLOCKQUOTE ============
+    const blockquoteMatch = line.match(/^(>+)\s+(.*)/);
+    if (blockquoteMatch) {
+      const depth = blockquoteMatch[1].length;
+      let quoteContent = blockquoteMatch[2];
+      currentIndex += line.length + 1;
+      i++;
+      
+      // Collect continuation lines at same depth
+      while (i < lines.length) {
+        const nextLine = lines[i];
+        if (!nextLine.trim()) {
+          i++;
+          currentIndex += nextLine.length + 1;
+          break; // End quote at blank line
+        }
+        
+        const nextMatch = nextLine.match(/^(>+)\s+(.*)/);
+        if (!nextMatch || nextMatch[1].length !== depth) {
+          break; // Different depth
+        }
+        
+        quoteContent += '\n' + nextMatch[2];
+        currentIndex += nextLine.length + 1;
+        i++;
+      }
+      
+      sentences.push({
+        type: 'blockquote',
+        content: quoteContent.trim(),
+        structure: { depth, type: 'blockquote' },
+        delimiter: 'paragraph',
+        delimiterContent: '\n\n',
+      });
       continue;
     }
 
-    const startIdx = currentIndex;
-    const partLength = part.length;
-
-    // Get trailing delimiter
-    let trailingDelimiter = '';
-    if (i + 1 < parts.length) {
-      const nextPart = parts[i + 1];
-      if (/^([\s\n]+|\n\n+|\n)$/.test(nextPart)) {
-        trailingDelimiter = nextPart;
-      }
-    }
-
-    // Process sentence text
-    let sentenceText;
-    if (trailingDelimiter) {
-      sentenceText = part.trimStart();
-    } else {
-      sentenceText = part.trimStart();
-    }
-
-    if (!sentenceText) {
-      currentIndex += partLength;
+    // ============ HEADING ============
+    const headingMatch = line.match(/^(#+)\s+(.*)/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const content = headingMatch[2].trim();
+      currentIndex += line.length + 1;
+      i++;
+      
+      sentences.push({
+        type: 'heading',
+        content,
+        structure: { level, type: 'heading' },
+        delimiter: 'newline',
+        delimiterContent: '\n',
+      });
       continue;
     }
 
-    // Determine delimiter type
-    let delimiterType = 'none';
-    let punctuation = undefined;
-
-    if (trailingDelimiter) {
-      const lastChar = sentenceText[sentenceText.length - 1];
-      if ('.!?'.includes(lastChar)) {
-        punctuation = lastChar;
-      }
-
-      if (trailingDelimiter.includes('\n\n') || /\n\n+/.test(trailingDelimiter)) {
-        delimiterType = 'paragraph';
-      } else if (trailingDelimiter.includes('\n')) {
-        delimiterType = 'newline';
-      } else {
-        delimiterType = 'space';
-      }
-    } else {
-      const lastChar = sentenceText[sentenceText.length - 1];
-      if ('.!?'.includes(lastChar)) {
-        punctuation = lastChar;
-      }
-      delimiterType = 'none';
+    // ============ LIST ITEM ============
+    const listMatch = line.match(/^(\s*)(?:[-*+]|\d+\.|\[[ x]\])\s+(.*)/);
+    if (listMatch) {
+      const indentLevel = Math.floor(listMatch[1].length / 2);
+      const content = listMatch[2].trim();
+      const markerMatch = line.match(/^(\s*)([-*+]|\d+\.|\[[ x]\])/);
+      const marker = markerMatch ? markerMatch[2] : '-';
+      const isTask = marker.startsWith('[');
+      const taskChecked = isTask && marker === '[x]';
+      
+      currentIndex += line.length + 1;
+      i++;
+      
+      sentences.push({
+        type: 'list-item',
+        content,
+        structure: {
+          type: isTask ? 'task' : (marker.match(/\d+/) ? 'ordered' : 'unordered'),
+          marker,
+          indentLevel,
+          taskChecked,
+        },
+        delimiter: 'newline',
+        delimiterContent: '\n',
+      });
+      continue;
     }
 
-    sentences.push({
-      content: sentenceText,
-      punctuation,
-      delimiter: delimiterType,
-      delimiterContent: trailingDelimiter,
-    });
-
-    currentIndex = startIdx + partLength;
+    // ============ REGULAR SENTENCE ============
+    // Split on punctuation for regular text
+    let sentenceText = line.trim();
+    currentIndex += line.length + 1;
+    i++;
+    
+    if (sentenceText) {
+      sentences.push({
+        type: 'sentence',
+        content: sentenceText,
+        structure: undefined,
+        delimiter: i < lines.length ? 'newline' : 'none',
+        delimiterContent: i < lines.length ? '\n' : '',
+      });
+    }
   }
 
-  console.log(`${LOG_PREFIX.PARSER} Parsed ${sentences.length} sentences from text`);
+  console.log(`${LOG_PREFIX.PARSER} Parsed ${sentences.length} structured items`);
   return sentences;
 }
 

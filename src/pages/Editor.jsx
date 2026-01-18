@@ -73,6 +73,7 @@ import { useUserIdentification } from '../hooks/useUserIdentification';
 import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Deviders';
 import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
 import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
+import getPoemLines from '@utils/poetry';
 
 // ============================================================================
 // CONSTANTS
@@ -261,6 +262,12 @@ export default function Editor() {
 
   const historyGraphRef = useRef(null);
   const initialCommitAdded = useRef(false);
+
+  // =========================================================================
+  // POETRY LOADING
+  // =========================================================================
+  
+  const [isLoadingPoetry, setIsLoadingPoetry] = useState(false);
 
   // =========================================================================
   // INITIALIZATION & EFFECTS
@@ -781,7 +788,43 @@ export default function Editor() {
     }
   }, [nodeMap, rootId, maxDepth, createHierarchyStructure]);
 
-  
+  // =========================================================================
+  // POETRY
+  // =========================================================================
+  const insertPoetry = async () => {
+    setIsLoadingPoetry(true);
+    try {
+      const poetryText = await getPoemLines(10);
+      
+      // Append poetry to current text
+      const newText = draftText + (draftText ? '\n\n' : '') + poetryText;
+      
+      // Update draft text
+      setDraftText(newText);
+      
+      // Process the new text into nodes immediately
+      processTextToNodes(newText);
+      
+      // Mark hierarchy as having dirty nodes for potential regeneration
+      setHierarchyState('has-dirty-nodes');
+      
+      // Log event
+      posthog.capture('poetry_inserted', {
+        text_length: poetryText.length,
+        line_count: poetryText.split('\n').length,
+        total_text_length: newText.length,
+      });
+      
+      addCommit(nodeMap, 'Poetry inserted');
+    } catch (error) {
+      console.error('Failed to load poetry:', error);
+      posthog.capture('poetry_load_error', {
+        error: error.message,
+      });
+    } finally {
+      setIsLoadingPoetry(false);
+    }
+  };
   // =========================================================================
   // HIERARCHY GENERATION
   // =========================================================================
@@ -1099,7 +1142,7 @@ export default function Editor() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} />
+      <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry}/>
 
       {/* Depth Recommendation Snackbar */}
       <DepthRecommendationSnackbar
@@ -1232,91 +1275,4 @@ export default function Editor() {
       </div>
     </div>
   );
-}
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
-
-/**
- * Parse text into sentences
- *
- * Splits on newlines, then on sentence punctuation
- * Returns array of sentence objects with delimiter metadata
- *
- * @param {string} text - Raw text input
- * @returns {Array<{content: string, delimiter: string, delimiterContent: string}>}
- */
-function parseTextToSentences(text) {
-  if (!text.trim()) return [];
-
-  const lines = text.split('\n');
-  const sentences = [];
-
-  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
-    const line = lines[lineIdx];
-    const trimmed = line.trim();
-    
-    // SKIP empty lines instead of returning empty array
-    if (!trimmed) {
-      // Check if previous sentence exists - if so, mark it as followed by newline
-      if (sentences.length > 0 && sentences[sentences.length - 1].delimiter === 'space') {
-        sentences[sentences.length - 1].delimiter = 'newline';
-        sentences[sentences.length - 1].delimiterContent = '\n';
-      }
-      continue;  // ← CONTINUE, don't return!
-    }
-
-    // Split on sentence punctuation, but preserve numbered lists
-    const parts = [];
-    let current = '';
-    let i = 0;
-
-    while (i < trimmed.length) {
-      const char = trimmed[i];
-      current += char;
-
-      // Check for sentence ending punctuation
-      if (char === '.' || char === '!' || char === '?') {
-        // Look for following whitespace
-        let spaceStart = i + 1;
-        while (spaceStart < trimmed.length && /\s/.test(trimmed[spaceStart])) {
-          spaceStart++;
-        }
-
-        // If we have whitespace and more content after
-        if (spaceStart > i + 1 && spaceStart < trimmed.length) {
-          // Check if this is NOT a list marker
-          const currentTrimmed = current.trim();
-          const isListMarker = /^[0-9]+\.$|^[a-zA-Z]\.$/.test(currentTrimmed);
-
-          if (!isListMarker) {
-            // This is a sentence ending, split here
-            parts.push({
-              content: current.trim(),
-              delimiter: 'space',
-              delimiterContent: ' ',
-            });
-            current = '';
-            i = spaceStart - 1;
-          }
-        }
-      }
-      i++;
-    }
-
-    // Remaining content on this line
-    if (current.trim()) {
-      parts.push({
-        content: current.trim(),
-        delimiter: lineIdx < lines.length - 1 ? 'newline' : 'none',
-        delimiterContent: lineIdx < lines.length - 1 ? '\n' : '',
-      });
-    }
-
-    sentences.push(...parts);
-  }
-
-  // ✅ Filter correctly on object property
-  return sentences.filter(s => s.content && s.content.length > 0);
 }

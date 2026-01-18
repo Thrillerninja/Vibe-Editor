@@ -163,6 +163,20 @@ export const EMOTION_COLORS = {
   },
 };
 
+// Single color per emotion for button displays
+export const ALTERNATIVE_EMOTION_COLORS = {
+  [EMOTIONS.INTEREST]: '#ffd700',   // Gold/Yellow
+  [EMOTIONS.JOY]: '#7cb342',        // Lime Green
+  [EMOTIONS.SURPRISE]: '#00a651',   // Green
+  [EMOTIONS.SADNESS]: '#00bcd4',    // Cyan
+  [EMOTIONS.ANGER]: '#1976d2',      // Blue
+  [EMOTIONS.DISGUST]: '#4527a0',    // Indigo
+  [EMOTIONS.CONTEMPT]: '#7b1fa2',   // Purple
+  [EMOTIONS.FEAR]: '#c2185b',       // Magenta
+  [EMOTIONS.SHAME]: '#e60000',      // Red
+  [EMOTIONS.GUILT]: '#ff6600',      // Orange
+};
+
 // Logging configuration
 export const LOGGING_ENABLED = false;
 export const LOG_PREFIX = {

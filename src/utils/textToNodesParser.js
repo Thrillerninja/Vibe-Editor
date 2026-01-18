@@ -33,7 +33,7 @@ import { addChildToNode } from './nodeOperations';
  * A parsed text unit that becomes one content node.
  *
  * @typedef {Object} ContentUnit
- * @property {'sentence'|'list-item'} type
+ * @property {'sentence'|'list-item'| 'blockquote'} type
  * @property {string} content
  * @property {import('../types/node').TextRepresentation} textRep
  * @property {import('../types/node').SemanticStructure} [structure]
@@ -146,6 +146,25 @@ function parseListLine(rawLine, spacesPerIndent) {
   return null;
 }
 
+// ==================== BLOCKQUOTE PARSING ====================
+/**
+ * Detect blockquote lines and extract depth
+ * 
+ * @param {string} rawLine
+ * @returns {null | { depth: number, content: string }}
+ */
+function parseBlockquoteLine(rawLine) {
+  const match = rawLine.match(/^[ \t]*(>+)\s+(.*)$/);
+  console.log('[parseBlockquoteLine]', { rawLine, match: match ? 'MATCHED' : 'NO MATCH' });
+  
+  if (match) {
+    const depth = match[1].length;
+    const content = match[2];
+    return { depth, content };
+  }
+  return null;
+}
+
 // ==================== SENTENCE SPLITTING ====================
 /**
  * Split a normal (non-list) line into sentence-like units by punctuation.
@@ -242,6 +261,43 @@ export function parseTextToContentUnits(text, spacesPerIndent = 2) {
           delimiter: lineIdx < lines.length - 1 ? 'newline' : 'none',
           delimiterContent: lineIdx < lines.length - 1 ? '\n' : '',
         },
+      });
+      continue;
+    }
+
+    // Blockquote detection
+    const blockquote = parseBlockquoteLine(rawLine);
+    if (blockquote) {
+      const trimmedContent = blockquote.content.trim();
+      const parts = splitLineIntoSentenceParts(trimmedContent);
+
+      parts.forEach((p, partIdx) => {
+        const isLastPartInLine = partIdx === parts.length - 1;
+        const isLastLine = lineIdx === lines.length - 1;
+
+        const delimiter = isLastPartInLine
+          ? isLastLine
+            ? 'none'
+            : 'newline'
+          : p.delimiter;
+
+        const delimiterContent =
+          delimiter === 'space'
+            ? ' '
+            : delimiter === 'newline'
+              ? '\n'
+              : delimiter === 'paragraph'
+                ? '\n\n'
+                : '';
+
+        units.push({
+          type: 'blockquote',
+          content: p.content,
+          structure: {
+            depth: blockquote.depth,
+          },
+          textRep: { delimiter, delimiterContent },
+        });
       });
       continue;
     }
@@ -533,6 +589,7 @@ export default {
   expandTabs,
   getIndentLevel,
   parseListLine,
+  parseBlockquoteLine,
   splitLineIntoSentenceParts,
   parseTextToContentUnits,
   syncNodeMapWithText,
