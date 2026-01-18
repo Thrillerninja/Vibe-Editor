@@ -49,30 +49,59 @@ const DiffSegment = ({ item }) => {
     switch (item.type) {
         case 'added':
             return (
-                <span className="bg-green-200 text-green-900 px-1 rounded">
-                    {item.content}
-                </span>
+                <div className="bg-green-100 text-green-900 px-2 py-1 rounded mb-1">
+                    + {item.content}
+                </div>
             );
 
         case 'removed':
             return (
-                <span className="bg-red-200 text-red-900 line-through px-1 rounded">
-                    {item.content}
-                </span>
+                <div className="bg-red-100 text-red-900 px-2 py-1 rounded mb-1 line-through">
+                    − {item.content}
+                </div>
+            );
+
+        case 'modified':
+            return (
+                <div className="px-2 py-1 rounded mb-1">
+                    {item.diff
+                        .filter(wordItem => wordItem.content.trim()) // Filter out empty/whitespace
+                        .map((wordItem, idx, arr) => (
+                            <span key={idx}>
+                                {wordItem.type === 'added' && (
+                                    <span className="bg-green-200 text-green-900 rounded px-1">
+                                        {wordItem.content}
+                                    </span>
+                                )}
+                                {wordItem.type === 'removed' && (
+                                    <span className="bg-red-200 text-red-900 line-through rounded px-1">
+                                        {wordItem.content}
+                                    </span>
+                                )}
+                                {wordItem.type === 'unchanged' && (
+                                    <span className="text-gray-700">
+                                        {wordItem.content}
+                                    </span>
+                                )}
+                                {/* Add space after word if not the last item */}
+                                {idx < arr.length - 1 && <span> </span>}
+                            </span>
+                        ))}
+                </div>
             );
 
         case 'unchanged':
             return (
-                <span className="text-gray-700">
+                <div className="text-gray-700 px-2 py-1 mb-1">
                     {item.content}
-                </span>
+                </div>
             );
 
         case 'skip':
             return (
-                <span className="inline-flex items-center mx-2 px-2 py-1 bg-gray-100 rounded text-xs text-gray-500 italic">
+                <div className="inline-flex items-center mx-2 px-2 py-1 bg-gray-100 rounded text-xs text-gray-500 italic">
                     ⋯ {item.count} unchanged {item.count === 1 ? 'sentence' : 'sentences'} ⋯
-                </span>
+                </div>
             );
 
         default:

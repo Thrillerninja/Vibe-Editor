@@ -256,68 +256,50 @@ function EditorContent({
    * Uses debouncing to avoid excessive updates
    */
   useEffect(() => {
-    if (isSyncingRef.current) return;
+  // Clear existing debounce
+  if (syncDebounceRef.current) {
+    clearTimeout(syncDebounceRef.current);
+  }
 
-    // Clear existing debounce
+  // Debounce the sync
+  syncDebounceRef.current = setTimeout(() => {
+    editor.update(() => {
+      const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
+
+      // Only sync if content differs
+      if (currentMarkdown === value) {
+        return;
+      }
+
+      console.log('[RichTextEditor] Syncing content from prop');
+      console.log('  Current markdown length:', currentMarkdown.length);
+      console.log('  New value length:', value.length);
+
+      isSyncingRef.current = true;
+
+      // Clear the entire root
+      const root = $getRoot();
+      root.clear();
+
+      // Insert new content from markdown
+      const nodes = $convertFromMarkdownString(value, TRANSFORMERS);
+
+      if (nodes && nodes.length > 0) {
+        root.append(...nodes);
+      } else {
+        root.append($createParagraphNode());
+      }
+
+      isSyncingRef.current = false;
+    });
+  }, 100);
+
+  return () => {
     if (syncDebounceRef.current) {
       clearTimeout(syncDebounceRef.current);
     }
-
-    // Debounce the sync to batch rapid changes
-    syncDebounceRef.current = setTimeout(() => {
-      if (isSyncingRef.current) return;
-
-      editor.read(() => {
-        const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
-
-        // Only sync if content differs
-        if (currentMarkdown === value) {
-          return;
-        }
-
-        console.log('[RichTextEditor] Syncing content from prop');
-        console.log('  current markdown length:', currentMarkdown.length);
-        console.log('  new value length:', value.length);
-      });
-
-      // If values differ, update editor
-      editor.update(
-        () => {
-          const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
-
-          if (currentMarkdown === value) {
-            return;
-          }
-
-          isSyncingRef.current = true;
-
-          // Clear the entire root
-          const root = $getRoot();
-          root.clear();
-
-          // Insert new content from markdown
-          // $convertFromMarkdownString returns an array of nodes
-          const nodes = $convertFromMarkdownString(value, TRANSFORMERS);
-          
-          if (nodes && nodes.length > 0) {
-            root.append(...nodes);
-          } else {
-            // Ensure root is never empty
-            root.append($createParagraphNode());
-          }
-
-          isSyncingRef.current = false;
-        },
-        { tag: 'history-push' } // Add to history so user can undo
-      );
-    }, 100); // Small debounce to let tree updates settle
-
-    return () => {
-      if (syncDebounceRef.current) {
-        clearTimeout(syncDebounceRef.current);
-      }
-    };
-  }, [value, editor]);
+  };
+}, [value, editor]);
 
   // =========================================================================
   // RENDER

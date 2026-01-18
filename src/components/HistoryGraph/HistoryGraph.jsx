@@ -284,49 +284,184 @@ const HistoryGraph = forwardRef(
      * @param {string[]} newLines
      * @returns {Array<import('./DiffView').DiffItem>}
      */
-    function simpleLineDiff(oldLines, newLines) {
-      const result = [];
-      let oldIdx = 0;
-      let newIdx = 0;
-      let skipCount = 0;
+    
+function simpleLineDiff(oldLines, newLines) {
+  const result = [];
+  
+  // Find longest common subsequence of lines
+  const lcs = computeLCS(oldLines, newLines);
+  const lcsSet = new Set(lcs.map(i => i.join(',')));
+  
+  let oldIdx = 0;
+  let newIdx = 0;
 
-      while (oldIdx < oldLines.length || newIdx < newLines.length) {
-        if (oldIdx < oldLines.length && newIdx < newLines.length && oldLines[oldIdx] === newLines[newIdx]) {
-          // Unchanged line
-          if (skipCount > 0 && skipCount < 3) {
-            // Show skip indicator if there are 3+ unchanged lines
-            if (skipCount > 2) {
-              result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'skip', count: skipCount }));
-            }
-            skipCount = 0;
-          }
-
-          skipCount++;
-          if (skipCount > 2) {
-            if (result[result.length - 1]?.type !== 'skip') {
-              result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'skip', count: skipCount - 1 }));
-            }
-          } else {
-            result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'unchanged', content: oldLines[oldIdx] }));
-          }
-
-          oldIdx++;
-          newIdx++;
-        } else if (newIdx >= newLines.length || (oldIdx < oldLines.length && oldLines[oldIdx] !== newLines[newIdx])) {
-          // Removed line
-          skipCount = 0;
-          result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'removed', content: oldLines[oldIdx] }));
-          oldIdx++;
-        } else {
-          // Added line
-          skipCount = 0;
-          result.push(/** @type {import('./DiffView').DiffItem} */ ({ type: 'added', content: newLines[newIdx] }));
-          newIdx++;
-        }
-      }
-
-      return result;
+  while (oldIdx < oldLines.length || newIdx < newLines.length) {
+    // Check if both lines match
+    if (
+      oldIdx < oldLines.length &&
+      newIdx < newLines.length &&
+      oldLines[oldIdx] === newLines[newIdx]
+    ) {
+      // Unchanged line
+      result.push({
+        type: 'unchanged',
+        content: oldLines[oldIdx],
+      });
+      oldIdx++;
+      newIdx++;
+    } else if (
+      oldIdx < oldLines.length &&
+      newIdx < newLines.length &&
+      isSimilar(oldLines[oldIdx], newLines[newIdx])
+    ) {
+      const wordDiff = computeWordDiff(
+        oldLines[oldIdx],
+        newLines[newIdx]
+      );
+      result.push({
+        type: 'modified',
+        diff: wordDiff,
+      });
+      oldIdx++;
+      newIdx++;
+    } else if (newIdx >= newLines.length || (oldIdx < oldLines.length && !isInNewLines(oldLines[oldIdx], newLines, newIdx))) {
+      // Line removed
+      result.push({
+        type: 'removed',
+        content: oldLines[oldIdx],
+      });
+      oldIdx++;
+    } else {
+      // Line added
+      result.push({
+        type: 'added',
+        content: newLines[newIdx],
+      });
+      newIdx++;
     }
+  }
+
+  return result;
+}
+
+/**
+ * Check if two lines are similar (80% match)
+ * @param {string} line1
+ * @param {string} line2
+ * @returns {boolean}
+ */
+function isSimilar(line1, line2) {
+  const words1 = line1.split(/\s+/);
+  const words2 = line2.split(/\s+/);
+  
+  const minLen = Math.min(words1.length, words2.length);
+  const maxLen = Math.max(words1.length, words2.length);
+  
+  if (maxLen === 0) return true;
+  
+  let matches = 0;
+  for (let i = 0; i < minLen; i++) {
+    if (words1[i] === words2[i]) matches++;
+  }
+  
+  return matches / maxLen >= 0.6; // 60% similarity threshold
+}
+
+/**
+ * Check if a line exists in the new lines (for matching)
+ * @param {string} line
+ * @param {string[]} lines
+ * @param {number} startIdx
+ * @returns {boolean}
+ */
+function isInNewLines(line, lines, startIdx) {
+  for (let i = startIdx; i < lines.length; i++) {
+    if (line === lines[i]) return true;
+  }
+  return false;
+}
+
+/**
+ * Compute longest common subsequence of lines
+ * @param {string[]} arr1
+ * @param {string[]} arr2
+ * @returns {number[][]}
+ */
+function computeLCS(arr1, arr2) {
+  const m = arr1.length;
+  const n = arr2.length;
+  const dp = Array(m + 1).fill(0).map(() => Array(n + 1).fill(0));
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (arr1[i - 1] === arr2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // Backtrack to find actual LCS
+  const lcs = [];
+  let i = m,
+    j = n;
+  while (i > 0 && j > 0) {
+    if (arr1[i - 1] === arr2[j - 1]) {
+      lcs.unshift([i - 1, j - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return lcs;
+}
+
+/**
+ * Word-level diff for modified lines
+ * @param {string} oldLine
+ * @param {string} newLine
+ * @returns {Array<{type: 'added'|'removed'|'unchanged', content: string}>}
+ */
+function computeWordDiff(oldLine, newLine) {
+  const oldWords = oldLine.split(/(\s+)/);
+  const newWords = newLine.split(/(\s+)/);
+
+  const result = [];
+  let oldIdx = 0;
+  let newIdx = 0;
+
+  while (oldIdx < oldWords.length || newIdx < newWords.length) {
+    if (oldIdx < oldWords.length && newIdx < newWords.length && oldWords[oldIdx] === newWords[newIdx]) {
+      // Same word
+      result.push({
+        type: 'unchanged',
+        content: oldWords[oldIdx],
+      });
+      oldIdx++;
+      newIdx++;
+    } else if (newIdx >= newWords.length || (oldIdx < oldWords.length && !newWords.includes(oldWords[oldIdx]))) {
+      // Word removed
+      result.push({
+        type: 'removed',
+        content: oldWords[oldIdx],
+      });
+      oldIdx++;
+    } else {
+      // Word added
+      result.push({
+        type: 'added',
+        content: newWords[newIdx],
+      });
+      newIdx++;
+    }
+  }
+
+  return result;
+}
 
     /**
      * Compute diff between current state and history
@@ -539,7 +674,7 @@ const HistoryGraph = forwardRef(
      * @type {boolean}
      */
     const canCommit = commitDiff.some(
-      segment => segment.type === 'added' || segment.type === 'removed'
+      segment => segment.type !== 'unchanged' && segment.type !== 'skip'
     );
 
 

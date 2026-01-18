@@ -895,6 +895,13 @@ export default function Editor() {
     console.log('  preview:', draftText.substring(0, 100));
   }, [draftText]);
 
+  /**
+   * Sync draftText when text is recalculated externally (e.g., history revert)
+   * This ensures the editor updates when nodeMap changes
+   */
+  useEffect(() => {
+    setDraftText(text);
+  }, [text]);
   
   // =========================================================================
   // LAYOUT MANAGEMENT
