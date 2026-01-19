@@ -173,3 +173,10 @@ export const LOG_PREFIX = {
   NODE: '[Node]',
   DRAG: '[Drag]',
 };
+
+// Debug flags for detailed logging
+export const DEBUG = {
+  BUILD: false, // Set to true to see detailed text building logs
+  REORDER: true, // Set to true to see reordering logs
+  MATCH: true, // Set to true to see sentence matching logs
+};

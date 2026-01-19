@@ -7,7 +7,7 @@
  * - Support AI-generated hierarchies (see hierarchyIntegration.js)
  */
 
-import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH } from './constants';
+import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH, DEBUG } from './constants';
 import { buildTreeWithHierarchy } from './hierarchyIntegration';
 
 /**
@@ -44,6 +44,13 @@ export function buildTextFromSentences(sentences) {
     // Otherwise fall back to semantic delimiter type
     // Note: Use !== undefined check to allow empty string delimiters
     if (sentence.delimiterContent !== undefined) {
+      if (DEBUG.BUILD) {
+        console.log(`${LOG_PREFIX.PARSER} [BUILD] Sentence ${i}: adding delimiterContent`, {
+          length: sentence.delimiterContent.length,
+          preview: JSON.stringify(sentence.delimiterContent),
+          delimiter: sentence.delimiter
+        });
+      }
       result += sentence.delimiterContent;
     } else {
       const delimiter = sentence.delimiter;
@@ -58,6 +65,9 @@ export function buildTextFromSentences(sentences) {
     }
   }
 
+  if (DEBUG.BUILD) {
+    console.log(`${LOG_PREFIX.PARSER} [BUILD] Final text length: ${result.length}, newline count: ${(result.match(/\n/g) || []).length}`);
+  }
   return result;
 }
 

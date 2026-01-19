@@ -317,6 +317,10 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
  * Each sentence stores its TRAILING delimiter (what comes after it)
  * Each sentence gets a UUID (order is implicit from array position)
  * 
+ * Handles markdown formatting:
+ * - Ignores markdown syntax when detecting sentence boundaries
+ * - Preserves markdown tags in sentence content
+ * 
  * @param {string} text - Full text to parse
  * @returns {Array} Array of sentence objects
  */
@@ -395,9 +399,9 @@ function parseIntoSentences(text) {
         let punctuation = undefined; // Only set if sentence actually has punctuation
 
         if (trailingDelimiter) {
-            // Check if sentence already ends with punctuation
-            const lastChar = sentenceText[sentenceText.length - 1];
-            if ('.!?'.includes(lastChar)) {
+            // Check if sentence ends with punctuation (ignoring markdown closing tags)
+            const lastChar = getLastNonMarkdownChar(sentenceText);
+            if (lastChar && '.!?'.includes(lastChar)) {
                 punctuation = lastChar;
             }
 
@@ -410,9 +414,9 @@ function parseIntoSentences(text) {
                 delimiterType = 'space'; // just space
             }
         } else {
-            // No trailing delimiter - check if sentence ends with punctuation
-            const lastChar = sentenceText[sentenceText.length - 1];
-            if ('.!?'.includes(lastChar)) {
+            // No trailing delimiter - check if sentence ends with punctuation (ignoring markdown)
+            const lastChar = getLastNonMarkdownChar(sentenceText);
+            if (lastChar && '.!?'.includes(lastChar)) {
                 punctuation = lastChar;
             }
             delimiterType = 'none'; // Nothing after this sentence
@@ -432,6 +436,67 @@ function parseIntoSentences(text) {
 
     console.log(`${LOG_PREFIX.PARSER} Parsed ${sentences.length} sentences from text`);
     return sentences;
+}
+
+/**
+ * Gets the last non-markdown character from a string
+ * Strips markdown closing tags like **, *, </u>, ~~, ` to find actual punctuation
+ * @param {string} text - Text to check
+ * @returns {string|null} Last non-markdown character, or null if none found
+ */
+function getLastNonMarkdownChar(text) {
+    if (!text) return null;
+
+    let i = text.length - 1;
+
+    while (i >= 0) {
+        // Skip closing underline tag </u>
+        if (i >= 3 && text.substring(i - 3, i + 1) === '</u>') {
+            i -= 4;
+            continue;
+        }
+
+        // Skip bold+italic ***
+        if (i >= 2 && text.substring(i - 2, i + 1) === '***') {
+            i -= 3;
+            continue;
+        }
+
+        // Skip bold **
+        if (i >= 1 && text.substring(i - 1, i + 1) === '**') {
+            i -= 2;
+            continue;
+        }
+
+        // Skip strikethrough ~~
+        if (i >= 1 && text.substring(i - 1, i + 1) === '~~') {
+            i -= 2;
+            continue;
+        }
+
+        // Skip bold __
+        if (i >= 1 && text.substring(i - 1, i + 1) === '__') {
+            i -= 2;
+            continue;
+        }
+
+        // Skip italic * or _
+        if (text[i] === '*' || text[i] === '_') {
+            i--;
+            continue;
+        }
+
+        // Skip code `
+        if (text[i] === '`') {
+            i--;
+            continue;
+        }
+
+        // Found a non-markdown character
+        return text[i];
+    }
+
+    return null;
 }
 
 /**
@@ -536,6 +601,57 @@ export function recalculateIndices(sentences) {
             startIdx,
             endIdx,
         };
+    });
+}
+
+/**
+ * Normalizes delimiters after reordering to ensure proper spacing between sentences
+ * 
+ * Rules:
+ * - Has existing delimiter → Keep it unchanged (including for last sentence)
+ * - No delimiter + not last + ends with punctuation (.!?) → Add space
+ * - No delimiter + not last + no punctuation → Add period + space
+ * - No delimiter + is last → Leave as is (no forced changes)
+ * 
+ * @param {Array} sentences - Array of sentences to normalize
+ * @returns {Array} Sentences with normalized delimiters
+ */
+function normalizeDelimitersAfterReorder(sentences) {
+    return sentences.map((sentence, index) => {
+        const isLast = index === sentences.length - 1;
+        
+        // If sentence has an existing delimiter, keep it (even for last sentence)
+        if (sentence.delimiter && sentence.delimiter !== 'none') {
+            return sentence;
+        }
+        
+        // No delimiter
+        if (isLast) {
+            // Last sentence with no delimiter - leave as is
+            return sentence;
+        }
+        
+        // Not last sentence and no delimiter - need to add one
+        const lastChar = getLastNonMarkdownChar(sentence.content);
+        
+        if (lastChar && '.!?'.includes(lastChar)) {
+            // Has punctuation - just add space
+            return {
+                ...sentence,
+                delimiter: 'space',
+                delimiterContent: ' ',
+                punctuation: lastChar,
+            };
+        } else {
+            // No punctuation - add period + space
+            return {
+                ...sentence,
+                content: sentence.content + '.',
+                delimiter: 'space',
+                delimiterContent: ' ',
+                punctuation: '.',
+            };
+        }
     });
 }
 
@@ -652,8 +768,12 @@ function reorderSentence(sentences, draggedId, targetId, insertBefore) {
 
         console.log(`${LOG_PREFIX.PARSER} Rebuilt sentence order from hierarchy`);
 
+        // Normalize delimiters after reordering
+        const normalized = normalizeDelimitersAfterReorder(reorderedSentences);
+        normalized._hierarchyMeta = hierarchyMeta;
+
         // Mark the reordered sentence and its parents as dirty
-        const result = markReorderAsDirty(reorderedSentences, draggedId, oldParentId, newParentId);
+        const result = markReorderAsDirty(normalized, draggedId, oldParentId, newParentId);
 
         return result;
     } else {
@@ -684,8 +804,11 @@ function reorderSentence(sentences, draggedId, targetId, insertBefore) {
 
         console.log(`${LOG_PREFIX.PARSER} Sentence moved from index ${draggedIndex} to ${insertIndex}`);
 
+        // Normalize delimiters after reordering
+        const normalized = normalizeDelimitersAfterReorder(updated);
+
         // Mark the reordered sentence as dirty (no hierarchy to update)
-        const result = markReorderAsDirty(updated, draggedId);
+        const result = markReorderAsDirty(normalized, draggedId);
 
         return result;
     }
@@ -867,8 +990,12 @@ function reorderHierarchyNode(sentences, draggedId, targetId, insertBefore) {
 
                 console.log(`${LOG_PREFIX.PARSER} Reordered top-level nodes in array`);
 
+                // Normalize delimiters after reordering
+                const normalized = normalizeDelimitersAfterReorder(reorderedSentences);
+                normalized._hierarchyMeta = hierarchyMeta;
+
                 // Mark as dirty
-                const result = markReorderAsDirty(reorderedSentences, draggedId, oldParentId, newParentId);
+                const result = markReorderAsDirty(normalized, draggedId, oldParentId, newParentId);
                 return result;
             }
         }
