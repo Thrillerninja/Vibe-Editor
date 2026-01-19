@@ -17,10 +17,31 @@ function getOpenMarkdownTags(text) {
         code: 0,           // `
         strikethrough: 0,  // ~~
         underline: 0,      // <u>
+        headline: 0,       // # (number of # at line start)
     };
 
     let i = 0;
     while (i < text.length) {
+        // Check for headline markers (# at line start)
+        if (text[i] === '#') {
+            const isLineStart = i === 0 || text[i - 1] === '\n';
+            if (isLineStart) {
+                // Count consecutive # symbols
+                let hashCount = 0;
+                let j = i;
+                while (j < text.length && text[j] === '#') {
+                    hashCount++;
+                    j++;
+                }
+                // Check if followed by space (valid headline)
+                if (j < text.length && text[j] === ' ') {
+                    tags.headline = hashCount; // Store the level (1-6)
+                    i = j + 1; // Skip past the headline marker and space
+                    continue;
+                }
+            }
+        }
+
         // Check for underline HTML tags
         if (i < text.length - 2) {
             if (text[i] === '<' && text[i + 1] === 'u' && text[i + 2] === '>') {
@@ -110,6 +131,7 @@ function getClosingTags(tags) {
     let closing = '';
 
     // Close in reverse order of opening: code, strikethrough, bold, italic, underline
+    // Note: Headlines don't need explicit closing tags in markdown
     if (tags.code % 2 === 1) closing += '`';
     if (tags.strikethrough % 2 === 1) closing += '~~';
     if (tags.bold % 2 === 1) closing += '**';
@@ -125,7 +147,10 @@ function getClosingTags(tags) {
 function getOpeningTags(tags) {
     let opening = '';
 
-    // Open in proper order: underline, italic, bold, strikethrough, code
+    // Open in proper order: headline first (must be at line start), then inline formatting
+    if (tags.headline > 0) {
+        opening += '#'.repeat(tags.headline) + ' ';
+    }
     if (tags.underline % 2 === 1) opening += '<u>';
     if (tags.italic % 2 === 1) opening += '*';
     if (tags.bold % 2 === 1) opening += '**';
@@ -204,6 +229,7 @@ export function fixMarkdownAcrossSentences(sentences) {
         code: 0,
         strikethrough: 0,
         underline: 0,
+        headline: 0,
     };
 
     for (let i = 0; i < sentences.length; i++) {
@@ -227,6 +253,10 @@ export function fixMarkdownAcrossSentences(sentences) {
         cumulativeTags.code += sentenceTags.code;
         cumulativeTags.strikethrough += sentenceTags.strikethrough;
         cumulativeTags.underline += sentenceTags.underline;
+        // For headlines, we carry forward the level (not cumulative like other tags)
+        if (sentenceTags.headline > 0) {
+            cumulativeTags.headline = sentenceTags.headline;
+        }
 
         // Add closing tags if there are open tags and this isn't the last sentence
         const closingTags = getClosingTags(cumulativeTags);
