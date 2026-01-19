@@ -268,22 +268,42 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
                     }
                     dirtyNodeIds.add('root');
                 } else {
-                    // No sibling found - create placeholder parent chain for new sentence
-                    console.log(`${LOG_PREFIX.PARSER} Creating placeholder parent chain for new sentence (no siblings)`);
+                    // No sibling found - check if placeholder chain exists, or create one
+                    console.log(`${LOG_PREFIX.PARSER} No sibling found for new sentence - checking for existing placeholder chain`);
                     const maxLevel = updatedMeta.maxLevel || 2;
                     let currentChildId = addedSentence.id;
 
+                    // Try to find existing placeholder nodes at each level
                     for (let level = 2; level <= maxLevel; level++) {
-                        const placeholderId = uuidv4();
-                        nodes.push({
-                            id: placeholderId,
-                            type: 'group',
-                            level: level,
-                            label: `Level ${level} - New content (pending AI)`,
-                            childIds: [currentChildId],
-                        });
-                        dirtyNodeIds.add(placeholderId);
-                        currentChildId = placeholderId;
+                        // Look for existing placeholder at this level
+                        const existingPlaceholder = nodes.find(n =>
+                            n.level === level &&
+                            n.label &&
+                            n.label.includes('New content (pending AI)')
+                        );
+
+                        if (existingPlaceholder) {
+                            // Reuse existing placeholder - add current child to it
+                            console.log(`${LOG_PREFIX.PARSER} Reusing existing placeholder at level ${level}: ${existingPlaceholder.id}`);
+                            if (!existingPlaceholder.childIds.includes(currentChildId)) {
+                                existingPlaceholder.childIds.push(currentChildId);
+                            }
+                            dirtyNodeIds.add(existingPlaceholder.id);
+                            currentChildId = existingPlaceholder.id;
+                        } else {
+                            // Create new placeholder at this level
+                            console.log(`${LOG_PREFIX.PARSER} Creating new placeholder at level ${level}`);
+                            const placeholderId = uuidv4();
+                            nodes.push({
+                                id: placeholderId,
+                                type: 'group',
+                                level: level,
+                                label: `Level ${level} - New content (pending AI)`,
+                                childIds: [currentChildId],
+                            });
+                            dirtyNodeIds.add(placeholderId);
+                            currentChildId = placeholderId;
+                        }
                     }
                     dirtyNodeIds.add('root');
                 }
@@ -320,6 +340,7 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
  * Handles markdown formatting:
  * - Ignores markdown syntax when detecting sentence boundaries
  * - Preserves markdown tags in sentence content
+ * - Ignores numbered list markers (e.g., "1. ", "10. ") to avoid false splits
  * 
  * @param {string} text - Full text to parse
  * @returns {Array} Array of sentence objects
@@ -330,11 +351,14 @@ function parseIntoSentences(text) {
 
     // Split by:
     // - Sentence-ending punctuation (.!?) followed by any whitespace/newlines
+    //   BUT NOT when it's a numbered list marker (line start + digits + period + space)
     // - OR double newlines (paragraph breaks) 
     // - OR single newlines (even without punctuation)
-    // The regex captures the delimiter so we can track position
-    // Note: The lookbehind (?<=[.!?]) is optional to allow splitting on bare newlines
-    const parts = text.split(/((?<=[.!?])[\s\n]+|\n\n+|\n(?!\s*$))/);
+    // 
+    // Use negative lookbehind to exclude numbered lists:
+    // (?<![0-9]) - period not preceded by a digit
+    // Combined with checking for line start context
+    const parts = text.split(/((?<=[.!?])(?<!\d\.)[\s\n]+|\n\n+|\n(?!\s*$))/);
 
     for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
@@ -359,6 +383,11 @@ function parseIntoSentences(text) {
             currentIndex += part.length;
             continue;
         }
+
+        // Check if this part is a numbered list item (e.g., "1. Text")
+        // If so, keep it as one unit without splitting
+        const numberedListPattern = /^\d+\.\s/;
+        const isNumberedListItem = numberedListPattern.test(part.trim());
 
         const startIdx = currentIndex;
         const partLength = part.length; // Store original part length before processing
@@ -605,6 +634,59 @@ export function recalculateIndices(sentences) {
 }
 
 /**
+ * Renumbers consecutive numbered list items in a sentence array
+ * Detects sequences of numbered list items (e.g., "1. ", "2. ", "3. ")
+ * and renumbers them sequentially (1, 2, 3...) based on their current order
+ * 
+ * @param {Array} sentences - Array of sentences to renumber
+ * @returns {Array} Sentences with renumbered list items
+ */
+function renumberListItems(sentences) {
+    const result = [...sentences];
+    let currentListNumber = null;
+    let inList = false;
+
+    for (let i = 0; i < result.length; i++) {
+        const content = result[i].content;
+
+        // Check if this sentence is a numbered list item
+        // Pattern: starts with optional whitespace, then digit(s), then ". ", then content
+        const listMatch = content.match(/^(\s*)(\d+)\.\s+(.+)$/s);
+
+        if (listMatch) {
+            const [, leadingWhitespace, oldNumber, restOfContent] = listMatch;
+
+            if (!inList) {
+                // Starting a new list - reset counter
+                currentListNumber = 1;
+                inList = true;
+            } else {
+                // Continuing list - increment counter
+                currentListNumber++;
+            }
+
+            // Only update if the number actually changed
+            if (parseInt(oldNumber) !== currentListNumber) {
+                result[i] = {
+                    ...result[i],
+                    content: `${leadingWhitespace}${currentListNumber}. ${restOfContent}`
+                };
+                console.log(`${LOG_PREFIX.PARSER} Renumbered list item ${i}: "${oldNumber}." → "${currentListNumber}."`);
+            }
+        } else {
+            // Not a list item - reset list tracking
+            if (inList) {
+                console.log(`${LOG_PREFIX.PARSER} End of numbered list (${currentListNumber} items)`);
+            }
+            inList = false;
+            currentListNumber = null;
+        }
+    }
+
+    return result;
+}
+
+/**
  * Normalizes delimiters after reordering to ensure proper spacing between sentences
  * 
  * Rules:
@@ -619,36 +701,36 @@ export function recalculateIndices(sentences) {
 function normalizeDelimitersAfterReorder(sentences) {
     return sentences.map((sentence, index) => {
         const isLast = index === sentences.length - 1;
-        
+
         // If sentence has an existing delimiter, keep it (even for last sentence)
         if (sentence.delimiter && sentence.delimiter !== 'none') {
             return sentence;
         }
-        
+
         // No delimiter
         if (isLast) {
             // Last sentence with no delimiter - leave as is
             return sentence;
         }
-        
+
         // Not last sentence and no delimiter - need to add one
         const lastChar = getLastNonMarkdownChar(sentence.content);
-        
+
         if (lastChar && '.!?'.includes(lastChar)) {
-            // Has punctuation - just add space
+            // Has punctuation - add newline as default delimiter
             return {
                 ...sentence,
-                delimiter: 'space',
-                delimiterContent: ' ',
+                delimiter: 'newline',
+                delimiterContent: '\n',
                 punctuation: lastChar,
             };
         } else {
-            // No punctuation - add period + space
+            // No punctuation - add period + newline
             return {
                 ...sentence,
                 content: sentence.content + '.',
-                delimiter: 'space',
-                delimiterContent: ' ',
+                delimiter: 'newline',
+                delimiterContent: '\n',
                 punctuation: '.',
             };
         }
@@ -772,8 +854,12 @@ function reorderSentence(sentences, draggedId, targetId, insertBefore) {
         const normalized = normalizeDelimitersAfterReorder(reorderedSentences);
         normalized._hierarchyMeta = hierarchyMeta;
 
+        // Renumber any numbered list items
+        const renumbered = renumberListItems(normalized);
+        renumbered._hierarchyMeta = hierarchyMeta;
+
         // Mark the reordered sentence and its parents as dirty
-        const result = markReorderAsDirty(normalized, draggedId, oldParentId, newParentId);
+        const result = markReorderAsDirty(renumbered, draggedId, oldParentId, newParentId);
 
         return result;
     } else {
@@ -807,8 +893,11 @@ function reorderSentence(sentences, draggedId, targetId, insertBefore) {
         // Normalize delimiters after reordering
         const normalized = normalizeDelimitersAfterReorder(updated);
 
+        // Renumber any numbered list items
+        const renumbered = renumberListItems(normalized);
+
         // Mark the reordered sentence as dirty (no hierarchy to update)
-        const result = markReorderAsDirty(normalized, draggedId);
+        const result = markReorderAsDirty(renumbered, draggedId);
 
         return result;
     }
@@ -994,8 +1083,12 @@ function reorderHierarchyNode(sentences, draggedId, targetId, insertBefore) {
                 const normalized = normalizeDelimitersAfterReorder(reorderedSentences);
                 normalized._hierarchyMeta = hierarchyMeta;
 
+                // Renumber any numbered list items
+                const renumbered = renumberListItems(normalized);
+                renumbered._hierarchyMeta = hierarchyMeta;
+
                 // Mark as dirty
-                const result = markReorderAsDirty(normalized, draggedId, oldParentId, newParentId);
+                const result = markReorderAsDirty(renumbered, draggedId, oldParentId, newParentId);
                 return result;
             }
         }
@@ -1008,8 +1101,12 @@ function reorderHierarchyNode(sentences, draggedId, targetId, insertBefore) {
     const reorderedSentences = rebuildSentenceOrderFromHierarchy(sentences, nodes, hierarchyMeta.maxLevel);
     reorderedSentences._hierarchyMeta = hierarchyMeta;
 
+    // Renumber any numbered list items
+    const renumbered = renumberListItems(reorderedSentences);
+    renumbered._hierarchyMeta = hierarchyMeta;
+
     // Mark the reordered node and both parents as dirty
-    const result = markReorderAsDirty(reorderedSentences, draggedId, oldParentId, newParentId);
+    const result = markReorderAsDirty(renumbered, draggedId, oldParentId, newParentId);
 
     console.log(`${LOG_PREFIX.PARSER} Hierarchy node reordered successfully`);
 

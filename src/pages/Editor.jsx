@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { TreeVisualization, HistoryGraph } from '../components';
 import React from 'react';
 import posthog from '../utils/posthog';
-import { MDXEditor, headingsPlugin, listsPlugin, linkPlugin, quotePlugin, thematicBreakPlugin, markdownShortcutPlugin, toolbarPlugin, BoldItalicUnderlineToggles, BlockTypeSelect, CreateLink, InsertThematicBreak } from '@mdxeditor/editor';
+import { MDXEditor, headingsPlugin, listsPlugin, linkPlugin, quotePlugin, thematicBreakPlugin, markdownShortcutPlugin, toolbarPlugin, BoldItalicUnderlineToggles, BlockTypeSelect, CreateLink, InsertThematicBreak, ListsToggle } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
 import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
@@ -542,6 +542,7 @@ export default function Editor() {
                                             <>
                                                 <BoldItalicUnderlineToggles />
                                                 <BlockTypeSelect />
+                                                <ListsToggle />
                                                 <CreateLink />
                                                 <InsertThematicBreak />
                                             </>
