@@ -1,24 +1,110 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoadingPoetry }) {
+import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
+import { 
+    exportDocument, 
+    importDocument, 
+    detectFileType 
+} from '@utils/fileOperations';
+import posthog from '@utils/posthog';
+
+export default function LogoMenu({ 
+    maxDepth, 
+    setMaxDepth, 
+    nodeMap, 
+    setNodeMap, 
+    setDraftText, 
+    rootId,
+    onImportComplete, 
+    onInsertPoetry, 
+    isLoadingPoetry
+}) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [theme, setTheme] = useState('light');
     const [isDragActive, setIsDragActive] = useState(false);
+    const [importStatus, setImportStatus] = useState(null);
     const navigate = useNavigate();
 
-    const handleExport = (fileType) => {
-        console.log(`Exporting as ${fileType.toUpperCase()}`);
-        // TODO: Implement export functionality
-        // exportDocument(fileType);
+    /**
+     * Handle export to various formats
+     * @param {string} fileType - 'txt', 'md', 'html', 'json'
+     */
+    const handleExport = async (fileType) => {
+        try {
+            console.log(`[LogoMenu] Exporting as ${fileType.toUpperCase()}`);
+            
+            const filename = exportDocument(nodeMap, rootId, fileType);
+            
+            posthog.capture('document_exported', {
+                format: fileType,
+                filename,
+                node_count: nodeMap.size,
+            });
+            
+            console.log(`[LogoMenu] ✓ Exported as ${fileType.toUpperCase()}: ${filename}`);
+        } catch (error) {
+            console.error(`[LogoMenu] Export failed:`, error);
+            alert(`Export failed: ${error.message}`);
+        }
     };
+
+    /**
+     * Handle file import from file picker
+     * @param {File} file 
+     */
+    const handleImportFile = async (file) => {
+        try {
+            setImportStatus({ type: 'loading', message: `Importing ${file.name}...` });
+            
+            const result = await importDocument(file, maxDepth);
+            
+            posthog.capture('document_imported', {
+                format: result.format,
+                filename: file.name,
+                node_count: result.nodeMap.size,
+            });
+            
+            setImportStatus({ type: 'success', message: `Imported ${file.name}` });
+            console.log(`[LogoMenu] ✓ Imported ${file.name} as ${result.format.toUpperCase()}`);
+            console.log(`[LogoMenu] draftText length: ${result.draftText.length}`);
+            console.log(`[LogoMenu] nodeMap size: ${result.nodeMap.size}`);
+            
+            // Notify parent component - pass a unique import ID to force refresh
+            const importId = Date.now().toString();
+            if (onImportComplete) {
+                onImportComplete(result, importId);
+            } else {
+                // Default behavior if no callback provided
+                setNodeMap(result.nodeMap);
+                setDraftText(result.draftText + ' '); // Add trailing space to force update
+            }
+            
+            // Close menu after successful import
+            setTimeout(() => {
+                setIsMenuOpen(false);
+                setImportStatus(null);
+            }, 1000);
+            
+        } catch (error) {
+            console.error(`[LogoMenu] Import failed:`, error);
+            setImportStatus({ 
+                type: 'error', 
+                message: `Import failed: ${error.message}` 
+            });
+            
+            // Clear error after 3 seconds
+            setTimeout(() => setImportStatus(null), 3000);
+        }
+    };
+
     const handleImportClick = () => {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
-        fileInput.accept = '.txt,.md,.html,.pdf';
+        fileInput.accept = '.txt,.md,.json,.html,.pdf,.docx,.doc';
         fileInput.onchange = (e) => {
-            const file = e.target.files[0];
+            const file = e.target.files?.[0];
             if (file) {
-                console.log(`Importing file: ${file.name}`);
-                // TODO: Implement import functionality
+                handleImportFile(file);
             }
         };
         fileInput.click();
@@ -34,16 +120,20 @@ import { useNavigate } from 'react-router-dom';export default function LogoMenu(
         }
     };
 
-    const handleDrop = (e) => {
+    /**
+     * Handle dropped files
+     * @param {DragEvent} e 
+     */
+    const handleDrop = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragActive(false);
 
-        const files = e.dataTransfer.files;
+        const files = e.dataTransfer?.files;
         if (files && files.length > 0) {
             const file = files[0];
-            console.log(`Dropped file: ${file.name}`);
-            // TODO: Implement import functionality
+            console.log(`[LogoMenu] Dropped file: ${file.name}`);
+            await handleImportFile(file);
         }
     };
 
@@ -293,7 +383,7 @@ import { useNavigate } from 'react-router-dom';export default function LogoMenu(
                             { id: 'txt', label: 'TXT', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
                             { id: 'md', label: 'MD', icon: 'M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM7 7h10M7 12h10M7 17h6' },
                             { id: 'html', label: 'HTML', icon: 'M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4' },
-                            { id: 'pdf', label: 'PDF', icon: 'M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z' }
+                            { id: 'json', label: 'JSON', icon: 'M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4' }
                         ].map(item => (
                             <button
                                 key={item.id}

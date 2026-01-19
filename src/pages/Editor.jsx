@@ -624,6 +624,24 @@ export default function Editor() {
   }, []);
 
   /**
+   * Handle document import from file
+   * Updates nodeMap and draftText when a file is imported
+   */
+  const handleImportComplete = useCallback((importResult, importId) => {
+    console.log('[Editor] Import completed:', {
+      nodeCount: importResult.nodeMap.size,
+      textLength: importResult.draftText.length,
+      importId,
+    });
+
+    // Update state with imported content
+    setNodeMap(importResult.nodeMap);
+    setDraftText(importResult.draftText);
+
+    console.log('[Editor] ✓ Import applied to editor');
+  }, []);
+
+  /**
    * Automatically build intermediate group nodes based on maxDepth
    *
    * Called by auto-build effect after content nodes are created
@@ -1149,7 +1167,17 @@ export default function Editor() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry}/>
+      <LogoMenu 
+        maxDepth={maxDepth} 
+        setMaxDepth={setMaxDepth}
+        nodeMap={nodeMap}
+        setNodeMap={setNodeMap}
+        setDraftText={setDraftText}
+        rootId={rootId}
+        onImportComplete={handleImportComplete}
+        onInsertPoetry={insertPoetry} 
+        isLoadingPoetry={isLoadingPoetry}
+      />
 
       {/* Depth Recommendation Snackbar */}
       <DepthRecommendationSnackbar

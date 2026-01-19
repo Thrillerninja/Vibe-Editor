@@ -27,6 +27,8 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^3.0.4",
     "lexical": "^0.39.0",
+    "mammoth": "^1.11.0",
+    "pdfjs-dist": "^5.4.530",
     "posthog-js": "^1.292.0",
     "prismjs": "^1.30.0",
     "react": "^19.1.1",
