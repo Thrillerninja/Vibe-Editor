@@ -467,7 +467,7 @@ function parseIntoSentences(text) {
  * @param {string} text - Text to check
  * @returns {string|null} Last non-markdown character, or null if none found
  */
-function getLastNonMarkdownChar(text) {
+export function getLastNonMarkdownChar(text) {
     if (!text) return null;
 
     let i = text.length - 1;
