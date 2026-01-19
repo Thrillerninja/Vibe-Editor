@@ -39,29 +39,15 @@ export function buildTextFromSentences(sentences) {
       result += sentence.punctuation;
     }
 
-    // Add trailing delimiter based on sentence metadata
-    // Prefer exact delimiter content if available (preserves user's formatting)
-    // Otherwise fall back to semantic delimiter type
-    // Note: Use !== undefined check to allow empty string delimiters
-    if (sentence.delimiterContent !== undefined) {
+    // Add trailing delimiter from delimiterContent (preserves user's exact formatting)
+    if (sentence.delimiterContent) {
       if (DEBUG.BUILD) {
         console.log(`${LOG_PREFIX.PARSER} [BUILD] Sentence ${i}: adding delimiterContent`, {
           length: sentence.delimiterContent.length,
-          preview: JSON.stringify(sentence.delimiterContent),
-          delimiter: sentence.delimiter
+          preview: JSON.stringify(sentence.delimiterContent)
         });
       }
       result += sentence.delimiterContent;
-    } else {
-      const delimiter = sentence.delimiter;
-      if (delimiter === 'paragraph') {
-        result += '\n\n';
-      } else if (delimiter === 'newline') {
-        result += '\n';
-      } else if (delimiter === 'space') {
-        result += ' ';
-      }
-      // 'none' means no delimiter (last sentence or special case)
     }
   }
 

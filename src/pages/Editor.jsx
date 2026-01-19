@@ -274,6 +274,7 @@ export default function Editor() {
     // Handle text input changes from MDXEditor - DIRECT EDITING
     const handleTextChange = (newText) => {
         console.log('[App] Text changed via MDXEditor');
+        console.log('[EDITOR_OUTPUT]', newText);
 
         const textLengthChange = newText.length - text.length
         posthog.capture('text_edited', {
@@ -291,6 +292,9 @@ export default function Editor() {
     // Handle tree modifications (e.g., node edits, reordering, emotion changes)
     const handleTreeUpdate = useCallback((updatedSentences) => {
         console.log('[App] Tree updated, updating sentences:', updatedSentences);
+        const updatedText = buildTextFromSentences(updatedSentences);
+        console.log('[EDITOR_OUTPUT]', updatedText);
+
         posthog.capture('tree_updated', {
             sentence_count: updatedSentences.length,
         });

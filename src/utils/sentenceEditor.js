@@ -22,18 +22,10 @@ export function findSentenceAtPosition(sentences, position) {
         const sentence = sentences[i];
         const sentenceLength = sentence.content.length;
 
-        // Calculate actual delimiter length (can be newline, paragraph break, or space)
+        // Calculate actual delimiter length from delimiterContent
         let delimiterLength = 0;
-        if (i < sentences.length - 1) {
-            if (sentence.delimiterContent !== undefined) {
-                delimiterLength = sentence.delimiterContent.length;
-            } else if (sentence.delimiter === 'paragraph') {
-                delimiterLength = 2; // \n\n
-            } else if (sentence.delimiter === 'newline') {
-                delimiterLength = 1; // \n
-            } else if (sentence.delimiter === 'space') {
-                delimiterLength = 1; // space
-            }
+        if (i < sentences.length - 1 && sentence.delimiterContent) {
+            delimiterLength = sentence.delimiterContent.length;
         }
 
         // Check if position is within this sentence
@@ -688,50 +680,47 @@ function renumberListItems(sentences) {
 
 /**
  * Normalizes delimiters after reordering to ensure proper spacing between sentences
+ * DOES NOT modify sentence content (e.g., does not add punctuation)
+ * Only ensures sentences have delimiters when needed
  * 
  * Rules:
- * - Has existing delimiter → Keep it unchanged (including for last sentence)
- * - No delimiter + not last + ends with punctuation (.!?) → Add space
- * - No delimiter + not last + no punctuation → Add period + space
- * - No delimiter + is last → Leave as is (no forced changes)
+ * - Has existing delimiter → Keep it unchanged
+ * - No delimiter → Add appropriate delimiter based on punctuation
+ *   - If sentence ends with punctuation (. ! ?), add space after it
+ *   - Otherwise, add paragraph break (two newlines)
  * 
  * @param {Array} sentences - Array of sentences to normalize
  * @returns {Array} Sentences with normalized delimiters
  */
 function normalizeDelimitersAfterReorder(sentences) {
     return sentences.map((sentence, index) => {
-        const isLast = index === sentences.length - 1;
+        // Last sentence doesn't need a delimiter
+        if (index === sentences.length - 1) {
+            return {
+                ...sentence,
+                delimiterContent: '', // Clear any delimiter on last sentence
+            };
+        }
 
-        // If sentence has an existing delimiter, keep it (even for last sentence)
-        if (sentence.delimiter && sentence.delimiter !== 'none') {
+        // If sentence has delimiter content, keep it unchanged
+        if (sentence.delimiterContent) {
             return sentence;
         }
 
-        // No delimiter
-        if (isLast) {
-            // Last sentence with no delimiter - leave as is
-            return sentence;
-        }
-
-        // Not last sentence and no delimiter - need to add one
+        // No delimiter - determine appropriate one based on punctuation
         const lastChar = getLastNonMarkdownChar(sentence.content);
 
         if (lastChar && '.!?'.includes(lastChar)) {
-            // Has punctuation - add newline as default delimiter
+            // Has punctuation - just add a space
             return {
                 ...sentence,
-                delimiter: 'newline',
-                delimiterContent: '\n',
-                punctuation: lastChar,
+                delimiterContent: ' ',
             };
         } else {
-            // No punctuation - add period + newline
+            // No punctuation - add paragraph break (two newlines)
             return {
                 ...sentence,
-                content: sentence.content + '.',
-                delimiter: 'newline',
-                delimiterContent: '\n',
-                punctuation: '.',
+                delimiterContent: '\n\n',
             };
         }
     });
