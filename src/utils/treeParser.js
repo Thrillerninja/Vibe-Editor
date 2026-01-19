@@ -9,6 +9,7 @@
 
 import { LOGGING_ENABLED, LOG_PREFIX, NODE_WIDTH, DEBUG } from './constants';
 import { buildTreeWithHierarchy } from './hierarchyIntegration';
+import { getLastNonMarkdownChar } from './sentenceEditor';
 
 /**
  * Builds text from sentence nodes (SSOT → Text)
@@ -34,9 +35,12 @@ export function buildTextFromSentences(sentences) {
 
     // Add trailing punctuation only if explicitly set (e.g., from reordering)
     // Don't add punctuation while user is typing
-    const lastChar = sentence.content[sentence.content.length - 1];
-    if (!'.!?'.includes(lastChar) && sentence.punctuation) {
-      result += sentence.punctuation;
+    // Use getLastNonMarkdownChar to check for punctuation ignoring markdown tags
+    const lastChar = getLastNonMarkdownChar(sentence.content);
+    if (!lastChar || !'.!?'.includes(lastChar)) {
+      if (sentence.punctuation) {
+        result += sentence.punctuation;
+      }
     }
 
     // Add trailing delimiter from delimiterContent (preserves user's exact formatting)

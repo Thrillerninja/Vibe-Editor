@@ -169,20 +169,15 @@ function cleanupMarkdownTags(text) {
 
     // Remove empty formatting tags
     cleaned = cleaned.replace(/<u><\/u>/g, '');
-    cleaned = cleaned.replace(/\*\*\*\*/g, '');  // **** -> empty
-    cleaned = cleaned.replace(/\*\*/g, (match, offset, string) => {
-        // Check if this ** is immediately followed by another **
-        if (string[offset + 2] === '*' && string[offset + 3] === '*') {
-            return '';  // Remove redundant **
-        }
-        return match;
-    });
-    cleaned = cleaned.replace(/~~~/g, '~');  // ~~~ -> ~
-    cleaned = cleaned.replace(/``/g, '');  // `` -> empty
 
-    // Normalize excessive asterisks (more than 3 in a row)
+    // First, collapse adjacent identical tags (close then immediately open)
+    // Do this BEFORE other replacements to avoid conflicts
+    cleaned = cleaned.replace(/<\/u><u>/g, '');  // </u><u> -> nothing
+    cleaned = cleaned.replace(/\*\*\*\*/g, '');  // **** -> nothing (closing ** + opening **)
+    cleaned = cleaned.replace(/``/g, '');  // `` -> empty (code close+open)
+
+    // Normalize excessive asterisks (after collapsing adjacent pairs)
     cleaned = cleaned.replace(/\*{5,}/g, '***');  // ***** or more -> ***
-    cleaned = cleaned.replace(/\*{4}/g, '**');  // **** -> **
 
     // Remove formatting around punctuation that got separated
     cleaned = cleaned.replace(/\*\*\.\*\*/g, '.');  // **.** -> .
@@ -190,22 +185,15 @@ function cleanupMarkdownTags(text) {
     cleaned = cleaned.replace(/<\/u>\.<u>/g, '.');  // </u>.<u> -> .
     cleaned = cleaned.replace(/~~\.~~/g, '.');  // ~~.~~ -> .
 
-    // Remove empty underline tags
+    // Remove empty underline tags with whitespace
     cleaned = cleaned.replace(/<u>\s*<\/u>/g, '');
 
-    // Collapse adjacent identical tags
-    cleaned = cleaned.replace(/<\/u><u>/g, '');  // </u><u> -> nothing
-    cleaned = cleaned.replace(/\*\*\*\*/g, '');  // **** -> nothing (closing then opening bold)
-    cleaned = cleaned.replace(/\*\*/g, (match, offset, string) => {
-        // If we have ******, it might be *** (close) + *** (open), keep as nothing or ***
-        return match;
-    });
-
-    // Fix improperly nested tags: </u>***. should be ***</u>.
-    // Move punctuation outside of formatting
-    cleaned = cleaned.replace(/([.!?])\*\*/g, '**$1');  // .** -> **.
-    cleaned = cleaned.replace(/([.!?])\*/g, '*$1');  // .* -> *.
-    cleaned = cleaned.replace(/([.!?])<\/u>/g, '</u>$1');  // .</u> -> </u>.
+    // Fix punctuation trapped inside closing tags (added by our system)
+    // Only fix patterns where there's content, then punctuation, then closing tag
+    // This handles cases where our closing tag addition traps punctuation
+    // Don't use these - they're too aggressive and move already-correct punctuation
+    // cleaned = cleaned.replace(/([.!?])\*\*/g, '**$1');  // DISABLED
+    // cleaned = cleaned.replace(/([.!?])\*/g, '*$1');  // DISABLED
 
     return cleaned;
 }
@@ -236,6 +224,9 @@ export function fixMarkdownAcrossSentences(sentences) {
         const sentence = sentences[i];
         let content = sentence.content;
 
+        // Count tags in the ORIGINAL sentence content (before adding any opening tags)
+        const sentenceTags = getOpenMarkdownTags(sentence.content);
+
         // Get opening tags from previous sentences (what's currently open)
         const openingTags = getOpeningTags(cumulativeTags);
 
@@ -243,9 +234,6 @@ export function fixMarkdownAcrossSentences(sentences) {
         if (openingTags) {
             content = openingTags + content;
         }
-
-        // Count tags in the ORIGINAL sentence content (not including prepended tags)
-        const sentenceTags = getOpenMarkdownTags(sentence.content);
 
         // Update cumulative tags with this sentence's tags
         cumulativeTags.bold += sentenceTags.bold;

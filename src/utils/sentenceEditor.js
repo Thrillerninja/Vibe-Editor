@@ -342,15 +342,17 @@ function parseIntoSentences(text) {
     let currentIndex = 0;
 
     // Split by:
-    // - Sentence-ending punctuation (.!?) followed by any whitespace/newlines
+    // - Sentence-ending punctuation (.!?) optionally followed by markdown closing tags,
+    //   then followed by whitespace/newlines
     //   BUT NOT when it's a numbered list marker (line start + digits + period + space)
     // - OR double newlines (paragraph breaks) 
     // - OR single newlines (even without punctuation)
     // 
     // Use negative lookbehind to exclude numbered lists:
     // (?<![0-9]) - period not preceded by a digit
-    // Combined with checking for line start context
-    const parts = text.split(/((?<=[.!?])(?<!\d\.)[\s\n]+|\n\n+|\n(?!\s*$))/);
+    // Allow markdown closing tags after punctuation: (?:\*+|_+|`+|~+|<\/u>)*
+    // Using non-capturing group (?:...) to avoid adding extra elements to split array
+    const parts = text.split(/((?<=[.!?])(?<!\d\.)(?:\*+|_+|`+|~+|<\/u>)*[\s\n]+|\n\n+|\n(?!\s*$))/);
 
     for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
