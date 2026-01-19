@@ -826,10 +826,15 @@ export function AnimatedNodeComponent({ id, data }) {
   const significantEmotions = getSignificantEmotions(emotionProfile, 30)
     .filter(e => e.emotion !== emotion);
 
+  // Only show tooltip if there's meaningful intensity data
+  const tooltipContent = intensity > 0
+    ? `${EMOTION_LABELS[emotion] || emotion} (${intensity}%)`
+    : null;
+
   return (
     <>
       <div style={{ position: 'relative', display: 'inline-block' }}>
-        <Tooltip content={`${EMOTION_LABELS[emotion] || emotion}${intensity ? ` (${intensity}%)` : ''}`} position="top">
+        <Tooltip content={tooltipContent} position="top">
           <motion.div
             transition={{ type: 'spring', stiffness: 520, damping: 44 }}
             onDoubleClick={() => setIsDialogOpen(true)}

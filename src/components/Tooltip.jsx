@@ -3,6 +3,11 @@ import React, { useState } from 'react';
 export function Tooltip({ content, children, position = 'top' }) {
     const [isVisible, setIsVisible] = useState(false);
 
+    // Don't render tooltip wrapper if there's no content
+    if (!content) {
+        return <>{children}</>;
+    }
+
     return (
         <div
             className="relative"
