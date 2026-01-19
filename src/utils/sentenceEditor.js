@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { LOGGING_ENABLED, LOG_PREFIX } from './constants';
 import { markSentenceAsDirty, markSentencesAsDirty, markReorderAsDirty, addSentenceToHierarchy, removeSentenceFromHierarchy } from './dirtyTracking';
 import { sortNodesByDocumentOrder } from './hierarchyIntegration';
+import { fixMarkdownAcrossSentences } from './markdownSentenceFixer';
 
 /**
  * Finds which sentence contains a given text position
@@ -92,11 +93,14 @@ export function applySentenceEdit(sentences, newText, cursorPosition) {
     // Split the new text into sentences
     const newSentences = parseIntoSentences(newText);
 
+    // Fix markdown formatting across sentence boundaries
+    const fixedSentences = fixMarkdownAcrossSentences(newSentences);
+
     // Track which old sentences have been matched to avoid reusing the same ID
     const usedSentences = new Set();
 
     // Preserve emotion metadata and IDs when possible
-    const updatedSentences = newSentences.map((newSent, index) => {
+    const updatedSentences = fixedSentences.map((newSent, index) => {
         // Try to match with existing sentence by content similarity
         const matchingSentence = findMatchingSentence(sentences, newSent.content, usedSentences);
 
@@ -539,6 +543,9 @@ export function recalculateIndices(sentences) {
  * Applies reordering to sentence array after drag-and-drop in tree
  * Handles both sentence-level and hierarchy-level reordering
  * Supports cross-parent moves (nodes can be reordered across different parents on the same level)
+ *
+ * NOTE: Does NOT apply markdown fixing - reordering only changes sentence order,
+ * not content, so markdown tags remain valid
  *
  * @param {Array} sentences - Current sentence array
  * @param {string} draggedId - ID of the dragged node

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { TreeVisualization, HistoryGraph } from '../components';
 import React from 'react';
 import posthog from '../utils/posthog';
+import { MDXEditor, headingsPlugin, listsPlugin, linkPlugin, quotePlugin, thematicBreakPlugin, markdownShortcutPlugin, toolbarPlugin, BoldItalicUnderlineToggles, BlockTypeSelect, CreateLink, InsertThematicBreak } from '@mdxeditor/editor';
+import '@mdxeditor/editor/style.css';
 import { buildTextFromSentences } from '../utils/treeParser';
 import { applySentenceEdit } from '../utils/sentenceEditor';
 import { updateDirtyNodes, evaluateSentenceEmotions } from '../services/claude';
@@ -15,10 +17,12 @@ import DepthChangeConfirmationModal from '../components/DepthRecommendation/Dept
 import { shouldShowRecommendation } from '../utils/depthRecommendation';
 
 const EXAMPLE_TEXT =
-    'Climate change poses significant challenges to global food security. ' +
+    '# Climate Change and Food Security\n\n' +
+    'Climate change poses **significant challenges** to global food security. ' +
     'Rising temperatures and changing precipitation patterns affect crop yields.\n' +
-    'Developing drought-resistant crops is one solution. ' +
+    'Developing *drought-resistant crops* is one solution. ' +
     'International cooperation on climate policy is essential.\n\n' +
+    '## Agricultural Innovation\n\n' +
     'Agricultural innovation is crucial for adaptation. ' +
     'Scientists are developing new crop varieties. ' +
     'These innovations may help farmers cope with climate extremes.';
@@ -34,6 +38,9 @@ export default function Editor() {
     // Derived state: text is built from sentences
     const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
     const prevTextRef = useRef(text);
+
+    // Track when editor should remount (only for tree operations like reordering)
+    const [editorKey, setEditorKey] = useState(0);
 
     // AI hierarchy depth control (3-6 levels)
     const [maxDepth, setMaxDepth] = useState(3);
@@ -264,23 +271,20 @@ export default function Editor() {
         }
     };
 
-    // Handle text input changes from textarea - DIRECT EDITING
-    const handleTextChange = (e) => {
-        const newText = e.target.value;
-        const cursorPosition = e.target.selectionStart;
-
-        console.log('[App] Text changed, cursor at:', cursorPosition);
+    // Handle text input changes from MDXEditor - DIRECT EDITING
+    const handleTextChange = (newText) => {
+        console.log('[App] Text changed via MDXEditor');
 
         const textLengthChange = newText.length - text.length
         posthog.capture('text_edited', {
             text_length_change: textLengthChange,
             total_text_length: newText.length,
-            cursor_position: cursorPosition,
             operation: textLengthChange > 0 ? 'insert' : 'delete',
         });
 
         // Apply edit directly to sentence array
-        const updatedSentences = applySentenceEdit(sentences, newText, cursorPosition);
+        // Note: MDXEditor doesn't provide cursor position, so we use length for append operations
+        const updatedSentences = applySentenceEdit(sentences, newText, newText.length);
         setSentences(updatedSentences);
     };
 
@@ -293,6 +297,8 @@ export default function Editor() {
 
         setSentences(updatedSentences);
         addCommit(updatedSentences, 'Tree updated');
+        // Force editor to remount with new text from reordered/edited sentences
+        setEditorKey(k => k + 1);
     }, [addCommit]);
 
     const handleRevertComplete = (revertedData) => {
@@ -508,18 +514,42 @@ export default function Editor() {
                             </button>
                         </div> */}
 
-                        <textarea
-                            ref={textareaRef}
-                            value={text}
-                            onChange={handleTextChange}
-                            onBlur={handleTextOnBlur}
-                            className="flex-1 p-6 pt-20 bg-white resize-none focus:outline-none text-gray-800 text-base leading-relaxed"
-                            placeholder="Enter your text here..."
+                        <div
+                            className="flex-1 bg-white overflow-auto"
                             style={{
-                                fontFamily:
-                                    '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif',
+                                paddingTop: '80px',
+                                paddingLeft: '24px',
+                                paddingRight: '24px',
+                                paddingBottom: '24px',
                             }}
-                        />
+                        >
+                            <MDXEditor
+                                key={editorKey}
+                                ref={textareaRef}
+                                markdown={text}
+                                onChange={handleTextChange}
+                                placeholder="Enter your text here..."
+                                contentEditableClassName="prose prose-sm max-w-none"
+                                plugins={[
+                                    headingsPlugin(),
+                                    listsPlugin(),
+                                    linkPlugin(),
+                                    quotePlugin(),
+                                    thematicBreakPlugin(),
+                                    markdownShortcutPlugin(),
+                                    toolbarPlugin({
+                                        toolbarContents: () => (
+                                            <>
+                                                <BoldItalicUnderlineToggles />
+                                                <BlockTypeSelect />
+                                                <CreateLink />
+                                                <InsertThematicBreak />
+                                            </>
+                                        )
+                                    })
+                                ]}
+                            />
+                        </div>
                     </div>
 
                     {/* Draggable Divider */}

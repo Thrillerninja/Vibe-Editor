@@ -18,26 +18,158 @@
 /* Custom Scrollbar Styles */
 /* For Webkit browsers (Chrome, Safari) */
 ::-webkit-scrollbar {
-  width: 8px; /* Vertical scrollbar width */
-  height: 8px; /* Horizontal scrollbar height */
+  width: 8px;
+  /* Vertical scrollbar width */
+  height: 8px;
+  /* Horizontal scrollbar height */
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1; /* Light background for the track */
+  background: #f1f1f1;
+  /* Light background for the track */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888; /* Darker thumb */
+  background: #888;
+  /* Darker thumb */
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555; /* Even darker thumb on hover */
+  background: #555;
+  /* Even darker thumb on hover */
 }
 
 /* For Firefox (modern versions support this) */
 html {
-  scrollbar-width: thin; /* "auto" or "none" */
-  scrollbar-color: #888 #f1f1f1; /* thumb color track color */
+  scrollbar-width: thin;
+  /* "auto" or "none" */
+  scrollbar-color: #888 #f1f1f1;
+  /* thumb color track color */
+}
+
+/* MDXEditor custom styles for rich text formatting */
+._editorRoot_1r7ge_1 h1,
+.mdxeditor h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 0.67em;
+  margin-bottom: 0.67em;
+  line-height: 1.2;
+}
+
+._editorRoot_1r7ge_1 h2,
+.mdxeditor h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 0.83em;
+  margin-bottom: 0.83em;
+  line-height: 1.3;
+}
+
+._editorRoot_1r7ge_1 h3,
+.mdxeditor h3 {
+  font-size: 1.17em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  line-height: 1.4;
+}
+
+._editorRoot_1r7ge_1 h4,
+.mdxeditor h4 {
+  font-size: 1em;
+  font-weight: 600;
+  margin-top: 1.33em;
+  margin-bottom: 1.33em;
+}
+
+._editorRoot_1r7ge_1 h5,
+.mdxeditor h5 {
+  font-size: 0.83em;
+  font-weight: 600;
+  margin-top: 1.67em;
+  margin-bottom: 1.67em;
+}
+
+._editorRoot_1r7ge_1 h6,
+.mdxeditor h6 {
+  font-size: 0.67em;
+  font-weight: 600;
+  margin-top: 2.33em;
+  margin-bottom: 2.33em;
+}
+
+._editorRoot_1r7ge_1 p,
+.mdxeditor p {
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+._editorRoot_1r7ge_1 strong,
+.mdxeditor strong {
+  font-weight: 700;
+}
+
+._editorRoot_1r7ge_1 em,
+.mdxeditor em {
+  font-style: italic;
+}
+
+._editorRoot_1r7ge_1 ul,
+.mdxeditor ul {
+  list-style-type: disc;
+  padding-left: 2em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+._editorRoot_1r7ge_1 ol,
+.mdxeditor ol {
+  list-style-type: decimal;
+  padding-left: 2em;
+  margin-top: 1em;
+  margin-bottom: 1em;
+}
+
+._editorRoot_1r7ge_1 li,
+.mdxeditor li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+._editorRoot_1r7ge_1 blockquote,
+.mdxeditor blockquote {
+  border-left: 4px solid #e5e7eb;
+  padding-left: 1em;
+  margin-left: 0;
+  margin-right: 0;
+  margin-top: 1em;
+  margin-bottom: 1em;
+  font-style: italic;
+  color: #6b7280;
+}
+
+._editorRoot_1r7ge_1 code,
+.mdxeditor code {
+  font-family: 'Monaco', 'Menlo', 'Courier New', monospace;
+  font-size: 0.9em;
+  background: rgba(0, 0, 0, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+._editorRoot_1r7ge_1 a,
+.mdxeditor a {
+  color: #3b82f6;
+  text-decoration: underline;
+}
+
+._editorRoot_1r7ge_1 hr,
+.mdxeditor hr {
+  border: none;
+  border-top: 2px solid #e5e7eb;
+  margin-top: 2em;
+  margin-bottom: 2em;
 }

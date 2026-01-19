@@ -4,6 +4,9 @@ import React, { useRef, useEffect, useState } from 'react';
 import { Handle, Position, useReactFlow } from 'reactflow';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
+import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import remarkGfm from 'remark-gfm';
 import { measureLabel } from '../../utils/measurements';
 import { NODE_STYLES, NODE_WIDTH, LOGGING_ENABLED, LOG_PREFIX, EMOTION_COLORS, EMOTIONS, EMOTION_AXES } from '../../utils/constants';
 import { EmotionSelectorPortal } from '../EmotionSelector/EmotionSelectorPortal';
@@ -847,6 +850,7 @@ export function AnimatedNodeComponent({ id, data }) {
         <Handle type="target" position={Position.Left} />
         <Handle type="source" position={Position.Right} />
         <div
+          className="node-content-markdown"
           style={{
             flex: 1,
             display: 'flex',
@@ -862,7 +866,12 @@ export function AnimatedNodeComponent({ id, data }) {
             overflowWrap: 'break-word',
           }}
         >
-          {data.label}{"\n"}
+          <ReactMarkdown
+            rehypePlugins={[rehypeRaw]}
+            remarkPlugins={[remarkGfm]}
+          >
+            {data.label || ''}
+          </ReactMarkdown>
         </div>
         {nodeModified && (
           <>
