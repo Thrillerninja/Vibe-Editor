@@ -15,6 +15,7 @@ import { EMOTION_LABELS } from '../../utils/constants';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
 import { normalizeEmotionProfile, deriveLegacyFromProfile, profileFromLegacy } from '../../utils/emotionProfiles.js';
 import EmotionRadar from '../EmotionSelector/EmotionRadar.jsx';
+import { Tooltip } from '../Tooltip.jsx';
 
 /**
  * Gets node background color based on emotion
@@ -827,68 +828,72 @@ export function AnimatedNodeComponent({ id, data }) {
 
   return (
     <>
-      <motion.div
-        transition={{ type: 'spring', stiffness: 520, damping: 44 }}
-        onDoubleClick={() => setIsDialogOpen(true)}
-        style={{
-          padding: 12,
-          borderRadius: 24,
-          color: "black",
-          textAlign: "center",
-          cursor: "pointer",
-          width: 220,
-          background: emotionColor,
-          border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
-          position: 'relative',
-          fontFamily:
-            '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
-          userSelect: 'none',
-          transition: 'box-shadow 0.2s, transform 0.2s',
-          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-        }}
-      >
-        <Handle type="target" position={Position.Left} />
-        <Handle type="source" position={Position.Right} />
-        <div
-          className="node-content-markdown"
-          style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
-            textAlign: 'center',
-            fontSize: 13,
-            fontWeight: data.type === 'root' ? 600 : 500,
-            color: '#000',
-            lineHeight: 1.45,
-            wordWrap: 'break-word',
-            overflowWrap: 'break-word',
-          }}
-        >
-          <ReactMarkdown
-            rehypePlugins={[rehypeRaw]}
-            remarkPlugins={[remarkGfm]}
+      <div style={{ position: 'relative', display: 'inline-block' }}>
+        <Tooltip content={`${EMOTION_LABELS[emotion] || emotion}${intensity ? ` (${intensity}%)` : ''}`} position="top">
+          <motion.div
+            transition={{ type: 'spring', stiffness: 520, damping: 44 }}
+            onDoubleClick={() => setIsDialogOpen(true)}
+            style={{
+              padding: 12,
+              borderRadius: 24,
+              color: "black",
+              textAlign: "center",
+              cursor: "pointer",
+              width: 220,
+              background: emotionColor,
+              border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
+              position: 'relative',
+              fontFamily:
+                '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
+              userSelect: 'none',
+              transition: 'box-shadow 0.2s, transform 0.2s',
+              boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+            }}
           >
-            {data.label || ''}
-          </ReactMarkdown>
-        </div>
-        {nodeModified && (
-          <>
-            <div className="modified-indicator" title="This node has been modified.">
-              !
+            <Handle type="target" position={Position.Left} />
+            <Handle type="source" position={Position.Right} />
+            <div
+              className="node-content-markdown"
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: significantEmotions.length > 0 ? '8px 32px 28px 8px' : '8px 32px 8px 8px',
+                textAlign: 'center',
+                fontSize: 13,
+                fontWeight: data.type === 'root' ? 600 : 500,
+                color: '#000',
+                lineHeight: 1.45,
+                wordWrap: 'break-word',
+                overflowWrap: 'break-word',
+              }}
+            >
+              <ReactMarkdown
+                rehypePlugins={[rehypeRaw]}
+                remarkPlugins={[remarkGfm]}
+              >
+                {data.label || ''}
+              </ReactMarkdown>
             </div>
-            {/* SVG based animated border for proper rounded corners */}
-            <svg className="animated-border-svg">
-              <rect
-                x="3" y="3"
-                width="calc(100% - 6px)"
-                height="calc(100% - 6px)"
-                className="animated-border-rect"
-              />
-            </svg>
-          </>
-        )}
+            {nodeModified && (
+              <>
+                <div className="modified-indicator" title="This node has been modified.">
+                  !
+                </div>
+                {/* SVG based animated border for proper rounded corners */}
+                <svg className="animated-border-svg">
+                  <rect
+                    x="3" y="3"
+                    width="calc(100% - 6px)"
+                    height="calc(100% - 6px)"
+                    className="animated-border-rect"
+                  />
+                </svg>
+              </>
+            )}
+          </motion.div>
+        </Tooltip>
         {/* Emotion badges - show additional emotions */}
         {significantEmotions.length > 0 && (
           <div
@@ -900,49 +905,61 @@ export function AnimatedNodeComponent({ id, data }) {
               gap: 6,
               flexDirection: 'row',
               alignItems: 'center',
-              pointerEvents: 'none',
+              pointerEvents: 'auto',
               zIndex: 10,
             }}
-            title={significantEmotions
-              .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
-              .join('\n')}
           >
             {significantEmotions.slice(0, 3).map((emotionData, idx) => (
-              <div
+              <Tooltip
                 key={emotionData.emotion}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  backgroundColor: emotionData.color,
-                  border: '4px solid #fff',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
-                }}
-              />
+                content={`${EMOTION_LABELS[emotionData.emotion] || emotionData.emotion}: ${emotionData.intensity}%`}
+                position="bottom"
+              >
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: emotionData.color,
+                    border: '4px solid #fff',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                    cursor: 'help',
+                  }}
+                />
+              </Tooltip>
             ))}
             {significantEmotions.length > 3 && (
-              <div
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: '50%',
-                  backgroundColor: '#9ca3af',
-                  border: '4px solid #fff',
-                  boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: '#fff',
-                }}
+              <Tooltip
+                content={significantEmotions
+                  .slice(3)
+                  .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
+                  .join('\n')}
+                position="bottom"
               >
-                +{significantEmotions.length - 3}
-              </div>
+                <div
+                  style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: '#9ca3af',
+                    border: '4px solid #fff',
+                    boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: '#fff',
+                    cursor: 'help',
+                  }}
+                >
+                  +{significantEmotions.length - 3}
+                </div>
+              </Tooltip>
             )}
           </div>
         )}
-      </motion.div>
+      </div>
       {dialog}
     </>
   );
