@@ -565,13 +565,24 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       if (closest) {
+        const zoom = rfRef.current.getZoom();
+        const closestNodeElement = containerRef.current.querySelector(
+          `[data-id="${closest.node.id}"]`
+        );
+        const height = closestNodeElement
+          ? closestNodeElement.getBoundingClientRect().height / zoom
+          : closest.node.height ?? 60;
+        const width = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().width / zoom
+          : closest.node.width ?? 200;
+
         const screenPos = toScreenPoint({
           x: closest.node.position.x,
           y: closest.node.position.y,
         });
         const screenSize = toScreenSize({
-          width: closest.node.width ?? 200,
-          height: closest.node.height ?? 60,
+          width: width,
+          height: height,
         });
 
         console.log(
@@ -841,7 +852,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           style={{
             position: 'fixed',
             left: reorderIndicator.x - reorderIndicator.width / 2,
-            top: reorderIndicator.y + (reorderIndicator.isAbove ? -10 : 10),
+            top: reorderIndicator.y + (reorderIndicator.isAbove ? -10 : 5),
             width: reorderIndicator.width,
             height: 4,
             backgroundColor: '#3b82f6',
