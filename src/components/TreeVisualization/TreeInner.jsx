@@ -732,18 +732,43 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /**
    * Apply changes to subtree (emotion + text edits)
    * @param {string} nodeId
-   * @param {import('../../types/node').NodeEmotion} emotionProfile
+   * @param {Object} emotionOrNodeEmotion - EmotionProfile OR NodeEmotion
    * @param {Object} edits - Map of leafId → newContent
    */
   const applySubtreeChanges = useCallback(
-    (nodeId, emotion, edits) => {
+    (nodeId, emotionOrNodeEmotion, edits) => {
       const updated = new Map(nodeMapRef.current);
 
-      // Apply emotion to subtree
+      const toNodeEmotion = (input) => {
+        // Already NodeEmotion
+        if (input && typeof input === 'object' && input.profile) return input;
+
+        // Treat as EmotionProfile
+        const profile = input || {};
+        let dominantEmotion = 'interest';
+        let dominantIntensity = 0;
+
+        for (const [k, v] of Object.entries(profile)) {
+          if (typeof v === 'number' && v > dominantIntensity) {
+            dominantEmotion = k;
+            dominantIntensity = v;
+          }
+        }
+
+        return {
+          profile,
+          dominantEmotion,
+          dominantIntensity,
+          source: 'manual',
+          timestamp: new Date().toISOString(),
+        };
+      };
+
+      // Apply emotion to subtree root
       const node = updated.get(nodeId);
       if (node) {
         const nodeClone = cloneNode(node);
-        nodeClone.emotion = emotion;
+        nodeClone.emotion = toNodeEmotion(emotionOrNodeEmotion);
         nodeClone.metadata.isDirty = true;
         nodeClone.metadata.modifiedAt = new Date().toISOString();
         updated.set(nodeId, nodeClone);
