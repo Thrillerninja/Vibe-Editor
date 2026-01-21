@@ -237,6 +237,7 @@ export function AnimatedNodeComponent({ id, data }) {
       <motion.div
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
+        title={"Double-click to edit this node."}
         onMouseEnter={openTooltip}
         onMouseLeave={scheduleCloseTooltip}
         style={{
@@ -352,7 +353,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 16,
-                    fontWeight: 700,
+                  fontWeight: 700,
                     color: '#fff',
                   }}
                 >
