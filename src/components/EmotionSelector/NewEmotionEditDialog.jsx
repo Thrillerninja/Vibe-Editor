@@ -30,10 +30,6 @@ import { isContentNode } from '../../types/node.js';
 
 /**
  * @typedef {Object} NewEmotionEditDialogProps
- * @property {string} nodeText - Current node text content
- * @property {Function} setNodeText - Update node text
- * @property {string} previousText - Original text before editing
- * @property {Function} setPreviousText - (unused, kept for state management)
  * @property {Object} emotionProfile - Current emotion profile
  * @property {Function} setEmotionProfile - Update emotion profile
  * @property {Object} originalEmotionProfile - Original emotion before editing
@@ -82,8 +78,6 @@ import { isContentNode } from '../../types/node.js';
  */
 export function NewEmotionEditDialog(
     {
-        nodeText, setNodeText,
-        previousText, setPreviousText,
         emotionProfile, setEmotionProfile,
         originalEmotionProfile, setOriginalEmotionProfile,
         subtreeEmotion, setSubtreeEmotion,
@@ -100,6 +94,15 @@ export function NewEmotionEditDialog(
         id,
         data
     }) {
+
+        
+    // =========================================================================
+    // STATE: Node Content
+    // =========================================================================
+
+    const [previousText, setPreviousText] = useState(
+    data.content || ''
+    );
     // =========================================================================
     // STATE: Suggestions & Variants
     // =========================================================================
@@ -122,7 +125,7 @@ export function NewEmotionEditDialog(
      * Creates new emotion object for new unified system
      */
     const handleSave = () => {
-        const textChanged = nodeText !== previousText;
+        const textChanged = data.content !== previousText;
         const finalProfile = textChanged ? emotionProfile : originalEmotionProfile;
 
         // Create new emotion object with metadata
@@ -135,7 +138,7 @@ export function NewEmotionEditDialog(
         };
 
         if (typeof data.applyNodeEdit === 'function') {
-            data.applyNodeEdit(id, nodeText, newEmotion);
+            data.applyNodeEdit(id, data.content, newEmotion);
         }
 
         setSuggestions([]);
@@ -143,7 +146,7 @@ export function NewEmotionEditDialog(
         setIsDialogOpen(false);
 
         // Delete node if text is empty
-        if (nodeText.length === 0 && typeof data.deleteNode === 'function') {
+        if (data.content.length === 0 && typeof data.deleteNode === 'function') {
             data.deleteNode(id);
         }
     };
@@ -155,7 +158,6 @@ export function NewEmotionEditDialog(
     const handleCancel = () => {
         setEmotionProfile(originalEmotionProfile);
         setEmotion(data.emotion?.dominantEmotion || 'interest');
-        setNodeText(previousText);
         setSuggestions([]);
         setCurrentSuggestionIndex(0);
         setLeafSuggestions({});
@@ -164,6 +166,8 @@ export function NewEmotionEditDialog(
         setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
         setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
         setIsDialogOpen(false);
+
+        data.content = previousText;
     };
 
     /**
@@ -177,7 +181,7 @@ export function NewEmotionEditDialog(
 
         try {
             const options = await rewriteSentenceWithEmotionOptions(
-                nodeText,
+                data.content,
                 emotionProfile,
                 3
             );
@@ -185,7 +189,7 @@ export function NewEmotionEditDialog(
             setCurrentSuggestionIndex(0);
 
             if (options && options.length > 0) {
-                setNodeText(options[0]);
+                data.content = options[0];
             }
         } catch (e) {
             console.error('Failed to get rewrite options:', e);
@@ -203,7 +207,7 @@ export function NewEmotionEditDialog(
         const newIdx =
             (currentSuggestionIndex - 1 + suggestions.length) % suggestions.length;
         setCurrentSuggestionIndex(newIdx);
-        setNodeText(suggestions[newIdx]);
+        data.content = suggestions[newIdx];
     };
 
     /**
@@ -214,7 +218,7 @@ export function NewEmotionEditDialog(
 
         const newIdx = (currentSuggestionIndex + 1) % suggestions.length;
         setCurrentSuggestionIndex(newIdx);
-        setNodeText(suggestions[newIdx]);
+        data.content = suggestions[newIdx];
     };
 
     // =========================================================================
@@ -440,7 +444,7 @@ export function NewEmotionEditDialog(
                                                 >
                                                     ↻
                                                 </button>
-                                                {JSON.stringify(emotionProfile) !== JSON.stringify(originalEmotionProfile) && nodeText === previousText && (
+                                                {JSON.stringify(emotionProfile) !== JSON.stringify(originalEmotionProfile) && data.content === previousText && (
                                                     <div className="modified-indicator" style={{ top: -4, right: -4, width: 14, height: 14, fontSize: 10, lineHeight: '14px', background: '#ef4444' }}>
                                                         !
                                                     </div>
@@ -488,8 +492,8 @@ export function NewEmotionEditDialog(
                                         </div>
                                     )}
                                     <textarea
-                                        value={nodeText}
-                                        onChange={(e) => setNodeText(e.target.value)}
+                                        value={data.content}
+                                        onChange={(e) => data.content = (e.target.value)}
                                         style={{
                                             width: "100%",
                                             flex: 1,
@@ -587,7 +591,7 @@ export function NewEmotionEditDialog(
                                 >
                                     Cancel
                                 </button>
-                                {((nodeText !== previousText || suggestions.length > 0) && isContentNode(data)) &&(
+                                {((data.content !== previousText || suggestions.length > 0) && isContentNode(data)) &&(
                                     <button
                                         onClick={handleSave}
                                         disabled={isNodeRewriting}

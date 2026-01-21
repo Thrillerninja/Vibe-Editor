@@ -74,10 +74,6 @@ export function AnimatedNodeComponent({ id, data }) {
   // STATE: Node Content
   // =========================================================================
 
-  const [nodeText, setNodeText] = useState(data.content || '');
-  const [previousText, setPreviousText] = useState(
-    data.content || ''
-  );
   const [nodeModified, setNodeModified] = useState(
     data.metadata?.isDirty ?? false
   );
@@ -153,7 +149,6 @@ export function AnimatedNodeComponent({ id, data }) {
     setOriginalEmotionProfile(profile);
     setEmotion(data.emotion?.dominantEmotion || 'interest');
     setIntensity(data.emotion?.dominantIntensity ?? 0);
-    setPreviousText(data.content || '');
     setSubtreeEmotionProfile(profile);
     setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
     setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
@@ -430,10 +425,6 @@ export function AnimatedNodeComponent({ id, data }) {
       </div>
 
       {isDialogOpen && <NewEmotionEditDialog 
-        nodeText={nodeText}
-        setNodeText={setNodeText}
-        previousText={previousText}
-        setPreviousText={setPreviousText}
         emotionProfile={emotionProfile}
         setEmotionProfile={setEmotionProfile}
         originalEmotionProfile={originalEmotionProfile}

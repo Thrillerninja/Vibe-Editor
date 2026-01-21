@@ -441,33 +441,15 @@ export default function Editor() {
       const dirtySentenceIds = hierarchyMeta.dirtySentenceIds || [];
 
       let restructured = new Map(nodeMap);
-      // const autoCreatedGroups = Array.from(restructured.values()).filter(
-      //   n => isGroupNode(n) && n.hierarchy.level >= 1 && n.hierarchy.level < maxDepth - 1
-      // );
-
-      // ✅ LOG HERE
-      // console.log('[CRITICAL] Before removing auto-created groups:');
-      // console.log('  Groups to remove:', autoCreatedGroups.length);
-      // console.log('  Group IDs:', autoCreatedGroups.map(g => g.id));
-      // console.log('  Current restructured size:', restructured.size);
-
-      // console.log('[CRITICAL] Removing auto-created groups...');
-      // for (const group of autoCreatedGroups) {
-      //     restructured.delete(group.id);
-      // }
       console.log('  After deletion, restructured size:', restructured.size);
 
-      // console.log(`[Editor] Removing ${autoCreatedGroups.length} auto-created groups`);
-      // for (const group of autoCreatedGroups) {
-      //   restructured.delete(group.id);
-      // }
 
-      // Reset root children to just content nodes
-      const root = restructured.get(rootId);
-      const contentNodeIds = contentNodes.map(n => n.id);
-      const resetRoot = cloneNode(root);
-      resetRoot.hierarchy.childIds = contentNodeIds;
-      restructured.set(rootId, resetRoot);
+      // // Reset root children to just content nodes
+      // const root = restructured.get(rootId);
+      // const contentNodeIds = contentNodes.map(n => n.id);
+      // const resetRoot = cloneNode(root);
+      // resetRoot.hierarchy.childIds = contentNodeIds;
+      // restructured.set(rootId, resetRoot);
 
       // ✅ LOG HERE
       console.log('[CRITICAL] After resetting root:');
@@ -508,33 +490,33 @@ export default function Editor() {
       // ✅ CRITICAL FIX 1: Ensure Root points to ALL top-level groups
       // After Claude restructuring, there might be new top-level groups
       // We MUST collect ALL of them and update Root
-      {
-        const patchedRoot = cloneNode(restructured.get(rootId) || root);
+      // {
+      //   const patchedRoot = cloneNode(restructured.get(rootId) || root);
         
-        // Find ALL groups at level 1 (top-level groups)
-        const allTopLevelGroups = Array.from(restructured.values())
-          .filter(n => isGroupNode(n) && n.hierarchy.level === 1)
-          .map(n => n.id);
-        console.log('  Top-level groups created:', allTopLevelGroups.length);
-        console.log('  Group IDs:', allTopLevelGroups.map(g => g?.id));
+      //   // Find ALL groups at level 1 (top-level groups)
+      //   const allTopLevelGroups = Array.from(restructured.values())
+      //     .filter(n => isGroupNode(n) && n.hierarchy.level === 1 && !n.metadata.autoCreated)
+      //     .map(n => n.id);
+      //   console.log('  Top-level groups created:', allTopLevelGroups.length);
+      //   console.log('  Group IDs:', allTopLevelGroups.map(g => g?.id));
 
-        if (allTopLevelGroups.length > 0) {
-          console.log(`[Editor] Found ${allTopLevelGroups.length} top-level groups after restructuring`);
-          console.log('[Editor] Top-level group IDs:', allTopLevelGroups.join(', '));
+      //   if (allTopLevelGroups.length > 0) {
+      //     console.log(`[Editor] Found ${allTopLevelGroups.length} top-level groups after restructuring`);
+      //     console.log('[Editor] Top-level group IDs:', allTopLevelGroups.join(', '));
           
-          // Update root to point to ALL top-level groups (preserve order)
-          patchedRoot.hierarchy.childIds = allTopLevelGroups;
-        } else {
-          // No groups created - point directly to content
-          const allContentNodeIds = Array.from(restructured.values())
-            .filter(isContentNode)
-            .map(n => n.id);
-          console.log(`[Editor] No top-level groups found, pointing root to ${allContentNodeIds.length} content nodes`);
-          patchedRoot.hierarchy.childIds = allContentNodeIds;
-        }
+      //     // Update root to point to ALL top-level groups (preserve order)
+      //     patchedRoot.hierarchy.childIds = allTopLevelGroups;
+      //   } else {
+      //     // No groups created - point directly to content
+      //     const allContentNodeIds = Array.from(restructured.values())
+      //       .filter(isContentNode)
+      //       .map(n => n.id);
+      //     console.log(`[Editor] No top-level groups found, pointing root to ${allContentNodeIds.length} content nodes`);
+      //     patchedRoot.hierarchy.childIds = allContentNodeIds;
+      //   }
 
-        restructured.set(rootId, patchedRoot);
-      }
+      //   restructured.set(rootId, patchedRoot);
+      // }
 
       // Step 4: Evaluate emotions for all content
       const contentNodesToEvaluate = Array.from(restructured.values())
@@ -573,6 +555,21 @@ export default function Editor() {
         // Clear dirty flags
         const clean = clearAllDirtyFlags(repaired);
 
+        const childToParents = new Map();
+        for (const parent of clean.values()) {
+          for (const childId of parent.hierarchy.childIds || []) {
+            const arr = childToParents.get(childId) || [];
+            arr.push(parent.id);
+            childToParents.set(childId, arr);
+          }
+        }
+
+        const multiParents = Array.from(childToParents.entries()).filter(
+          ([, parents]) => parents.length > 1
+        );
+
+        console.log('[INVARIANT] multi-parent nodes:', multiParents.length);
+        if (multiParents.length) console.log(multiParents.slice(0, 10));
         setNodeMap(clean);
         // ✅ DEBUG
         console.log('[Editor DEBUG] After setNodeMap:');
@@ -876,6 +873,7 @@ export default function Editor() {
         [], // childIds filled below
         { metadata: {
           isDirty: true,
+          autoCreated: true,
           createdAt: new Date().toISOString(),
           version: 1
         } }
