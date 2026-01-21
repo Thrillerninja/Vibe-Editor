@@ -96,10 +96,6 @@ export function AnimatedNodeComponent({ id, data }) {
   const [intensity, setIntensity] = useState(
     data.emotion?.dominantIntensity ?? 0
   );
-  const [selectedIntensity, setSelectedIntensity] = useState(
-    data.emotion?.dominantIntensity ?? 0
-  );
-  const [previousEmotion, setPreviousEmotion] = useState(emotion);
 
   // =========================================================================
   // STATE: Subtree Editing
@@ -157,8 +153,6 @@ export function AnimatedNodeComponent({ id, data }) {
     setOriginalEmotionProfile(profile);
     setEmotion(data.emotion?.dominantEmotion || 'interest');
     setIntensity(data.emotion?.dominantIntensity ?? 0);
-    setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
-    setPreviousEmotion(data.emotion?.dominantEmotion || 'interest');
     setPreviousText(data.content || '');
     setSubtreeEmotionProfile(profile);
     setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
@@ -444,10 +438,6 @@ export function AnimatedNodeComponent({ id, data }) {
         setEmotionProfile={setEmotionProfile}
         originalEmotionProfile={originalEmotionProfile}
         setOriginalEmotionProfile={setOriginalEmotionProfile}
-        selectedIntensity={selectedIntensity}
-        setSelectedIntensity={setSelectedIntensity}
-        previousEmotion={previousEmotion}
-        setPreviousEmotion={setPreviousEmotion}
         subtreeEmotion={subtreeEmotion}
         setSubtreeEmotion={setSubtreeEmotion}
         subtreeIntensity={subtreeIntensity}

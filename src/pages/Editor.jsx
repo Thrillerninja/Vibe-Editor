@@ -341,8 +341,76 @@ export default function Editor() {
   // =========================================================================
   // HIERARCHY GENERATION
   // =========================================================================
+  /**
+   * Repair orphaned nodes - ensure all content is reachable from root
+   * @param {Map<string, Node>} nodeMap
+   * @param {string} rootId
+   * @returns {Map<string, Node>}
+   */
+  function repairOrphanedNodes(nodeMap, rootId) {
+    const root = nodeMap.get(rootId);
+    if (!root) return nodeMap;
+
+    // Mark all reachable nodes via DFS
+    const visited = new Set();
+    const queue = [...(root.hierarchy.childIds || [])];
+    
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (visited.has(id)) continue;
+      visited.add(id);
+
+      const node = nodeMap.get(id);
+      if (node && node.hierarchy.childIds) {
+        queue.push(...node.hierarchy.childIds);
+      }
+    }
+
+    // Find orphaned top-level groups (level 1, but not reachable)
+    const orphanedGroups = Array.from(nodeMap.values())
+      .filter(n => 
+        isGroupNode(n) && 
+        n.hierarchy.level === 1 && 
+        !visited.has(n.id)
+      );
+
+    if (orphanedGroups.length === 0) {
+      return nodeMap; // No orphans
+    }
+
+    console.warn(`[Editor] Found ${orphanedGroups.length} orphaned top-level groups, reattaching to root`);
+
+    const updated = new Map(nodeMap);
+    const patchedRoot = cloneNode(root);
+    
+    // Add orphaned groups to root
+    for (const group of orphanedGroups) {
+      if (!patchedRoot.hierarchy.childIds.includes(group.id)) {
+        patchedRoot.hierarchy.childIds.push(group.id);
+        console.warn(`[Editor]   - Re-attached orphaned group: ${group.id}`);
+      }
+      
+      // Ensure group's parent is set to root
+      if (group.hierarchy.parentId !== rootId) {
+        const patchedGroup = cloneNode(group);
+        patchedGroup.hierarchy.parentId = rootId;
+        updated.set(group.id, patchedGroup);
+      }
+    }
+
+    updated.set(rootId, patchedRoot);
+    return updated;
+  }
+
   const handleGenerateHierarchy = async () => {
+    console.log('[CRITICAL] ▶ START handleGenerateHierarchy');
+    console.log('  Current nodeMap size:', nodeMap.size);
+    console.log('  Current nodeMap keys sample:', 
+        Array.from(nodeMap.keys()).slice(0, 10).map(k => k.slice(0, 8)));
+    
     const contentNodes = Array.from(nodeMap.values()).filter(isContentNode);
+    console.log('  Content nodes:', contentNodes.length);
+    console.log('  Content IDs sample:', contentNodes.slice(0, 5).map(n => n.id.slice(0, 8)));
 
     if (contentNodes.length === 0) {
       alert('Please add some text first');
@@ -364,8 +432,7 @@ export default function Editor() {
       );
 
       // Step 1: Convert nodeMap to sentence format for Claude
-      /** @type {any} */ const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
-
+      const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
       console.log('[Editor] Converted nodeMap to sentence format');
 
       // Step 2: Call Claude to restructure dirty portions
@@ -374,14 +441,26 @@ export default function Editor() {
       const dirtySentenceIds = hierarchyMeta.dirtySentenceIds || [];
 
       let restructured = new Map(nodeMap);
-      const autoCreatedGroups = Array.from(restructured.values()).filter(
-        n => isGroupNode(n) && n.hierarchy.level >= 1 && n.hierarchy.level < maxDepth - 1
-      );
+      // const autoCreatedGroups = Array.from(restructured.values()).filter(
+      //   n => isGroupNode(n) && n.hierarchy.level >= 1 && n.hierarchy.level < maxDepth - 1
+      // );
 
-      console.log(`[Editor] Removing ${autoCreatedGroups.length} auto-created groups`);
-      for (const group of autoCreatedGroups) {
-        restructured.delete(group.id);
-      }
+      // ✅ LOG HERE
+      // console.log('[CRITICAL] Before removing auto-created groups:');
+      // console.log('  Groups to remove:', autoCreatedGroups.length);
+      // console.log('  Group IDs:', autoCreatedGroups.map(g => g.id));
+      // console.log('  Current restructured size:', restructured.size);
+
+      // console.log('[CRITICAL] Removing auto-created groups...');
+      // for (const group of autoCreatedGroups) {
+      //     restructured.delete(group.id);
+      // }
+      console.log('  After deletion, restructured size:', restructured.size);
+
+      // console.log(`[Editor] Removing ${autoCreatedGroups.length} auto-created groups`);
+      // for (const group of autoCreatedGroups) {
+      //   restructured.delete(group.id);
+      // }
 
       // Reset root children to just content nodes
       const root = restructured.get(rootId);
@@ -389,6 +468,13 @@ export default function Editor() {
       const resetRoot = cloneNode(root);
       resetRoot.hierarchy.childIds = contentNodeIds;
       restructured.set(rootId, resetRoot);
+
+      // ✅ LOG HERE
+      console.log('[CRITICAL] After resetting root:');
+      console.log('  Root now has children:', resetRoot.hierarchy.childIds.length);
+      console.log('  Child IDs sample:', resetRoot.hierarchy.childIds.slice(0, 5).map(id => id.slice(0, 8)));
+      console.log('  All children exist in restructured?', 
+          resetRoot.hierarchy.childIds.every(id => restructured.has(id)));
 
       if (dirtyNodeIds.length === 0 && dirtySentenceIds.length === 0) {
         console.log('[Editor] No dirty nodes - skipping restructure');
@@ -413,6 +499,41 @@ export default function Editor() {
           newRootEmotions,
           maxDepth
         );
+
+        // ✅ LOG HERE
+        console.log('[CRITICAL] After Claude restructure:');
+        console.log('  Restructured size:', restructured.size);
+      }
+
+      // ✅ CRITICAL FIX 1: Ensure Root points to ALL top-level groups
+      // After Claude restructuring, there might be new top-level groups
+      // We MUST collect ALL of them and update Root
+      {
+        const patchedRoot = cloneNode(restructured.get(rootId) || root);
+        
+        // Find ALL groups at level 1 (top-level groups)
+        const allTopLevelGroups = Array.from(restructured.values())
+          .filter(n => isGroupNode(n) && n.hierarchy.level === 1)
+          .map(n => n.id);
+        console.log('  Top-level groups created:', allTopLevelGroups.length);
+        console.log('  Group IDs:', allTopLevelGroups.map(g => g?.id));
+
+        if (allTopLevelGroups.length > 0) {
+          console.log(`[Editor] Found ${allTopLevelGroups.length} top-level groups after restructuring`);
+          console.log('[Editor] Top-level group IDs:', allTopLevelGroups.join(', '));
+          
+          // Update root to point to ALL top-level groups (preserve order)
+          patchedRoot.hierarchy.childIds = allTopLevelGroups;
+        } else {
+          // No groups created - point directly to content
+          const allContentNodeIds = Array.from(restructured.values())
+            .filter(isContentNode)
+            .map(n => n.id);
+          console.log(`[Editor] No top-level groups found, pointing root to ${allContentNodeIds.length} content nodes`);
+          patchedRoot.hierarchy.childIds = allContentNodeIds;
+        }
+
+        restructured.set(rootId, patchedRoot);
       }
 
       // Step 4: Evaluate emotions for all content
@@ -433,10 +554,37 @@ export default function Editor() {
         // Step 5: Apply emotions back to nodeMap
         const final = applyEmotionsToNodeMap(restructured, sentencesWithEmotions);
 
-        // IMPORTANT: keep hierarchyState === "generated" by clearing dirty flags
-        const clean = clearAllDirtyFlags(final);
+        // ✅ CRITICAL FIX 2: Repair any orphaned nodes before saving
+        const repaired = repairOrphanedNodes(final, rootId);
+        // ✅ LOG HERE
+        console.log('[CRITICAL] After repairOrphanedNodes:');
+        console.log('  Repaired size:', repaired.size);
+        console.log('  Before repair size:', final.size);
+        console.log('  Nodes deleted:', final.size - repaired.size);
+        // Verify all content is reachable
+        try {
+            const reachable = getContentNodeIdsInDocumentOrder(repaired, rootId);
+            console.log('  Reachable content nodes:', reachable.length);
+            console.log('  Content nodes in repaired:', Array.from(repaired.values()).filter(isContentNode).length);
+        } catch (e) {
+            console.error('  ❌ ERROR checking reachable nodes:', e.message);
+        }
+
+        // Clear dirty flags
+        const clean = clearAllDirtyFlags(repaired);
 
         setNodeMap(clean);
+        // ✅ DEBUG
+        console.log('[Editor DEBUG] After setNodeMap:');
+        console.log('  nodeMap.size:', clean.size);
+        console.log('  Root:', clean.get(rootId));
+        const groups = Array.from(clean.values()).filter(n => isGroupNode(n));
+        console.log('  Groups:', groups.map(g => ({ id: g.id, level: g.hierarchy.level, childCount: g.hierarchy.childIds.length })));
+        const contents = Array.from(clean.values()).filter(n => isContentNode(n));
+        console.log('  Content nodes:', contents.length);
+        const allReachable = getContentNodeIdsInDocumentOrder(clean, rootId);
+        console.log('  Reachable content:', allReachable.length);
+        // ✅ END DEBUG
         setHierarchyState('generated');
         addCommit(clean, 'AI hierarchy generated');
 
@@ -444,7 +592,13 @@ export default function Editor() {
           node_count: clean.size,
         });
       } else {
-        const clean = clearAllDirtyFlags(restructured);
+        const repaired = repairOrphanedNodes(restructured, rootId);
+        const clean = clearAllDirtyFlags(repaired);
+
+        // ✅ LOG HERE - FINAL CHECK
+        console.log('[CRITICAL] ◀ END handleGenerateHierarchy - Final state:');
+        console.log('  Final nodeMap size:', clean.size);
+        console.log('  Content nodes:', Array.from(clean.values()).filter(isContentNode).length);
 
         setNodeMap(clean);
         setHierarchyState('generated');
@@ -851,7 +1005,8 @@ export default function Editor() {
    * Handle tree modifications (drag/drop in visualization)
    */
   const handleTreeUpdate = useCallback(updatedNodes => {
-    console.log('[Editor] Tree updated, node count:', updatedNodes.size);
+    console.log('[CRITICAL] AFTER tree update from subtree changes:');
+    console.log('  Updated nodeMap size:', updatedNodes.size);
     
     // Calculate new text from updated nodes
     const root = updatedNodes.get(rootId);

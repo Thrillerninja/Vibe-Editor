@@ -127,16 +127,6 @@ export function applyClaudeRestructureToNodeMap(
 
   console.log(`[Adapter] Preserving ${oldContentNodes.length} content nodes before restructure`);
 
-  // STEP 1: DELETE OLD GROUPS (but not content!)
-  const groupNodesToDelete = Array.from(updated.values())
-    .filter((n) => isGroupNode(n))
-    .map((n) => n.id);
-
-  groupNodesToDelete.forEach((id) => {
-    updated.delete(id);
-    console.log(`[Adapter] Deleted group node: ${id.substring(0, 8)}`);
-  });
-
   // STEP 2: VALIDATE CLAUDE OUTPUT
   if (restructuredSubtrees && restructuredSubtrees.length > 0) {
     // First pass: Collect ALL node IDs that Claude created
@@ -278,7 +268,9 @@ export function applyClaudeRestructureToNodeMap(
     if (root) {
       const updatedRoot = cloneNode(root);
       updatedRoot.content = newRootTitle || root.content;
-      updatedRoot.hierarchy.childIds = [...new Set(rootChildGroupIds)]; // dedupe
+      // updatedRoot.hierarchy.childIds = [...new Set(rootChildGroupIds)]; // dedupe
+      // Keep existing root children. Subtree insertion should be handled separately.
+      // updatedRoot.hierarchy.childIds = root.hierarchy.childIds;
 
       const rootEmotionField = buildEmotionField(newRootEmotions);
       if (rootEmotionField) updatedRoot.emotion = rootEmotionField;
@@ -288,64 +280,40 @@ export function applyClaudeRestructureToNodeMap(
         `[Adapter] Updated root with ${rootChildGroupIds.length} children`
       );
     }
-
-    // STEP 5: CLEANUP ORPHANS
-    const allValidParentIds = new Set([rootId, ...allClaudeNodeIds]);
-    const orphanIds = [];
-
-    for (const [nodeId, node] of updated.entries()) {
-      if (
-        node.hierarchy.parentId &&
-        !allValidParentIds.has(node.hierarchy.parentId)
-      ) {
-        orphanIds.push(nodeId);
-        console.error(
-          `[Adapter] ❌ Orphaned node detected: ${nodeId} parent: ${node.hierarchy.parentId}`
-        );
-      }
-    }
-
-    if (orphanIds.length > 0) {
-      console.error(`[Adapter] Found ${orphanIds.length} orphaned nodes, removing...`);
-      orphanIds.forEach((id) => {
-        updated.delete(id);
-        console.log(`[Adapter] Deleted orphaned node: ${id.substring(0, 8)}`);
-      });
-    }
   }
 
   console.log('[Adapter] ✅ Restructure complete, nodeMap now has', updated.size, 'nodes');
 
   // STEP 5B: EXPLICIT ORPHAN CLEANUP
-  const reachableNodeIds = new Set([rootId]);
-  const queue = [rootId];
+  // const reachableNodeIds = new Set([rootId]);
+  // const queue = [rootId];
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    const node = updated.get(nodeId);
-    if (!node) continue;
+  // while (queue.length > 0) {
+  //   const nodeId = queue.shift();
+  //   const node = updated.get(nodeId);
+  //   if (!node) continue;
 
-    for (const childId of node.hierarchy.childIds) {
-      if (!reachableNodeIds.has(childId)) {
-        reachableNodeIds.add(childId);
-        queue.push(childId);
-      }
-    }
-  }
+  //   for (const childId of node.hierarchy.childIds) {
+  //     if (!reachableNodeIds.has(childId)) {
+  //       reachableNodeIds.add(childId);
+  //       queue.push(childId);
+  //     }
+  //   }
+  // }
 
-  // Remove all unreachable nodes
-  const orphanedIds = [];
-  for (const [nodeId, node] of updated.entries()) {
-    if (!reachableNodeIds.has(nodeId) && nodeId !== rootId) {
-      orphanedIds.push(nodeId);
-      updated.delete(nodeId);
-      console.log(`[Adapter] Deleted orphaned node: ${nodeId.substring(0, 8)}`);
-    }
-  }
+  // // Remove all unreachable nodes
+  // const orphanedIds = [];
+  // for (const [nodeId, node] of updated.entries()) {
+  //   if (!reachableNodeIds.has(nodeId) && nodeId !== rootId) {
+  //     orphanedIds.push(nodeId);
+  //     updated.delete(nodeId);
+  //     console.log(`[Adapter] Deleted orphaned node: ${nodeId.substring(0, 8)}`);
+  //   }
+  // }
 
-  if (orphanedIds.length > 0) {
-    console.warn(`[Adapter] ⚠️ Deleted ${orphanedIds.length} orphaned nodes`);
-  }
+  // if (orphanedIds.length > 0) {
+  //   console.warn(`[Adapter] ⚠️ Deleted ${orphanedIds.length} orphaned nodes`);
+  // }
 
   return updated;
 }

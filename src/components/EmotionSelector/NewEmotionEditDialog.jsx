@@ -38,10 +38,6 @@ import { isContentNode } from '../../types/node.js';
  * @property {Function} setEmotionProfile - Update emotion profile
  * @property {Object} originalEmotionProfile - Original emotion before editing
  * @property {Function} setOriginalEmotionProfile - (unused)
- * @property {number} selectedIntensity - Current intensity value
- * @property {Function} setSelectedIntensity - Update intensity
- * @property {string} previousEmotion - (unused)
- * @property {Function} setPreviousEmotion - (unused)
  * @property {string} subtreeEmotion - Dominant emotion for subtree
  * @property {Function} setSubtreeEmotion - Update subtree emotion
  * @property {number} subtreeIntensity - Subtree emotion intensity
@@ -90,8 +86,6 @@ export function NewEmotionEditDialog(
         previousText, setPreviousText,
         emotionProfile, setEmotionProfile,
         originalEmotionProfile, setOriginalEmotionProfile,
-        selectedIntensity, setSelectedIntensity,
-        previousEmotion, setPreviousEmotion,
         subtreeEmotion, setSubtreeEmotion,
         subtreeIntensity, setSubtreeIntensity,
         leafSuggestions, setLeafSuggestions,
@@ -161,7 +155,6 @@ export function NewEmotionEditDialog(
     const handleCancel = () => {
         setEmotionProfile(originalEmotionProfile);
         setEmotion(data.emotion?.dominantEmotion || 'interest');
-        setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
         setNodeText(previousText);
         setSuggestions([]);
         setCurrentSuggestionIndex(0);
@@ -171,21 +164,6 @@ export function NewEmotionEditDialog(
         setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
         setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
         setIsDialogOpen(false);
-    };
-
-    /**
-     * Update emotion intensity for sentence
-     * Updates the profile with new intensity value
-     *
-     * @param {number} inputIntensity - New intensity [0-100]
-     */
-    const setNodeIntensity = (inputIntensity) => {
-        setSelectedIntensity(inputIntensity);
-        const next = {
-            ...emotionProfile,
-            [emotion]: inputIntensity,
-        };
-        setEmotionProfile(next);
     };
 
     /**
@@ -540,7 +518,6 @@ export function NewEmotionEditDialog(
                                                 setEmotionProfile(next);
                                                 const legacy = deriveLegacyFromProfile(next);
                                                 setEmotion(legacy.emotion);
-                                                setSelectedIntensity(legacy.intensity);
                                             }}
                                             size={340}
                                             label="Emotion profile"
@@ -882,6 +859,11 @@ export function NewEmotionEditDialog(
                                     return (hasTextChanges || hasEmotionChanges) && (
                                         <button
                                             onClick={() => {
+                                                // ✅ LOG HERE - BEFORE save
+                                                console.log('[CRITICAL] BEFORE applySubtreeChanges:');
+                                                console.log('  Subtree ID:', id);
+                                                console.log('  Leaf nodes being edited:', Object.keys(leafSuggestions).length);
+                                                console.log('  Leaf IDs:', Object.keys(leafSuggestions).slice(0, 5), '...');
                                                 const edits = {};
                                                 let anyTextChanged = false;
                                                 Object.keys(leafSuggestions).forEach(k => {

@@ -373,7 +373,6 @@ function getExistingContentIdsOrdered(nodeMap, rootId) {
  * @returns {string}
  */
 function chooseNewContentParentId(nodeMap, rootId, maxDepth, existingContentIdsOrdered) {
-  let contentParentId = rootId;
   const targetParentLevel = maxDepth - 2;
 
   if (targetParentLevel <= 0) return rootId;
@@ -462,7 +461,6 @@ function removeChildReferencesEverywhere(nodeMap, childId) {
  */
 export function syncNodeMapWithText(prevNodeMap, text, options) {
   const { rootId, maxDepth, createId, nowIso, spacesPerIndent = 2 } = options;
-
   const updated = new Map(prevNodeMap);
   const root = updated.get(rootId);
 
@@ -470,18 +468,22 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
 
   const units = parseTextToContentUnits(text, spacesPerIndent);
 
-  // Gather groups + top-level groups
+  // Get all existing groups
   const groupNodes = Array.from(updated.values())
     .filter(isGroupNode)
     .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
 
-  const topGroupIds = groupNodes
-    .filter((g) => g.hierarchy.parentId === rootId)
-    .map((g) => g.id);
+  // ✅ FIX 1: Preserve existing top-level groups
+  // Instead of computing topGroupIds from root.childIds,
+  // find ALL groups that should be under root
+  const existingTopGroups = groupNodes.filter(g => 
+    g.hierarchy.parentId === rootId || g.hierarchy.level === 1
+  );
+  const existingTopGroupIds = existingTopGroups.map(g => g.id);
 
   const existingContentIdsOrdered = getExistingContentIdsOrdered(updated, rootId);
 
-  // If text empty => clear content + groups
+  // If text is empty
   if (units.length === 0) {
     for (const id of existingContentIdsOrdered) updated.delete(id);
     for (const g of groupNodes) updated.delete(g.id);
@@ -491,7 +493,6 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     patchedRoot.metadata.isDirty = true;
     patchedRoot.metadata.modifiedAt = nowIso();
     updated.set(rootId, patchedRoot);
-
     return updated;
   }
 
@@ -503,7 +504,6 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     existingContentIdsOrdered
   );
 
-  /** @type {string[]} */
   const newContentIds = [];
 
   // Update existing / create new
@@ -515,7 +515,6 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
       const existingNode = updated.get(nodeId);
       if (!existingNode) continue;
 
-      // Patch only if something relevant changed
       const needsPatch =
         existingNode.type !== unit.type ||
         existingNode.content !== unit.content ||
@@ -530,13 +529,14 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
         patched.content = unit.content;
         patched.structure = unit.structure;
         patched.textRep = unit.textRep;
-
         patched.metadata.isDirty = true;
         patched.metadata.modifiedAt = nowIso();
         patched.metadata.version = (patched.metadata.version || 1) + 1;
-
         updated.set(nodeId, patched);
-        markDirtyUp(updated, nodeId);
+        // ✅ FIX 2: Mark parent, not leaf
+        if (patched.hierarchy.parentId) {
+          markDirtyUp(updated, patched.hierarchy.parentId);
+        }
       }
 
       newContentIds.push(nodeId);
@@ -552,7 +552,7 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
       contentParentId,
       maxDepth,
       {
-        metadata: { isDirty: true, createdAt: options.nowIso(), version: 1 },
+        metadata: { isDirty: true, createdAt: nowIso(), version: 1 },
         textRep: unit.textRep,
         structure: unit.structure,
       }
@@ -560,28 +560,44 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
 
     newNode.hierarchy.level = contentLevel;
     updated.set(nodeId, newNode);
-
-    // Ensure parent links are consistent
     ensureParentHasChild(updated, contentParentId, nodeId);
-    markDirtyUp(updated, nodeId);
+    // ✅ FIX 2: Mark parent, not leaf
+    if (contentParentId) {
+      markDirtyUp(updated, contentParentId);
+    }
 
     newContentIds.push(nodeId);
   }
 
-  // Delete excess existing content nodes
+  // Delete excess content nodes
   for (let i = units.length; i < existingContentIdsOrdered.length; i++) {
     const idToDelete = existingContentIdsOrdered[i];
     updated.delete(idToDelete);
     removeChildReferencesEverywhere(updated, idToDelete);
   }
 
-  // Root children policy:
-  // - if there are top groups, root points to them
-  // - else root points directly to content nodes
+  // ✅ FIX 3: SAFE Root children policy
+  // If root currently has group children, preserve them
+  // Otherwise point directly to content nodes
   const patchedRoot = cloneNode(updated.get(rootId) || root);
-  patchedRoot.hierarchy.childIds = topGroupIds.length > 0 ? topGroupIds : newContentIds;
-  updated.set(rootId, patchedRoot);
+  
+  const rootHasGroups = (patchedRoot.hierarchy.childIds || [])
+    .map(id => updated.get(id))
+    .some(n => n && isGroupNode(n));
 
+  if (rootHasGroups && existingTopGroupIds.length > 0) {
+    // Keep existing groups, but ensure they're all in childIds
+    patchedRoot.hierarchy.childIds = Array.from(new Set([
+      ...patchedRoot.hierarchy.childIds,
+      ...existingTopGroupIds
+    ]));
+  } else if (!rootHasGroups) {
+    // No groups: point directly to content
+    patchedRoot.hierarchy.childIds = newContentIds;
+  }
+  // else: mixed case - keep what was there
+
+  updated.set(rootId, patchedRoot);
   return updated;
 }
 
