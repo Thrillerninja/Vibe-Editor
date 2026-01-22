@@ -35,6 +35,11 @@ import {
 import {
   $getRoot,
   $createParagraphNode,
+  $getSelection,
+  $isRangeSelection,
+  $createRangeSelection,
+  $setSelection,
+  TextNode,
 } from 'lexical';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
@@ -189,6 +194,14 @@ function EditorContent({
    */
   const isSyncingRef = useRef(false);
 
+  /**
+   * Track cursor position persistently across all edits
+   * This is updated on every editor change to capture the true cursor position
+   * even if the editor loses focus during hierarchy generation
+   * @type {React.MutableRefObject<number>}
+   */
+  const lastKnownCursorRef = useRef(0);
+
   // =========================================================================
   // Markdown Conversion
   // =========================================================================
@@ -221,6 +234,8 @@ function EditorContent({
           cursorPos = markdownContent.length;
         }
 
+        // Track cursor position persistently for hierarchy sync
+        lastKnownCursorRef.current = cursorPos;
         console.log('[RichTextEditor] Markdown length:', markdownContent.length);
         console.log('[RichTextEditor] Cursor position:', cursorPos);
 
@@ -233,29 +248,127 @@ function EditorContent({
   );
 
   /**
-   * Handle blur event - notify parent component
+   * Handle blur event - save cursor position before losing focus
    *
    * @returns {void}
    */
   const handleBlur = useCallback(() => {
+    // Save cursor position on blur as a fallback
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        lastKnownCursorRef.current = selection.anchor.offset;
+        console.log('[RichTextEditor] Blur: saved cursor position:', lastKnownCursorRef.current);
+      }
+    });
     if (onBlur) {
       onBlur();
     }
-  }, [onBlur]);
+  }, [editor, onBlur]);
 
+  /**
+   * Track cursor position on selection changes
+   * This captures cursor position even when just moving the cursor without typing
+   */
+  useEffect(() => {
+    const removeSelectionListener = editor.registerUpdateListener(
+      ({ editorState }) => {
+        // Don't update cursor during our own sync operations
+        if (isSyncingRef.current) {
+          return;
+        }
+        editorState.read(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            const offset = selection.anchor.offset;
+            lastKnownCursorRef.current = offset;
+            console.log('[RichTextEditor] Selection updated cursor to:', offset);
+          }
+        });
+      }
+    );
 
-
-
+    return () => {
+      removeSelectionListener();
+    };
+  }, [editor]);
 
   // =========================================================================
   // Value Synchronization
   // =========================================================================
 
   /**
+   * Find the text node and exact offset for a character position
+   * Traverses the document tree to find where a cursor should be placed
+   * 
+   * @param {Object} root - The root node
+   * @param {number} targetOffset - The target character offset
+   * @returns {{node: Object, offset: number} | null}
+   */
+  const findNodeAtOffset = (root, targetOffset) => {
+    let currentOffset = 0;
+    const children = root.getChildren();
+    
+    for (const child of children) {
+      // Check child text content length
+      let textLength = 0;
+      if (child instanceof TextNode) {
+        textLength = child.getTextContent().length;
+      } else if (child.getAllTextNodes) {
+        // For paragraph/list nodes, get all text nodes
+        const textNodes = child.getAllTextNodes();
+        textLength = textNodes.reduce((sum, n) => sum + n.getTextContent().length, 0);
+      }
+      
+      if (currentOffset + textLength >= targetOffset) {
+        // The target is within this child
+        if (child instanceof TextNode) {
+          // Direct text node
+          const offset = targetOffset - currentOffset;
+          return { node: child, offset };
+        } else {
+          // Composite node (paragraph, list, etc.) - find in text nodes
+          const textNodes = child.getAllTextNodes();
+          for (const textNode of textNodes) {
+            const nodeLength = textNode.getTextContent().length;
+            if (currentOffset + nodeLength >= targetOffset) {
+              const offset = targetOffset - currentOffset;
+              return { node: textNode, offset };
+            }
+            currentOffset += nodeLength;
+          }
+        }
+      }
+      currentOffset += textLength;
+    }
+    
+    // If target is beyond content, return end of last node
+    if (children.length > 0) {
+      const lastChild = children[children.length - 1];
+      if (lastChild instanceof TextNode) {
+        return { node: lastChild, offset: lastChild.getTextContent().length };
+      }
+      const textNodes = lastChild.getAllTextNodes();
+      if (textNodes.length > 0) {
+        const lastTextNode = textNodes[textNodes.length - 1];
+        return { node: lastTextNode, offset: lastTextNode.getTextContent().length };
+      }
+    }
+    
+    return null;
+  };
+
+  /**
    * Sync editor content when value prop changes
    * Uses debouncing to avoid excessive updates
+   * Preserves cursor position when content is replaced
    */
   useEffect(() => {
+  // Skip if we're currently syncing (prevents loops)
+  if (isSyncingRef.current) {
+    return;
+  }
+
   // Clear existing debounce
   if (syncDebounceRef.current) {
     clearTimeout(syncDebounceRef.current);
@@ -263,19 +376,38 @@ function EditorContent({
 
   // Debounce the sync
   syncDebounceRef.current = setTimeout(() => {
+    // Skip if still syncing from another call
+    if (isSyncingRef.current) {
+      return;
+    }
+
+    // Get the last known cursor position from our persistent tracker
+    const savedCursorOffset = lastKnownCursorRef.current;
+    console.log('[RichTextEditor] Using persisted cursor position:', savedCursorOffset);
+
+    // Check if we actually need to sync (content differs)
+    const needsSync = editor.getEditorState().read(() => {
+      const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
+      return currentMarkdown !== value;
+    });
+
+    if (!needsSync) {
+      console.log('[RichTextEditor] Content unchanged, skipping sync');
+      return;
+    }
+
+    console.log('[RichTextEditor] Syncing content from prop');
+    isSyncingRef.current = true;
+
+    // Do everything in one update to prevent race conditions
     editor.update(() => {
       const currentMarkdown = $convertToMarkdownString(TRANSFORMERS);
-
-      // Only sync if content differs
-      if (currentMarkdown === value) {
-        return;
-      }
-
-      console.log('[RichTextEditor] Syncing content from prop');
       console.log('  Current markdown length:', currentMarkdown.length);
       console.log('  New value length:', value.length);
 
-      isSyncingRef.current = true;
+      // Save cursor position before clearing
+      const selection = $getSelection();
+      const selectionOffset = $isRangeSelection(selection) ? selection.anchor.offset : savedCursorOffset;
 
       // Clear the entire root
       const root = $getRoot();
@@ -288,6 +420,26 @@ function EditorContent({
         root.append(...nodes);
       } else {
         root.append($createParagraphNode());
+      }
+
+      // Find the node at the saved offset and restore selection immediately
+      const newContentLength = value.length;
+      const clampedOffset = Math.min(selectionOffset, newContentLength);
+      console.log('[RichTextEditor] Restoring cursor position to:', clampedOffset);
+
+      const result = findNodeAtOffset(root, clampedOffset);
+      
+      if (result && result.node) {
+        const newSelection = $createRangeSelection();
+        newSelection.anchor.set(result.node.getKey(), result.offset, 'text');
+        newSelection.focus.set(result.node.getKey(), result.offset, 'text');
+        $setSelection(newSelection);
+        console.log('[RichTextEditor] Cursor restored successfully on node:', result.node.getKey());
+        
+        // Update our persistent cursor ref to the restored position
+        lastKnownCursorRef.current = result.offset;
+      } else {
+        console.log('[RichTextEditor] Could not find node for cursor position');
       }
 
       isSyncingRef.current = false;

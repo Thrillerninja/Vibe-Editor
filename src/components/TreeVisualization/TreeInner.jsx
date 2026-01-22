@@ -11,6 +11,7 @@
  * - nodeMap as single source of truth
  *
  * @typedef {import('../../types/node.js').Node} Node
+ * @typedef {import('../../types/node.js').NodeData} NodeData
  */
 
 import React, {
@@ -325,7 +326,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       if (oldParentId) pruneEmptyGroupsUp(updated, oldParentId, rootId);
 
       console.log(
-        `[TreeInner] ✅ Reorder complete: moved to parent ${newParentId.substring(0, 8)}`
+        `[TreeInner] Reorder complete: moved to parent ${newParentId.substring(0, 8)}`
       );
 
       treeChangedRef.current = true;
@@ -369,35 +370,55 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @returns {{nodes: Array, edges: Array}}
    */
   const buildFlowStructure = useCallback(() => {
+    console.log('[TreeInner DEBUG] buildFlowStructure START');
+    console.log('[TreeInner DEBUG] nodeMap size:', nodeMap.size);
+    console.log('[TreeInner DEBUG] rootId:', rootId);
+
     const flowNodes = [];
     const flowEdges = [];
 
     const visited = new Set();
     const orderedIds = [];
 
-    const dfs = (id) => {
+    const dfs = (id, depth = 0) => {
       if (visited.has(id)) return;
       visited.add(id);
 
       const node = nodeMap.get(id);
-      if (!node) return;
+      if (!node) {
+        console.warn(`[TreeInner DEBUG] Node ${id} not found in nodeMap at depth ${depth}`);
+        return;
+      }
 
+      console.log(`[TreeInner DEBUG] DFS depth ${depth}: ${id} type=${node.type}`);
       orderedIds.push(id);
 
       const children = node.hierarchy.childIds ?? [];
-      for (const childId of children) dfs(childId);
+      console.log(`[TreeInner DEBUG]   children count: ${children.length}`, children);
+
+      for (const childId of children) dfs(childId, depth + 1);
     };
 
     dfs(rootId);
 
+    console.log(`[TreeInner DEBUG] DFS traversal complete: ${orderedIds.length} nodes visited`);
+    console.log('[TreeInner DEBUG] orderedIds:', orderedIds);
+
     // include any disconnected/orphan nodes deterministically
     for (const id of nodeMap.keys()) {
-      if (!visited.has(id)) orderedIds.push(id);
+      if (!visited.has(id)) {
+        console.warn(`[TreeInner DEBUG] Orphaned node found: ${id}`);
+        orderedIds.push(id);
+      }
     }
+
+    console.log(`[TreeInner DEBUG] Final flowNodes count: ${orderedIds.length}`);
 
     for (const id of orderedIds) {
       const node = nodeMap.get(id);
       if (!node) continue;
+
+      console.log(`[TreeInner DEBUG] Adding node to flow: ${id} type=${node.type}`);
 
       const zoom = rfRef.current.getZoom();
       const closestNodeElement = containerRef.current.querySelector(
@@ -439,6 +460,8 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         });
       }
     }
+
+    console.log(`[TreeInner DEBUG] buildFlowStructure COMPLETE: ${flowNodes.length} nodes, ${flowEdges.length} edges`);
 
     return { nodes: flowNodes, edges: flowEdges };
   }, [nodeMap, rootId]);
@@ -682,7 +705,13 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       editedNode.content = newContent;
 
       if (emotionProfile) {
-        editedNode.emotion = emotionProfile;
+        editedNode.emotion = {
+          profile: emotionProfile,
+          dominantEmotion: 'interest', // compute or take from profile
+          dominantIntensity: 50,
+          source: 'manual',
+          timestamp: new Date().toISOString(),
+        };
       }
 
       if (contentChanged) {
@@ -728,19 +757,45 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /**
    * Apply changes to subtree (emotion + text edits)
    * @param {string} nodeId
-   * @param {Object} emotionProfile
+   * @param {Object} emotionOrNodeEmotion - EmotionProfile OR NodeEmotion
    * @param {Object} edits - Map of leafId → newContent
    */
   const applySubtreeChanges = useCallback(
-    (nodeId, emotionProfile, edits) => {
+    (nodeId, emotionOrNodeEmotion, edits) => {
       const updated = new Map(nodeMapRef.current);
 
-      // Apply emotion to subtree
+      const toNodeEmotion = (input) => {
+        // Already NodeEmotion
+        if (input && typeof input === 'object' && input.profile) return input;
+
+        // Treat as EmotionProfile
+        const profile = input || {};
+        let dominantEmotion = 'interest';
+        let dominantIntensity = 0;
+
+        for (const [k, v] of Object.entries(profile)) {
+          if (typeof v === 'number' && v > dominantIntensity) {
+            dominantEmotion = k;
+            dominantIntensity = v;
+          }
+        }
+
+        return {
+          profile,
+          dominantEmotion,
+          dominantIntensity,
+          source: 'manual',
+          timestamp: new Date().toISOString(),
+        };
+      };
+
+      // Apply emotion to subtree root
       const node = updated.get(nodeId);
       if (node) {
         const nodeClone = cloneNode(node);
-        nodeClone.emotion = emotionProfile;
+        nodeClone.emotion = toNodeEmotion(emotionOrNodeEmotion);
         nodeClone.metadata.isDirty = true;
+        nodeClone.metadata.modifiedAt = new Date().toISOString();
         updated.set(nodeId, nodeClone);
       }
 
@@ -782,6 +837,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           );
           updated.set(node.hierarchy.parentId, parentClone);
         }
+        pruneEmptyGroupsUp(updated, node.hierarchy.parentId, rootId);
       }
 
       // Remove node and edges
@@ -815,7 +871,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           applySubtreeChanges,
           deleteNode,
           getDescendantLeaves,
-        },
+        } /** @type {NodeData} */,
       })),
     [nodes, applyNodeEdit, applyEmotionToSubtree, applySubtreeChanges, deleteNode, getDescendantLeaves]
   );
