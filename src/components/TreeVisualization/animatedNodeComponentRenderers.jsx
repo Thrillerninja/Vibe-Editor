@@ -269,31 +269,40 @@ export function LeafSkeleton() {
       border: '1px solid rgba(0,0,0,0.1)',
       borderRadius: 12,
       padding: 16,
-      background: "rgba(255,255,255,0.4)",
+      background: 'rgba(255,255,255,0.5)',
       animation: 'pulse 2s infinite'
     }}>
+      {/* Header: index indicator + nav buttons */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: 8,
-        marginBottom: 8
+        marginBottom: 12,
+        gap: 8
       }}>
         <div style={{
           width: 28,
           height: 28,
-          borderRadius: 8,
+          borderRadius: 6,
           background: '#e5e7eb'
         }} />
         <div style={{
-          flex: 1,
-          height: 16,
+          width: 80,
+          height: 14,
           background: '#e5e7eb',
           borderRadius: 4
         }} />
+        <div style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          background: '#e5e7eb'
+        }} />
       </div>
+
+      {/* Text content placeholder */}
       <div style={{
         width: '100%',
-        height: 80,
+        height: 64,
         background: '#e5e7eb',
         borderRadius: 8
       }} />

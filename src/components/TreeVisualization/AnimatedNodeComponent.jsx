@@ -33,7 +33,6 @@ import { getSecondaryEmotionTooltip } from '@utils/secondaryEmotios.js';
 import { getBorderColor, getEmotionColor, getSignificantEmotions } from './animatedNodeComponentHelpers.js';
 import { renderNodeContent } from './animatedNodeComponentRenderers.jsx';
 
-
 /**
  * AnimatedNodeComponent - Renders a single tree node with editing capabilities
  *
@@ -74,51 +73,9 @@ export function AnimatedNodeComponent({ id, data }) {
   // STATE: Node Content
   // =========================================================================
 
-  const [nodeText, setNodeText] = useState(data.content || '');
-  const [previousText, setPreviousText] = useState(
-    data.content || ''
-  );
   const [nodeModified, setNodeModified] = useState(
     data.metadata?.isDirty ?? false
   );
-
-  // =========================================================================
-  // STATE: Emotion (Current Node - New System)
-  // =========================================================================
-
-  // Initialize from new unified emotion structure
-  const initialProfile = data.emotion?.profile ?? createEmptyEmotionProfile();
-
-  const [emotionProfile, setEmotionProfile] = useState(initialProfile);
-  const [originalEmotionProfile, setOriginalEmotionProfile] =
-    useState(initialProfile);
-  const [emotion, setEmotion] = useState(data.emotion?.dominantEmotion || 'interest');
-  const [intensity, setIntensity] = useState(
-    data.emotion?.dominantIntensity ?? 0
-  );
-  const [selectedIntensity, setSelectedIntensity] = useState(
-    data.emotion?.dominantIntensity ?? 0
-  );
-  const [previousEmotion, setPreviousEmotion] = useState(emotion);
-
-  // =========================================================================
-  // STATE: Subtree Editing
-  // =========================================================================
-
-  const [subtreeEmotionProfile, setSubtreeEmotionProfile] =
-    useState(initialProfile);
-  const [subtreeEmotion, setSubtreeEmotion] = useState(
-    data.emotion?.dominantEmotion || 'interest'
-  );
-  const [subtreeIntensity, setSubtreeIntensity] = useState(
-    data.emotion?.dominantIntensity ?? 0
-  );
-
-  /** @type {[Object<string, LeafEntry>, Function]} */
-  const [leafSuggestions, setLeafSuggestions] = useState({});
-
-  /** @type {[string[], Function]} */
-  const [leafOrder, setLeafOrder] = useState([]);
 
   // =========================================================================
   // STATE: Debug tooltip
@@ -130,9 +87,23 @@ export function AnimatedNodeComponent({ id, data }) {
   // =========================================================================
   // COMPUTED VALUES
   // =========================================================================
+  // Ensure emotion always exists
+  const /** @type {NodeEmotion} */ defaultEmotion = {
+    profile: createEmptyEmotionProfile(),
+    dominantEmotion: 'interest',
+    dominantIntensity: 0,
+    source: 'manual',
+    timestamp: new Date().toISOString(),
+  };
 
-  const emotionColor = getEmotionColor(emotion, intensity, data.type);
-  const border = getBorderColor(emotion, intensity, data.type);
+  data.emotion = data.emotion || defaultEmotion;
+
+  const emotionColor = getEmotionColor(data.emotion.dominantEmotion, data.emotion.dominantIntensity, data.type);
+  const border = getBorderColor(data.emotion.dominantEmotion, data.emotion.dominantIntensity, data.type);
+  
+  // Get significant emotions for badge display, excluding the dominant one
+  const significantEmotions = getSignificantEmotions(data.emotion.profile, 30)
+    .filter(e => e.emotion !== data.emotion.dominantEmotion);
 
   // =========================================================================
   // EFFECTS: Sync External Data
@@ -145,25 +116,6 @@ export function AnimatedNodeComponent({ id, data }) {
   useEffect(() => {
     setNodeModified(data.metadata?.isDirty ?? false);
   }, [data.metadata?.isDirty]);
-
-  /**
-   * Sync emotion profile from data changes
-   * Updates all emotion-related state when node emotion data changes
-   */
-  useEffect(() => {
-    const profile = data.emotion?.profile ?? createEmptyEmotionProfile();
-
-    setEmotionProfile(profile);
-    setOriginalEmotionProfile(profile);
-    setEmotion(data.emotion?.dominantEmotion || 'interest');
-    setIntensity(data.emotion?.dominantIntensity ?? 0);
-    setSelectedIntensity(data.emotion?.dominantIntensity ?? 0);
-    setPreviousEmotion(data.emotion?.dominantEmotion || 'interest');
-    setPreviousText(data.content || '');
-    setSubtreeEmotionProfile(profile);
-    setSubtreeEmotion(data.emotion?.dominantEmotion || 'interest');
-    setSubtreeIntensity(data.emotion?.dominantIntensity ?? 0);
-  }, [data.emotion, data.content]);
 
   // =========================================================================
   // Debug tooltip
@@ -222,15 +174,6 @@ export function AnimatedNodeComponent({ id, data }) {
       }
     };
   }, []);
-
-  
-  // =========================================================================
-  // Misc
-  // =========================================================================
-
-  // Get significant emotions for badge display, excluding the dominant one
-  const significantEmotions = getSignificantEmotions(emotionProfile, 30)
-    .filter(e => e.emotion !== emotion);
 
   return (
     <>
@@ -327,7 +270,7 @@ export function AnimatedNodeComponent({ id, data }) {
                 .map(e => `${EMOTION_LABELS[e.emotion] || e.emotion}: ${e.intensity}%`)
                 .join('\n')}
             >
-              {significantEmotions.slice(0, 5).map((emotionData, idx) => (
+              {significantEmotions.slice(0, 4).map((emotionData, idx) => (
                 <div
                   key={emotionData.emotion}
                   title={getSecondaryEmotionTooltip(emotionData.emotion, emotionData.intensity)}
@@ -436,38 +379,9 @@ export function AnimatedNodeComponent({ id, data }) {
       </div>
 
       {isDialogOpen && <NewEmotionEditDialog 
-        nodeText={nodeText}
-        setNodeText={setNodeText}
-        previousText={previousText}
-        setPreviousText={setPreviousText}
-        emotionProfile={emotionProfile}
-        setEmotionProfile={setEmotionProfile}
-        originalEmotionProfile={originalEmotionProfile}
-        setOriginalEmotionProfile={setOriginalEmotionProfile}
-        selectedIntensity={selectedIntensity}
-        setSelectedIntensity={setSelectedIntensity}
-        previousEmotion={previousEmotion}
-        setPreviousEmotion={setPreviousEmotion}
-        subtreeEmotion={subtreeEmotion}
-        setSubtreeEmotion={setSubtreeEmotion}
-        subtreeIntensity={subtreeIntensity}
-        setSubtreeIntensity={setSubtreeIntensity}
-        leafSuggestions={leafSuggestions}
-        setLeafSuggestions={setLeafSuggestions}
-        leafOrder={leafOrder}
-        setLeafOrder={setLeafOrder}
-        subtreeEmotionProfile={subtreeEmotionProfile}
-        setSubtreeEmotionProfile={setSubtreeEmotionProfile}
-        emotion={emotion}
-        setEmotion={setEmotion}
-        intensity={intensity}
-        setIntensity={setIntensity}
-
-        setIsDialogOpen={setIsDialogOpen}
-
-        getEmotionColor={getEmotionColor}
         id={id}
         data={data}
+        onClose={() => setIsDialogOpen(false)}
       />}
     </>
   )

@@ -82,14 +82,20 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
 }
 
 /**
- * Convert Claude's response back to nodeMap updates
+ * Convert Claude's response back to nodeMap updates (SAFE PARTIAL SUBTREE REPLACE)
  *
- * @param {Map<string, Node>} nodeMap - Current node map
- * @param {string} rootId - Root node ID
- * @param {Array} restructuredSubtrees - From Claude
- * @param {string} newRootTitle - From Claude
- * @param {Object} newRootEmotions - From Claude
- * @returns {Map<string, Node>} Updated nodeMap
+ * Guarantees:
+ * - Does NOT delete unrelated groups/content.
+ * - Replaces only the subtree rooted at subtree.rootNodeId.
+ * - Keeps parent/child pointers consistent (single-parent invariant).
+ *
+ * @param {Map<string, Node>} nodeMap
+ * @param {string} rootId
+ * @param {Array<{rootNodeId: string, newNodes: Array}>} restructuredSubtrees
+ * @param {string|undefined} newRootTitle
+ * @param {Object|undefined} newRootEmotions - EmotionProfile (DES) for root
+ * @param {number} maxDepth
+ * @returns {Map<string, Node>}
  */
 export function applyClaudeRestructureToNodeMap(
   nodeMap,
@@ -107,248 +113,276 @@ export function applyClaudeRestructureToNodeMap(
 
   const buildEmotionField = (profile) => {
     if (!profile || typeof profile !== 'object') return null;
+
     const entries = Object.entries(profile).filter(
       ([, v]) => typeof v === 'number'
     );
-    const dominantEntry = entries.sort((a, b) => b[1] - a[1])[0];
+
+    let dominantEmotion = 'interest';
+    let dominantIntensity = 0;
+
+    for (const [k, v] of entries) {
+      if (v > dominantIntensity) {
+        dominantEmotion = k;
+        dominantIntensity = v;
+      }
+    }
+
     return {
       profile,
-      dominantEmotion: dominantEntry ? dominantEntry[0] : 'interest',
-      dominantIntensity: dominantEntry ? dominantEntry[1] : 0,
+      dominantEmotion,
+      dominantIntensity,
       source: 'ai',
       timestamp: new Date().toISOString(),
     };
   };
 
-  // STEP 0: SAVE OLD CONTENT NODES BEFORE DELETION
-  const oldContentNodes = Array.from(updated.values())
-    .filter(n => isContentNode(n))
-    .map(n => ({ id: n.id, content: n.content, level: n.hierarchy.level }));
+  const removeChildFromParent = (parentId, childId) => {
+    if (!parentId) return;
+    const parent = updated.get(parentId);
+    if (!parent) return;
 
-  console.log(`[Adapter] Preserving ${oldContentNodes.length} content nodes before restructure`);
-
-  // STEP 1: DELETE OLD GROUPS (but not content!)
-  const groupNodesToDelete = Array.from(updated.values())
-    .filter((n) => isGroupNode(n))
-    .map((n) => n.id);
-
-  groupNodesToDelete.forEach((id) => {
-    updated.delete(id);
-    console.log(`[Adapter] Deleted group node: ${id.substring(0, 8)}`);
-  });
-
-  // STEP 2: VALIDATE CLAUDE OUTPUT
-  if (restructuredSubtrees && restructuredSubtrees.length > 0) {
-    // First pass: Collect ALL node IDs that Claude created
-    const allClaudeNodeIds = new Set();
-    const nodesByIdFromClaude = new Map();
-
-    for (const subtree of restructuredSubtrees) {
-      const nodes = Array.isArray(subtree.newNodes) ? subtree.newNodes : [];
-      nodes.forEach((n) => {
-        allClaudeNodeIds.add(n.id);
-        nodesByIdFromClaude.set(n.id, n);
-      });
-    }
-
-    // Validate: Every node's children must exist in Claude's output
-    // OR be existing content nodes
-    const contentNodeIds = new Set(
-      Array.from(updated.values())
-        .filter(isContentNode)
-        .map((n) => n.id)
+    const patched = cloneNode(parent);
+    patched.hierarchy.childIds = (patched.hierarchy.childIds || []).filter(
+      (id) => id !== childId
     );
+    updated.set(parentId, patched);
+  };
 
-    let hasInvalidReferences = false;
+  const insertChildrenIntoParent = (parentId, insertAtIndex, childIds) => {
+    const parent = updated.get(parentId);
+    if (!parent) return;
 
-    for (const claudeNode of nodesByIdFromClaude.values()) {
-      for (const childId of claudeNode.childIds || []) {
-        const isClaudeNode = allClaudeNodeIds.has(childId);
-        const isContentNode = contentNodeIds.has(childId);
+    const patched = cloneNode(parent);
+    const arr = [...(patched.hierarchy.childIds || [])];
 
-        if (!isClaudeNode && !isContentNode) {
-          console.error(
-            `[Adapter] ❌ INVALID: Node ${claudeNode.id} references missing child ${childId}`
-          );
-          hasInvalidReferences = true;
+    // Remove any occurrences first (avoid duplicates)
+    const filtered = arr.filter((id) => !childIds.includes(id));
+
+    const idx =
+      insertAtIndex >= 0 && insertAtIndex <= filtered.length
+        ? insertAtIndex
+        : filtered.length;
+
+    filtered.splice(idx, 0, ...childIds);
+    patched.hierarchy.childIds = filtered;
+
+    updated.set(parentId, patched);
+  };
+
+  const collectGroupSubtreeIds = (startGroupId) => {
+    const out = new Set();
+    const queue = [startGroupId];
+
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (!id || out.has(id)) continue;
+
+      const node = updated.get(id);
+      if (!node) continue;
+      if (!isGroupNode(node)) continue;
+
+      out.add(id);
+
+      for (const childId of node.hierarchy.childIds || []) {
+        const child = updated.get(childId);
+        if (child && isGroupNode(child)) {
+          queue.push(childId);
         }
       }
     }
 
-    if (hasInvalidReferences) {
-      console.error('[Adapter] Claude output contains invalid references! Aborting restructure.');
-      console.log('[Adapter] Keeping old hierarchy intact.');
-      return updated;
-    }
+    return out;
+  };
 
-    // STEP 3: REBUILD HIERARCHY
-    const rootChildGroupIds = [];
-    const parentById = new Map();
-
-    // Build parent map (only for valid relationships)
-    for (const subtree of restructuredSubtrees) {
-      const nodes = Array.isArray(subtree.newNodes) ? subtree.newNodes : [];
-      const ids = new Set(nodes.map((n) => n.id));
-
-      for (const node of nodes) {
-        for (const childId of node.childIds || []) {
-          if (ids.has(childId)) {
-            parentById.set(childId, node.id);
-            console.log(
-              `[Adapter] Parent mapping: ${childId.substring(0, 8)} → ${node.id.substring(0, 8)}`
-            );
-          }
-        }
-      }
-    }
-
-    // Create group nodes with validated parents
-    for (const subtree of restructuredSubtrees) {
-      const nodes = Array.isArray(subtree.newNodes) ? subtree.newNodes : [];
-      if (nodes.length === 0) continue;
-
-      const subtreeTopLevel = Math.max(...nodes.map((n) => n.level));
-
-      // Track which nodes are top-level
-      const topLevelNodeIds = [];
-      for (const node of nodes) {
-        if (node.level === subtreeTopLevel) {
-          topLevelNodeIds.push(node.id);
-          rootChildGroupIds.push(node.id);
-        }
-      }
-
-      console.log(
-        `[Adapter] Top-level nodes in subtree: ${topLevelNodeIds.map((id) => id.substring(0, 8)).join(', ')}`
-      );
-
-      // Create each group node
-      for (const node of nodes) {
-        const parentId = parentById.get(node.id) ?? rootId;
-        const appLevel = toAppLevel(node.level);
-
-        // ✅ VALIDATE parent exists
-        if (parentId !== rootId && !allClaudeNodeIds.has(parentId)) {
-          console.warn(
-            `[Adapter] ⚠️ Parent ${parentId} not in Claude output, using root as fallback`
-          );
-        }
-
-        console.log(
-          `[Adapter] Creating group: ${node.id.substring(0, 8)}, level ${appLevel}, parent ${parentId === rootId ? 'root' : parentId.substring(0, 8)}`
-        );
-
-        const group = createGroupNode(
-          node.id,
-          node.title,
-          appLevel,
-          parentId,
-          [...(node.childIds || [])],
-          { metadata: { isDirty: false } }
-        );
-
-        const emotionField = buildEmotionField(node.emotions);
-        if (emotionField) group.emotion = emotionField;
-
-        updated.set(node.id, group);
-      }
-
-      // Update content nodes
-      nodes
-        .filter((n) => n.level === 2)
-        .forEach((level2) => {
-          for (const sentenceId of level2.childIds || []) {
-            const contentNode = updated.get(sentenceId);
-            if (!contentNode || !isContentNode(contentNode)) continue;
-
-            const updatedContent = cloneNode(contentNode);
-            updatedContent.hierarchy.parentId = level2.id;
-            updatedContent.hierarchy.level = contentLevel;
-            updated.set(sentenceId, updatedContent);
-
-            console.log(
-              `[Adapter] Updated content node ${sentenceId.substring(0, 8)} parent → ${level2.id.substring(0, 8)}`
-            );
-          }
-        });
-    }
-
-    // STEP 4: UPDATE ROOT
+  if (!restructuredSubtrees || restructuredSubtrees.length === 0) {
+    // Still allow root metadata update
     const root = updated.get(rootId);
     if (root) {
-      const updatedRoot = cloneNode(root);
-      updatedRoot.content = newRootTitle || root.content;
-      updatedRoot.hierarchy.childIds = [...new Set(rootChildGroupIds)]; // dedupe
-
+      const patchedRoot = cloneNode(root);
+      if (newRootTitle) patchedRoot.content = newRootTitle;
       const rootEmotionField = buildEmotionField(newRootEmotions);
-      if (rootEmotionField) updatedRoot.emotion = rootEmotionField;
-
-      updated.set(rootId, updatedRoot);
-      console.log(
-        `[Adapter] Updated root with ${rootChildGroupIds.length} children`
-      );
+      if (rootEmotionField) patchedRoot.emotion = rootEmotionField;
+      updated.set(rootId, patchedRoot);
     }
+    return updated;
+  }
 
-    // STEP 5: CLEANUP ORPHANS
-    const allValidParentIds = new Set([rootId, ...allClaudeNodeIds]);
-    const orphanIds = [];
+  // Validate Claude references globally (content nodes must exist, group refs must exist in Claude output)
+  const allClaudeNodeIds = new Set();
+  const nodesByIdFromClaude = new Map();
 
-    for (const [nodeId, node] of updated.entries()) {
-      if (
-        node.hierarchy.parentId &&
-        !allValidParentIds.has(node.hierarchy.parentId)
-      ) {
-        orphanIds.push(nodeId);
+  for (const subtree of restructuredSubtrees) {
+    const nodes = Array.isArray(subtree.newNodes) ? subtree.newNodes : [];
+    for (const n of nodes) {
+      allClaudeNodeIds.add(n.id);
+      nodesByIdFromClaude.set(n.id, n);
+    }
+  }
+
+  const contentNodeIds = new Set(
+    Array.from(updated.values())
+      .filter(isContentNode)
+      .map((n) => n.id)
+  );
+
+  for (const claudeNode of nodesByIdFromClaude.values()) {
+    for (const childId of claudeNode.childIds || []) {
+      const isClaudeNode = allClaudeNodeIds.has(childId);
+      const isContent = contentNodeIds.has(childId);
+
+      if (!isClaudeNode && !isContent) {
         console.error(
-          `[Adapter] ❌ Orphaned node detected: ${nodeId} parent: ${node.hierarchy.parentId}`
+          `[Adapter] ❌ INVALID: Claude node ${claudeNode.id} references missing child ${childId}`
         );
-      }
-    }
-
-    if (orphanIds.length > 0) {
-      console.error(`[Adapter] Found ${orphanIds.length} orphaned nodes, removing...`);
-      orphanIds.forEach((id) => {
-        updated.delete(id);
-        console.log(`[Adapter] Deleted orphaned node: ${id.substring(0, 8)}`);
-      });
-    }
-  }
-
-  console.log('[Adapter] ✅ Restructure complete, nodeMap now has', updated.size, 'nodes');
-
-  // STEP 5B: EXPLICIT ORPHAN CLEANUP
-  const reachableNodeIds = new Set([rootId]);
-  const queue = [rootId];
-
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
-    const node = updated.get(nodeId);
-    if (!node) continue;
-
-    for (const childId of node.hierarchy.childIds) {
-      if (!reachableNodeIds.has(childId)) {
-        reachableNodeIds.add(childId);
-        queue.push(childId);
+        console.error('[Adapter] Aborting restructure, returning original map');
+        return new Map(nodeMap);
       }
     }
   }
 
-  // Remove all unreachable nodes
-  const orphanedIds = [];
-  for (const [nodeId, node] of updated.entries()) {
-    if (!reachableNodeIds.has(nodeId) && nodeId !== rootId) {
-      orphanedIds.push(nodeId);
-      updated.delete(nodeId);
-      console.log(`[Adapter] Deleted orphaned node: ${nodeId.substring(0, 8)}`);
+  // Apply each subtree as an in-place replacement
+  for (const subtree of restructuredSubtrees) {
+    const nodes = Array.isArray(subtree.newNodes) ? subtree.newNodes : [];
+    if (nodes.length === 0) continue;
+
+    const oldRootId = subtree.rootNodeId;
+    if (!oldRootId || oldRootId === rootId) {
+      console.warn(
+        `[Adapter] Skipping subtree with invalid rootNodeId: ${oldRootId}`
+      );
+      continue;
     }
+
+    const oldRootNode = updated.get(oldRootId);
+    const oldParentId = oldRootNode?.hierarchy?.parentId || rootId;
+    const oldParent = updated.get(oldParentId);
+
+    const oldIndex = oldParent
+      ? (oldParent.hierarchy.childIds || []).indexOf(oldRootId)
+      : -1;
+
+    // Determine top-level Claude nodes for this subtree (highest Claude level)
+    const subtreeTopClaudeLevel = Math.max(...nodes.map((n) => n.level));
+    const topLevelNewIds = nodes
+      .filter((n) => n.level === subtreeTopClaudeLevel)
+      .map((n) => n.id);
+
+    // Build parentById from Claude nodes (group→group relationships only)
+    const idsInThisSubtree = new Set(nodes.map((n) => n.id));
+    const parentById = new Map();
+
+    for (const n of nodes) {
+      for (const childId of n.childIds || []) {
+        if (idsInThisSubtree.has(childId)) {
+          parentById.set(childId, n.id);
+        }
+      }
+    }
+
+    // 1) Remove the old subtree root from its parent (if present)
+    removeChildFromParent(oldParentId, oldRootId);
+
+    // 2) Delete old subtree groups (only groups, not content)
+    const oldGroupIds = collectGroupSubtreeIds(oldRootId);
+
+    // Remove references to old groups from their parents (defensive)
+    for (const gid of oldGroupIds) {
+      const g = updated.get(gid);
+      const pid = g?.hierarchy?.parentId;
+      if (pid) removeChildFromParent(pid, gid);
+    }
+
+    // Delete the groups
+    for (const gid of oldGroupIds) {
+      updated.delete(gid);
+    }
+
+    // 3) Create/replace the new group nodes for this subtree
+    //    Ensure parentId is correct:
+    //    - If Claude node has a Claude parent => that parent
+    //    - If it's top-level of the subtree => oldParentId
+    for (const n of nodes) {
+      const appLevel = toAppLevel(n.level);
+
+      const isTopLevel = n.level === subtreeTopClaudeLevel;
+      const parentId = isTopLevel ? oldParentId : parentById.get(n.id) || null;
+
+      const childIds = [...new Set(n.childIds || [])];
+
+      const group = createGroupNode(
+        n.id,
+        n.title,
+        appLevel,
+        parentId,
+        childIds,
+        {
+          metadata: {
+            isDirty: false,
+            createdAt: new Date().toISOString(),
+            version: 1,
+          },
+        }
+      );
+
+      const emotionField = buildEmotionField(n.emotions);
+      if (emotionField) group.emotion = emotionField;
+
+      updated.set(n.id, group);
+    }
+
+    // 4) Fix content node parents for Claude level-2 nodes (leaf groups)
+    //    Also detach content from its previous parent to prevent multi-parent DAG.
+    for (const level2 of nodes.filter((n) => n.level === 2)) {
+      for (const sentenceId of level2.childIds || []) {
+        const content = updated.get(sentenceId);
+        if (!content || !isContentNode(content)) continue;
+
+        // Detach from old parent (if any)
+        const prevParentId = content.hierarchy.parentId;
+        if (prevParentId && prevParentId !== level2.id) {
+          removeChildFromParent(prevParentId, sentenceId);
+        }
+
+        const patched = cloneNode(content);
+        patched.hierarchy.parentId = level2.id;
+        patched.hierarchy.level = contentLevel;
+
+        // mark leaf dirty (so emotion evaluation can refresh) OR keep as-is
+        patched.metadata.isDirty = true;
+        patched.metadata.modifiedAt = new Date().toISOString();
+
+        updated.set(sentenceId, patched);
+      }
+    }
+
+    // 5) Splice new top-level ids into oldParent at the old position
+    // If oldIndex is unknown, append.
+    insertChildrenIntoParent(oldParentId, oldIndex, topLevelNewIds);
+
+    console.log(
+      `[Adapter] Subtree ${oldRootId.slice(0, 8)} replaced in parent ${
+        oldParentId === rootId ? 'root' : oldParentId.slice(0, 8)
+      } with ${topLevelNewIds.length} node(s)`
+    );
   }
 
-  if (orphanedIds.length > 0) {
-    console.warn(`[Adapter] ⚠️ Deleted ${orphanedIds.length} orphaned nodes`);
+  // Update root metadata (title/emotion), DO NOT overwrite childIds
+  const root = updated.get(rootId);
+  if (root) {
+    const patchedRoot = cloneNode(root);
+    if (newRootTitle) patchedRoot.content = newRootTitle;
+
+    const rootEmotionField = buildEmotionField(newRootEmotions);
+    if (rootEmotionField) patchedRoot.emotion = rootEmotionField;
+
+    updated.set(rootId, patchedRoot);
   }
 
+  console.log('[Adapter] Restructure complete, nodeMap now has', updated.size, 'nodes');
   return updated;
 }
+
 /**
  * Apply emotion evaluation to nodeMap
  *

@@ -74,6 +74,7 @@ import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Devi
 import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
 import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
 import getPoemLines from '@utils/poetry';
+import { deriveLegacyFromProfile } from '@utils/emotionProfiles';
 
 // ============================================================================
 // CONSTANTS
@@ -341,8 +342,76 @@ export default function Editor() {
   // =========================================================================
   // HIERARCHY GENERATION
   // =========================================================================
+  /**
+   * Repair orphaned nodes - ensure all content is reachable from root
+   * @param {Map<string, Node>} nodeMap
+   * @param {string} rootId
+   * @returns {Map<string, Node>}
+   */
+  function repairOrphanedNodes(nodeMap, rootId) {
+    const root = nodeMap.get(rootId);
+    if (!root) return nodeMap;
+
+    // Mark all reachable nodes via DFS
+    const visited = new Set();
+    const queue = [...(root.hierarchy.childIds || [])];
+    
+    while (queue.length > 0) {
+      const id = queue.shift();
+      if (visited.has(id)) continue;
+      visited.add(id);
+
+      const node = nodeMap.get(id);
+      if (node && node.hierarchy.childIds) {
+        queue.push(...node.hierarchy.childIds);
+      }
+    }
+
+    // Find orphaned top-level groups (level 1, but not reachable)
+    const orphanedGroups = Array.from(nodeMap.values())
+      .filter(n => 
+        isGroupNode(n) && 
+        n.hierarchy.level === 1 && 
+        !visited.has(n.id)
+      );
+
+    if (orphanedGroups.length === 0) {
+      return nodeMap; // No orphans
+    }
+
+    console.warn(`[Editor] Found ${orphanedGroups.length} orphaned top-level groups, reattaching to root`);
+
+    const updated = new Map(nodeMap);
+    const patchedRoot = cloneNode(root);
+    
+    // Add orphaned groups to root
+    for (const group of orphanedGroups) {
+      if (!patchedRoot.hierarchy.childIds.includes(group.id)) {
+        patchedRoot.hierarchy.childIds.push(group.id);
+        console.warn(`[Editor]   - Re-attached orphaned group: ${group.id}`);
+      }
+      
+      // Ensure group's parent is set to root
+      if (group.hierarchy.parentId !== rootId) {
+        const patchedGroup = cloneNode(group);
+        patchedGroup.hierarchy.parentId = rootId;
+        updated.set(group.id, patchedGroup);
+      }
+    }
+
+    updated.set(rootId, patchedRoot);
+    return updated;
+  }
+
   const handleGenerateHierarchy = async () => {
+    console.log('[CRITICAL] ▶ START handleGenerateHierarchy');
+    console.log('  Current nodeMap size:', nodeMap.size);
+    console.log('  Current nodeMap keys sample:', 
+        Array.from(nodeMap.keys()).slice(0, 10).map(k => k.slice(0, 8)));
+    
     const contentNodes = Array.from(nodeMap.values()).filter(isContentNode);
+    console.log('  Content nodes:', contentNodes.length);
+    console.log('  Content IDs sample:', contentNodes.slice(0, 5).map(n => n.id.slice(0, 8)));
 
     if (contentNodes.length === 0) {
       alert('Please add some text first');
@@ -364,8 +433,7 @@ export default function Editor() {
       );
 
       // Step 1: Convert nodeMap to sentence format for Claude
-      /** @type {any} */ const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
-
+      const sentences = nodeMapToSentenceFormat(nodeMap, rootId, maxDepth);
       console.log('[Editor] Converted nodeMap to sentence format');
 
       // Step 2: Call Claude to restructure dirty portions
@@ -374,21 +442,7 @@ export default function Editor() {
       const dirtySentenceIds = hierarchyMeta.dirtySentenceIds || [];
 
       let restructured = new Map(nodeMap);
-      const autoCreatedGroups = Array.from(restructured.values()).filter(
-        n => isGroupNode(n) && n.hierarchy.level >= 1 && n.hierarchy.level < maxDepth - 1
-      );
-
-      console.log(`[Editor] Removing ${autoCreatedGroups.length} auto-created groups`);
-      for (const group of autoCreatedGroups) {
-        restructured.delete(group.id);
-      }
-
-      // Reset root children to just content nodes
-      const root = restructured.get(rootId);
-      const contentNodeIds = contentNodes.map(n => n.id);
-      const resetRoot = cloneNode(root);
-      resetRoot.hierarchy.childIds = contentNodeIds;
-      restructured.set(rootId, resetRoot);
+      console.log('  After deletion, restructured size:', restructured.size);
 
       if (dirtyNodeIds.length === 0 && dirtySentenceIds.length === 0) {
         console.log('[Editor] No dirty nodes - skipping restructure');
@@ -412,7 +466,20 @@ export default function Editor() {
           newRootTitle,
           newRootEmotions,
           maxDepth
-        );
+        )
+        
+        if (newRootEmotions) {
+          const updatedRoot = cloneNode(restructured.get(rootId));
+          updatedRoot.emotion = {
+              profile: newRootEmotions,
+              dominantEmotion: deriveLegacyFromProfile(newRootEmotions).emotion,
+              dominantIntensity: deriveLegacyFromProfile(newRootEmotions).intensity,
+              source: 'ai',
+              timestamp: new Date().toISOString(),
+          };
+          restructured.set(rootId, updatedRoot);
+          console.log('[Editor] ✓ Applied emotions to root node');
+        } 
       }
 
       // Step 4: Evaluate emotions for all content
@@ -433,9 +500,34 @@ export default function Editor() {
         // Step 5: Apply emotions back to nodeMap
         const final = applyEmotionsToNodeMap(restructured, sentencesWithEmotions);
 
-        // IMPORTANT: keep hierarchyState === "generated" by clearing dirty flags
-        const clean = clearAllDirtyFlags(final);
+        const repaired = repairOrphanedNodes(final, rootId);
+        // Verify all content is reachable
+        try {
+            const reachable = getContentNodeIdsInDocumentOrder(repaired, rootId);
+            console.log('  Reachable content nodes:', reachable.length);
+            console.log('  Content nodes in repaired:', Array.from(repaired.values()).filter(isContentNode).length);
+        } catch (e) {
+            console.error('  ❌ ERROR checking reachable nodes:', e.message);
+        }
 
+        // Clear dirty flags
+        const clean = clearAllDirtyFlags(repaired);
+
+        const childToParents = new Map();
+        for (const parent of clean.values()) {
+          for (const childId of parent.hierarchy.childIds || []) {
+            const arr = childToParents.get(childId) || [];
+            arr.push(parent.id);
+            childToParents.set(childId, arr);
+          }
+        }
+
+        const multiParents = Array.from(childToParents.entries()).filter(
+          ([, parents]) => parents.length > 1
+        );
+
+        console.log('[INVARIANT] multi-parent nodes:', multiParents.length);
+        if (multiParents.length) console.log(multiParents.slice(0, 10));
         setNodeMap(clean);
         setHierarchyState('generated');
         addCommit(clean, 'AI hierarchy generated');
@@ -444,7 +536,8 @@ export default function Editor() {
           node_count: clean.size,
         });
       } else {
-        const clean = clearAllDirtyFlags(restructured);
+        const repaired = repairOrphanedNodes(restructured, rootId);
+        const clean = clearAllDirtyFlags(repaired);
 
         setNodeMap(clean);
         setHierarchyState('generated');
@@ -722,6 +815,7 @@ export default function Editor() {
         [], // childIds filled below
         { metadata: {
           isDirty: true,
+          autoCreated: true,
           createdAt: new Date().toISOString(),
           version: 1
         } }
@@ -851,7 +945,8 @@ export default function Editor() {
    * Handle tree modifications (drag/drop in visualization)
    */
   const handleTreeUpdate = useCallback(updatedNodes => {
-    console.log('[Editor] Tree updated, node count:', updatedNodes.size);
+    console.log('[CRITICAL] AFTER tree update from subtree changes:');
+    console.log('  Updated nodeMap size:', updatedNodes.size);
     
     // Calculate new text from updated nodes
     const root = updatedNodes.get(rootId);
