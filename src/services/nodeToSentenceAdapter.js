@@ -379,7 +379,7 @@ export function applyClaudeRestructureToNodeMap(
     updated.set(rootId, patchedRoot);
   }
 
-  console.log('[Adapter] ✅ Restructure complete, nodeMap now has', updated.size, 'nodes');
+  console.log('[Adapter] Restructure complete, nodeMap now has', updated.size, 'nodes');
   return updated;
 }
 

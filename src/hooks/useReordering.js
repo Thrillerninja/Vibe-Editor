@@ -107,7 +107,7 @@ export function useReordering() {
 
       if (closestNode && minDistance < REORDER_THRESHOLD) {
         console.log(
-          `${LOG_PREFIX.DRAG}   ✅ Found closest leaf node: ${closestNode.id} (${minDistance.toFixed(
+          `${LOG_PREFIX.DRAG}   Found closest leaf node: ${closestNode.id} (${minDistance.toFixed(
             1
           )}px)`
         );

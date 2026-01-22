@@ -480,10 +480,6 @@ export default function Editor() {
           restructured.set(rootId, updatedRoot);
           console.log('[Editor] ✓ Applied emotions to root node');
         } 
-
-        // ✅ LOG HERE
-        console.log('[CRITICAL] After Claude restructure:');
-        console.log('  Restructured size:', restructured.size);
       }
 
       // Step 4: Evaluate emotions for all content
@@ -504,13 +500,7 @@ export default function Editor() {
         // Step 5: Apply emotions back to nodeMap
         const final = applyEmotionsToNodeMap(restructured, sentencesWithEmotions);
 
-        // ✅ CRITICAL FIX 2: Repair any orphaned nodes before saving
         const repaired = repairOrphanedNodes(final, rootId);
-        // ✅ LOG HERE
-        console.log('[CRITICAL] After repairOrphanedNodes:');
-        console.log('  Repaired size:', repaired.size);
-        console.log('  Before repair size:', final.size);
-        console.log('  Nodes deleted:', final.size - repaired.size);
         // Verify all content is reachable
         try {
             const reachable = getContentNodeIdsInDocumentOrder(repaired, rootId);
@@ -539,17 +529,6 @@ export default function Editor() {
         console.log('[INVARIANT] multi-parent nodes:', multiParents.length);
         if (multiParents.length) console.log(multiParents.slice(0, 10));
         setNodeMap(clean);
-        // ✅ DEBUG
-        console.log('[Editor DEBUG] After setNodeMap:');
-        console.log('  nodeMap.size:', clean.size);
-        console.log('  Root:', clean.get(rootId));
-        const groups = Array.from(clean.values()).filter(n => isGroupNode(n));
-        console.log('  Groups:', groups.map(g => ({ id: g.id, level: g.hierarchy.level, childCount: g.hierarchy.childIds.length })));
-        const contents = Array.from(clean.values()).filter(n => isContentNode(n));
-        console.log('  Content nodes:', contents.length);
-        const allReachable = getContentNodeIdsInDocumentOrder(clean, rootId);
-        console.log('  Reachable content:', allReachable.length);
-        // ✅ END DEBUG
         setHierarchyState('generated');
         addCommit(clean, 'AI hierarchy generated');
 
@@ -559,11 +538,6 @@ export default function Editor() {
       } else {
         const repaired = repairOrphanedNodes(restructured, rootId);
         const clean = clearAllDirtyFlags(repaired);
-
-        // ✅ LOG HERE - FINAL CHECK
-        console.log('[CRITICAL] ◀ END handleGenerateHierarchy - Final state:');
-        console.log('  Final nodeMap size:', clean.size);
-        console.log('  Content nodes:', Array.from(clean.values()).filter(isContentNode).length);
 
         setNodeMap(clean);
         setHierarchyState('generated');

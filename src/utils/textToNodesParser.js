@@ -473,7 +473,6 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     .filter(isGroupNode)
     .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
 
-  // ✅ FIX 1: Preserve existing top-level groups
   // Instead of computing topGroupIds from root.childIds,
   // find ALL groups that should be under root
   const existingTopGroups = groupNodes.filter(g => 
@@ -576,7 +575,6 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     removeChildReferencesEverywhere(updated, idToDelete);
   }
 
-  // ✅ FIX 3: SAFE Root children policy
   // If root currently has group children, preserve them
   // Otherwise point directly to content nodes
   const patchedRoot = cloneNode(updated.get(rootId) || root);

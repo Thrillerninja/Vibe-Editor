@@ -326,7 +326,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       if (oldParentId) pruneEmptyGroupsUp(updated, oldParentId, rootId);
 
       console.log(
-        `[TreeInner] ✅ Reorder complete: moved to parent ${newParentId.substring(0, 8)}`
+        `[TreeInner] Reorder complete: moved to parent ${newParentId.substring(0, 8)}`
       );
 
       treeChangedRef.current = true;
