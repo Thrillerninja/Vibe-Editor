@@ -39,6 +39,7 @@ import {
   $isRangeSelection,
   $createRangeSelection,
   $setSelection,
+  TextNode,
 } from 'lexical';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
@@ -311,7 +312,7 @@ function EditorContent({
     for (const child of children) {
       // Check child text content length
       let textLength = 0;
-      if (child.getTextContent) {
+      if (child instanceof TextNode) {
         textLength = child.getTextContent().length;
       } else if (child.getAllTextNodes) {
         // For paragraph/list nodes, get all text nodes
@@ -321,7 +322,7 @@ function EditorContent({
       
       if (currentOffset + textLength >= targetOffset) {
         // The target is within this child
-        if (child.getTextContent) {
+        if (child instanceof TextNode) {
           // Direct text node
           const offset = targetOffset - currentOffset;
           return { node: child, offset };
@@ -344,7 +345,7 @@ function EditorContent({
     // If target is beyond content, return end of last node
     if (children.length > 0) {
       const lastChild = children[children.length - 1];
-      if (lastChild.getTextContent) {
+      if (lastChild instanceof TextNode) {
         return { node: lastChild, offset: lastChild.getTextContent().length };
       }
       const textNodes = lastChild.getAllTextNodes();
