@@ -71,10 +71,11 @@ import {
 } from '../types/node';
 import { useUserIdentification } from '../hooks/useUserIdentification';
 import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Deviders';
-import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
+import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder, normalizeListItemMarker } from '@utils/nodeHelpers';
 import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
 import getPoemLines from '@utils/poetry';
 import { deriveLegacyFromProfile } from '@utils/emotionProfiles';
+import { markDirtyWithDescendants } from '@utils/dirtyTracking';
 
 // ============================================================================
 // CONSTANTS
@@ -1095,153 +1096,158 @@ export default function Editor() {
    * - Decreased depth: Remove outermost group levels
    */
   useEffect(() => {
-    const root = nodeMap.get(rootId);
-    if (!root) return;
+  const root = nodeMap.get(rootId);
+  if (!root) return;
 
-    // Get all groups sorted by level
-    const groupNodes = Array.from(nodeMap.values())
-      .filter(isGroupNode)
-      .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
+  const groupNodes = Array.from(nodeMap.values())
+    .filter(isGroupNode)
+    .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
 
-    if (groupNodes.length === 0) return;
+  if (groupNodes.length === 0) return;
 
-    const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
-    const currentDepth = currentMaxLevel + 2;
+  const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
+  const currentDepth = currentMaxLevel + 2;
 
-    if (currentDepth === maxDepth) return; // No change needed
+  if (currentDepth === maxDepth) return;
 
-    console.log(
-      `[Editor] maxDepth changed: ${currentDepth} → ${maxDepth}`
-    );
+  console.log(`[Editor] maxDepth changed: ${currentDepth} → ${maxDepth}`);
 
-    restructuringRef.current = true;
+  restructuringRef.current = true;
+  const updated = new Map(nodeMap);
 
-    const updated = new Map(nodeMap);
-    const contentNodes = Array.from(nodeMap.values()).filter(isContentNode);
-    const levelDiff = Math.abs(maxDepth - currentDepth);
+  if (maxDepth > currentDepth) {
+    // ===== INCREASE DEPTH =====
+    const levelDiff = maxDepth - currentDepth;
 
-    if (maxDepth > currentDepth) {
-      // ========== INCREASE DEPTH ==========
-      console.log(`[Editor] Inserting ${levelDiff} new levels`);
+    const newGroupIds = [];
+    let currentParent = rootId;
 
-      const oldTopGroupId = root.hierarchy.childIds[0];
-      if (!oldTopGroupId) return;
-
-      const newGroupIds = [];
-      let currentParent = rootId;
-
-      // Create new groups to insert
-      for (let i = 0; i < levelDiff; i++) {
-        const newGroupId = uuidv4();
-        const newGroup = createGroupNode(
-          newGroupId,
-          `Level ${i + 1}`,
-          i + 1,
-          currentParent,
-          [],
-          { metadata: {
-            isDirty: false,
+    for (let i = 0; i < levelDiff; i++) {
+      const newGroupId = uuidv4();
+      const newLevel = i + 1;
+      const newGroup = createGroupNode(
+        newGroupId,
+        `Level ${newLevel}`,
+        newLevel,
+        currentParent,
+        [],
+        {
+          metadata: {
+            isDirty: true, // ← Mark new groups as dirty so Claude recognizes them
             createdAt: new Date().toISOString(),
-            version: 1
-          } }
-        );
-        updated.set(newGroupId, newGroup);
-        newGroupIds.push(newGroupId);
-        currentParent = newGroupId;
-      }
-
-      // Chain new groups together
-      for (let i = 0; i < newGroupIds.length - 1; i++) {
-        const group = updated.get(newGroupIds[i]);
-        const chainedGroup = cloneNode(group);
-        chainedGroup.hierarchy.childIds = [newGroupIds[i + 1]];
-        updated.set(newGroupIds[i], chainedGroup);
-      }
-
-      // Connect last new group to old top group
-      const lastNewGroupId = newGroupIds[newGroupIds.length - 1];
-      const lastNewGroup = updated.get(lastNewGroupId);
-      const connectedGroup = cloneNode(lastNewGroup);
-      connectedGroup.hierarchy.childIds = [oldTopGroupId];
-      updated.set(lastNewGroupId, connectedGroup);
-
-      // Update old top group's parent and level
-      const oldTopGroup = updated.get(oldTopGroupId);
-      const updatedOldTop = cloneNode(oldTopGroup);
-      updatedOldTop.hierarchy.parentId = lastNewGroupId;
-      updatedOldTop.hierarchy.level += levelDiff;
-      updated.set(oldTopGroupId, updatedOldTop);
-
-      // Update all other groups' levels
-      groupNodes.forEach(group => {
-        if (group.id !== oldTopGroupId) {
-          const updatedGroup = cloneNode(group);
-          updatedGroup.hierarchy.level += levelDiff;
-          updated.set(group.id, updatedGroup);
+            version: 1,
+          },
         }
-      });
-
-      // Update content nodes' levels
-      contentNodes.forEach(node => {
-        const updatedNode = cloneNode(node);
-        updatedNode.hierarchy.level += levelDiff;
-        updated.set(node.id, updatedNode);
-      });
-
-      // Update root
-      const updatedRoot = cloneNode(root);
-      updatedRoot.hierarchy.childIds = [newGroupIds[0]];
-      updated.set(rootId, updatedRoot);
-
-      console.log(`[Editor] ✓ Inserted ${levelDiff} new levels`);
-    } else {
-      // ========== DECREASE DEPTH ==========
-      console.log(`[Editor] Removing ${levelDiff} outermost levels`);
-
-      const groupsToDelete = groupNodes.filter(g => g.hierarchy.level <= levelDiff);
-      const groupsToKeep = groupNodes.filter(g => g.hierarchy.level > levelDiff);
-
-      groupsToDelete.forEach(group => updated.delete(group.id));
-
-      groupsToKeep.forEach(group => {
-        const updatedGroup = cloneNode(group);
-        updatedGroup.hierarchy.level -= levelDiff;
-
-        if (updatedGroup.hierarchy.parentId && !updated.has(updatedGroup.hierarchy.parentId)) {
-          updatedGroup.hierarchy.parentId = rootId;
-        }
-
-        updated.set(group.id, updatedGroup);
-      });
-
-      contentNodes.forEach(node => {
-        const updatedNode = cloneNode(node);
-        updatedNode.hierarchy.level -= levelDiff;
-        updated.set(node.id, updatedNode);
-      });
-
-      const updatedRoot = cloneNode(root);
-      if (groupsToKeep.length > 0) {
-        const firstKeptGroup = updated.get(groupsToKeep[0].id);
-        const updatedFirst = cloneNode(firstKeptGroup);
-        updatedFirst.hierarchy.parentId = rootId;
-        updated.set(firstKeptGroup.id, updatedFirst);
-        updatedRoot.hierarchy.childIds = [groupsToKeep[0].id];
-      } else {
-        updatedRoot.hierarchy.childIds = contentNodes.map(n => n.id);
-      }
-      updated.set(rootId, updatedRoot);
-
-      console.log(`[Editor] ✓ Removed ${levelDiff} levels`);
+      );
+      updated.set(newGroupId, newGroup);
+      newGroupIds.push(newGroupId);
+      currentParent = newGroupId;
     }
 
-    // Update immediately
-    setNodeMap(updated);
-    addCommit(updated, `Depth changed: ${currentDepth} → ${maxDepth}`);
+    for (let i = 0; i < newGroupIds.length - 1; i++) {
+      const group = cloneNode(updated.get(newGroupIds[i]));
+      group.hierarchy.childIds = [newGroupIds[i + 1]];
+      updated.set(newGroupIds[i], group);
+    }
 
-    // Clear flag after update
-    restructuringRef.current = false;
-  }, [maxDepth, hierarchyState, nodeMap, rootId, addCommit]);
+    const currentRootChildren = (root.hierarchy.childIds || [])
+      .map(id => updated.get(id))
+      .filter(Boolean);
+
+    const lastNewGroupId = newGroupIds[newGroupIds.length - 1];
+
+    const lastNewGroup = cloneNode(updated.get(lastNewGroupId));
+    lastNewGroup.hierarchy.childIds = currentRootChildren.map(n => n.id);
+    updated.set(lastNewGroupId, lastNewGroup);
+
+    for (const child of currentRootChildren) {
+      const updated_child = cloneNode(child);
+      updated_child.hierarchy.parentId = lastNewGroupId;
+      updated_child.hierarchy.level += levelDiff;
+
+      if (updated_child.type === 'list-item') {
+        const lastGroupNode = updated.get(lastNewGroupId);
+        const normalized = normalizeListItemMarker(updated_child, lastGroupNode, updated);
+        updated.set(child.id, normalized);
+      } else {
+        updated.set(child.id, updated_child);
+      }
+
+      const descendants = getDescendants(updated_child, updated);
+      for (const descendant of descendants) {
+        const updated_desc = cloneNode(descendant);
+        updated_desc.hierarchy.level += levelDiff;
+        updated.set(descendant.id, updated_desc);
+      }
+    }
+
+    const newRoot = cloneNode(root);
+    newRoot.hierarchy.childIds = [newGroupIds[0]];
+    newRoot.metadata.isDirty = true;
+    updated.set(rootId, newRoot);
+
+    console.log(`[Editor] ✓ Inserted ${levelDiff} levels, new structure ready for AI`);
+
+  } else {
+    // ===== DECREASE DEPTH =====
+    const levelDiff = currentDepth - maxDepth;
+
+    const level1Groups = (root.hierarchy.childIds || [])
+      .map(id => updated.get(id))
+      .filter(n => n && isGroupNode(n) && n.hierarchy.level === 1);
+
+    const nodesToReparent = [];
+    const groupsToDelete = new Set();
+
+    for (const level1Group of level1Groups) {
+      groupsToDelete.add(level1Group.id);
+      const descendants = getDescendants(level1Group, updated);
+      nodesToReparent.push(...descendants);
+    }
+
+    const newRootChildren = [];
+
+    for (const node of nodesToReparent) {
+      const updated_node = cloneNode(node);
+      updated_node.hierarchy.level -= levelDiff;
+
+      if (level1Groups.some(g => g.id === node.hierarchy.parentId)) {
+        updated_node.hierarchy.parentId = rootId;
+        newRootChildren.push(node.id);
+      }
+
+      updated.set(node.id, updated_node);
+    }
+
+    const contentUnderLevel1 = (root.hierarchy.childIds || [])
+      .map(id => updated.get(id))
+      .filter(n => n && isContentNode(n));
+
+    for (const content of contentUnderLevel1) {
+      const updated_content = cloneNode(content);
+      updated_content.hierarchy.level -= levelDiff;
+      updated.set(content.id, updated_content);
+      if (!newRootChildren.includes(content.id)) {
+        newRootChildren.push(content.id);
+      }
+    }
+
+    const newRoot = cloneNode(root);
+    newRoot.hierarchy.childIds = newRootChildren;
+    updated.set(rootId, newRoot);
+
+    for (const groupId of groupsToDelete) {
+      updated.delete(groupId);
+    }
+
+    console.log(`[Editor] ✓ Removed ${levelDiff} levels`);
+  }
+
+  setNodeMap(updated);
+  addCommit(updated, `Depth changed: ${currentDepth} → ${maxDepth}`);
+
+  restructuringRef.current = false;
+}, [maxDepth, hierarchyState, nodeMap, rootId, addCommit]);
 
   // =========================================================================
   // RENDER
