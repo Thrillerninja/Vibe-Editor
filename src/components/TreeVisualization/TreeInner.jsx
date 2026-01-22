@@ -11,6 +11,7 @@
  * - nodeMap as single source of truth
  *
  * @typedef {import('../../types/node.js').Node} Node
+ * @typedef {import('../../types/node.js').NodeData} NodeData
  */
 
 import React, {
@@ -812,6 +813,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           );
           updated.set(node.hierarchy.parentId, parentClone);
         }
+        pruneEmptyGroupsUp(updated, node.hierarchy.parentId, rootId);
       }
 
       // Remove node and edges
@@ -845,7 +847,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           applySubtreeChanges,
           deleteNode,
           getDescendantLeaves,
-        },
+        } /** @type {NodeData} */,
       })),
     [nodes, applyNodeEdit, applyEmotionToSubtree, applySubtreeChanges, deleteNode, getDescendantLeaves]
   );

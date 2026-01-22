@@ -533,7 +533,7 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
         patched.metadata.modifiedAt = nowIso();
         patched.metadata.version = (patched.metadata.version || 1) + 1;
         updated.set(nodeId, patched);
-        // ✅ FIX 2: Mark parent, not leaf
+        
         if (patched.hierarchy.parentId) {
           markDirtyUp(updated, patched.hierarchy.parentId);
         }
@@ -561,7 +561,7 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     newNode.hierarchy.level = contentLevel;
     updated.set(nodeId, newNode);
     ensureParentHasChild(updated, contentParentId, nodeId);
-    // ✅ FIX 2: Mark parent, not leaf
+    
     if (contentParentId) {
       markDirtyUp(updated, contentParentId);
     }

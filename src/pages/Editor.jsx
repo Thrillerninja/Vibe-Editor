@@ -74,6 +74,7 @@ import { HorizontalDividerHandle, VerticalDividerHandle } from '@components/Devi
 import { getContentNodeIdsInDocumentOrder, getContentNodesInDocumentOrder } from '@utils/nodeHelpers';
 import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
 import getPoemLines from '@utils/poetry';
+import { deriveLegacyFromProfile } from '@utils/emotionProfiles';
 
 // ============================================================================
 // CONSTANTS
@@ -465,7 +466,20 @@ export default function Editor() {
           newRootTitle,
           newRootEmotions,
           maxDepth
-        );
+        )
+        
+        if (newRootEmotions) {
+          const updatedRoot = cloneNode(restructured.get(rootId));
+          updatedRoot.emotion = {
+              profile: newRootEmotions,
+              dominantEmotion: deriveLegacyFromProfile(newRootEmotions).emotion,
+              dominantIntensity: deriveLegacyFromProfile(newRootEmotions).intensity,
+              source: 'ai',
+              timestamp: new Date().toISOString(),
+          };
+          restructured.set(rootId, updatedRoot);
+          console.log('[Editor] ✓ Applied emotions to root node');
+        } 
 
         // ✅ LOG HERE
         console.log('[CRITICAL] After Claude restructure:');

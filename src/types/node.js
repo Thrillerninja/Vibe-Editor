@@ -180,6 +180,24 @@ export function createEmptyEmotionProfile() {
  * @typedef {Map<string, Node>} NodeMap
  */
 
+/**
+ * Runtime handlers attached to node.data by TreeInner
+ * These are NOT part of the static Node, but added dynamically
+ * 
+ * @typedef {Object} NodeHandlers
+ * @property {(nodeId: string, newContent: string, emotionProfile: NodeEmotion) => void} applyNodeEdit
+ * @property {(nodeId: string, emotionProfile: NodeEmotion, edits: Record<string, string>) => void} applySubtreeChanges
+ * @property {(nodeId: string) => void} deleteNode
+ * @property {(nodeId: string) => Node[]} getDescendantLeaves
+ */
+
+/**
+ * NodeData as passed to ReactFlow node component
+ * = Node data + Runtime handlers attached by TreeInner
+ * 
+ * @typedef {Node & NodeHandlers} NodeData
+ */
+
 // ==================== NODE CREATION ====================
 
 /**
