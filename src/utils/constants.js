@@ -21,7 +21,7 @@ export const ELK_OPTIONS = {
   'elk.algorithm': 'layered',
   'elk.direction': 'RIGHT',
   'elk.layered.spacing.nodeNodeBetweenLayers': 150,
-  'elk.spacing.nodeNode': 100,
+  'elk.spacing.nodeNode': 50,
   'elk.layered.considerModelOrder.strategy': 'NODES_AND_EDGES',
 };
 

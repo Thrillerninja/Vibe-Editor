@@ -399,11 +399,23 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       const node = nodeMap.get(id);
       if (!node) continue;
 
+      const zoom = rfRef.current.getZoom();
+      const closestNodeElement = containerRef.current.querySelector(
+        `[data-id="${node.id}"]`
+      );
+      const height = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().height / zoom
+        : node.height ?? 60;
+      const width = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().width / zoom
+        : node.width ?? 200;
+
       flowNodes.push({
         id: node.id,
         type: 'animatedNode',
         position: { x: 0, y: 0 },
         style: { width: 'auto', height: 'auto' },
+        size: {width, height},
 
         data: {
           id: node.id,
