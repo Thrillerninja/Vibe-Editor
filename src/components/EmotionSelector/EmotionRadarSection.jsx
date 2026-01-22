@@ -1,5 +1,5 @@
 
-import EmotionRadar from '../EmotionSelector/old/EmotionRadar.jsx';
+import EmotionRadar from './EmotionRadar.jsx';
 
 
 export function EmotionRadarSection({ emotion, onChange, isLoading, label }) {

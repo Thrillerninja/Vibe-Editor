@@ -7,7 +7,7 @@
 
 import { useState } from 'react';
 import { rewriteSentenceWithEmotionOptions } from '../../services/claude/claudeApi.js';
-import EmotionRadar from '../EmotionSelector/old/EmotionRadar.jsx';
+import EmotionRadar from './EmotionRadar.jsx';
 import { EditHeader, SuggestionControls } from './EmotionRadarSection.jsx';
 
 /**

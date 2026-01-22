@@ -6,7 +6,7 @@
  */
 
 import { LeafSkeletonGroup } from '../TreeVisualization/animatedNodeComponentRenderers.jsx';
-import EmotionRadar from '../EmotionSelector/old/EmotionRadar.jsx';
+import EmotionRadar from './EmotionRadar.jsx';
 import { EditHeader } from './EmotionRadarSection.jsx';
 import LeafSuggestionCard from './LeafSuggestionCard.jsx';
 
