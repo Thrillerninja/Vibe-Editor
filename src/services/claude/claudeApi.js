@@ -42,73 +42,71 @@ const getClient = () => {
  * @param {number} maxDepth - Maximum depth of hierarchy
  * @returns {Promise<Object>} Updated hierarchy structure
  */
-export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, dirtySentenceIds, maxDepth) {
-    const client = getClient();
+export async function updateDirtyNodes(
+  sentences,
+  hierarchyMeta,
+  dirtyNodeIds,
+  dirtySentenceIds,
+  maxDepth
+) {
+  console.log('[Claude Service] Phase 1: Detecting topic boundaries...');
 
-    console.log('[Claude Service] Restructuring dirty portions of hierarchy');
-    console.log('[Claude Service] Dirty nodes:', dirtyNodeIds.length);
-    console.log('[Claude Service] Dirty sentences:', dirtySentenceIds.length);
+  const { detectTopicBoundaries, boundariesToTopics } = await import(
+    './claudeTopicDetection.js'
+  );
 
-    // Check if root node is dirty
-    const isRootDirty = dirtyNodeIds.includes('root');
-    if (isRootDirty) {
-        console.log('[Claude Service] Root node is dirty - will regenerate document title');
-    }
+  let boundaryResult;
+  try {
+    // Calculate target group count based on maxDepth
+    const targetGroupCount = Math.max(2, maxDepth - 1);
+    
+    boundaryResult = await detectTopicBoundaries(sentences, targetGroupCount);
+    console.log('[Claude Service] ✓ Phase 1 complete');
+  } catch (error) {
+    console.error('[Claude Service] ✗ Phase 1 failed:', error.message);
+    return {
+      dirtyRootNodes: [],
+      restructuredSubtrees: [],
+      newRootTitle: null,
+      newRootEmotions: null,
+    };
+  }
 
-    // Find the highest-level dirty nodes (roots of dirty subtrees)
-    const dirtyRootNodes = findDirtyRootNodes(dirtyNodeIds, hierarchyMeta);
+  // Convert boundaries to contiguous topics
+  const topics = boundariesToTopics(boundaryResult.boundaryIndices, sentences);
+  console.log(`[Claude Service] Created ${topics.length} topics from boundaries`);
 
-    console.log('[Claude Service] Dirty root nodes to restructure:', dirtyRootNodes.length);
-    console.log('[Claude Service] Dirty root node IDs:', dirtyRootNodes.map(n => n.id).join(', '));
+  console.log('[Claude Service] Phase 2: Building hierarchy...');
 
-    // Build subtree information for each dirty root
-    const dirtySubtrees = buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds);
+  const { buildHierarchyFromTopics } = await import('./hierarchyBuilder.js');
 
-    // Build the prompt
-    const prompt = buildDirtyRestructurePrompt(dirtySubtrees, maxDepth, isRootDirty);
+  let hierarchyNodes;
+  try {
+    hierarchyNodes = buildHierarchyFromTopics(topics, sentences, maxDepth);
+    console.log('[Claude Service] ✓ Phase 2 complete');
+  } catch (error) {
+    console.error('[Claude Service] ✗ Phase 2 failed:', error.message);
+    return {
+      dirtyRootNodes: [],
+      restructuredSubtrees: [],
+      newRootTitle: null,
+      newRootEmotions: null,
+    };
+  }
 
-    try {
-        const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
-            max_tokens: 4096,
-            temperature: 0,
-            messages: [{
-                role: 'user',
-                content: prompt
-            }]
-        });
+  const restructuredSubtrees = [
+    {
+      rootNodeId: 'root',
+      newNodes: hierarchyNodes,
+    },
+  ];
 
-        const responseText = message.content[0].text;
-        console.log('[Claude Service] Received dirty subtree restructure:', responseText);
-
-        // Parse and validate the response
-        const { restructuredSubtrees, newRootTitle, newRootEmotion, newRootIntensity, newRootEmotions } = parseDirtyRestructureResponse(responseText, maxDepth, dirtySubtrees, isRootDirty);
-        // Derive legacy fields if only profile was provided
-        let resolvedRootEmotion = newRootEmotion;
-        let resolvedRootIntensity = newRootIntensity;
-        let resolvedRootEmotions = newRootEmotions;
-        if (newRootEmotions && (newRootEmotion === undefined || newRootIntensity === undefined)) {
-            const legacy = deriveLegacyFromProfile(newRootEmotions);
-            resolvedRootEmotion = legacy.emotion;
-            resolvedRootIntensity = legacy.intensity;
-            resolvedRootEmotions = legacy.profile;
-        }
-        console.log('[TEST] ROOTPROPS:', { newRootTitle, newRootEmotion: resolvedRootEmotion, newRootIntensity: resolvedRootIntensity, newRootEmotions: resolvedRootEmotions });
-        console.log('[Claude Service] Parsed response - subtrees:', restructuredSubtrees?.length, 'newRootTitle:', newRootTitle);
-
-        return {
-            dirtyRootNodes: dirtyRootNodes.map(n => n.id),
-            restructuredSubtrees,
-            newRootTitle,
-            newRootEmotion: resolvedRootEmotion,
-            newRootIntensity: resolvedRootIntensity,
-            newRootEmotions: resolvedRootEmotions,
-        };
-    } catch (error) {
-        console.error('[Claude Service] Error restructuring dirty nodes:', error);
-        console.error('[Claude Service] Error stack:', error.stack);
-        throw new Error(`Failed to restructure dirty nodes: ${error.message}`);
-    }
+  return {
+    dirtyRootNodes: [],
+    restructuredSubtrees,
+    newRootTitle: null,
+    newRootEmotions: null,
+  };
 }
 
 
@@ -146,7 +144,7 @@ Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
     console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 4096,
             messages: [{
                 role: 'user',
@@ -208,7 +206,7 @@ Nodes:\n${nodeTextBlocks}`;
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 2048,
             messages: [{ role: 'user', content: prompt }]
         });
@@ -333,7 +331,7 @@ Original sentence: "${sentence}"`;
     console.log('[Claude Service] Rewrite prompt constructed', prompt);
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
                 role: 'user',
@@ -407,7 +405,7 @@ Output format: ["rewritten version 1", "rewritten version 2", "rewritten version
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
                 role: 'user',

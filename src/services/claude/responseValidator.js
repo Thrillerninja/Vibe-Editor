@@ -177,11 +177,333 @@ function validateTopLevelStructure(parsed, isRootDirty) {
     }
 }
 
+function normalizeNodeLevels(nodes, topLevel) {
+    const nodeMap = new Map(nodes.map(n => [n.id, n]));
+    const invalidNodes = nodes.filter(n => n.level > topLevel);
+
+    if (invalidNodes.length === 0) return nodes;
+
+    console.warn(
+        `[Claude Service] Removing ${invalidNodes.length} nodes exceeding topLevel ${topLevel}`
+    );
+
+    const updated = new Map(nodeMap);
+    const nodesToDelete = new Set();
+
+    // 1) Remove invalid nodes and promote their children
+    for (const invalidNode of invalidNodes) {
+        nodesToDelete.add(invalidNode.id);
+
+        for (const parentId of updated.keys()) {
+            const parent = updated.get(parentId);
+            const idx = (parent.childIds || []).indexOf(invalidNode.id);
+            if (idx !== -1) {
+                parent.childIds = [
+                    ...parent.childIds.slice(0, idx),
+                    ...invalidNode.childIds,
+                    ...parent.childIds.slice(idx + 1)
+                ];
+            }
+        }
+
+        for (const childId of invalidNode.childIds) {
+            const child = updated.get(childId);
+            if (child) child.level = topLevel;
+        }
+    }
+
+    // 2) Find referenced nodes
+    const referenced = new Set();
+    for (const node of updated.values()) {
+        if (!nodesToDelete.has(node.id)) {
+            for (const childId of node.childIds || []) {
+                referenced.add(childId);
+            }
+        }
+    }
+
+    // 3) Collect orphaned nodes by level
+    const orphanedByLevel = new Map();
+    for (const node of updated.values()) {
+        if (!nodesToDelete.has(node.id) &&
+            node.level < topLevel &&
+            !referenced.has(node.id)) {
+
+            if (!orphanedByLevel.has(node.level)) {
+                orphanedByLevel.set(node.level, []);
+            }
+            orphanedByLevel.get(node.level).push(node);
+        }
+    }
+
+    if (orphanedByLevel.size === 0) {
+        return Array.from(updated.values()).filter(n => !nodesToDelete.has(n.id));
+    }
+
+    console.warn(`[Claude Service] Found orphaned nodes at levels: ${Array.from(orphanedByLevel.keys()).join(', ')}`);
+
+    // 4) Build wrapper hierarchy from lowest orphan level to topLevel
+    const minOrphanLevel = Math.min(...orphanedByLevel.keys());
+    let currentLevel = minOrphanLevel;
+    let childrenIds = orphanedByLevel.get(minOrphanLevel).map(n => n.id);
+
+    while (currentLevel < topLevel) {
+        const nextLevel = currentLevel + 1;
+        const wrapperId = `wrapper-${nextLevel}-${Date.now()}`;
+
+        const wrapper = {
+            id: wrapperId,
+            level: nextLevel,
+            title: nextLevel === topLevel ? "Additional Content" : `Level ${nextLevel}`,
+            emotions: {
+                interest: 50, joy: 50, surprise: 50, sadness: 50, anger: 50,
+                disgust: 50, contempt: 50, fear: 50, shame: 50, guilt: 50
+            },
+            childIds: childrenIds
+        };
+
+        updated.set(wrapperId, wrapper);
+        childrenIds = [wrapperId];
+        currentLevel = nextLevel;
+    }
+
+    return Array.from(updated.values()).filter(n => !nodesToDelete.has(n.id));
+}
+
+/**
+ * Recover missing sentences by adding them to nearest level 2 group
+ * Maintains document order without creating new groups
+ */
+function recoverMissingSentences(subtree, originalSubtree) {
+  const originalSentences = originalSubtree.sentences; // Array with order info
+  const sentenceIds = new Set(originalSentences.map(s => s.id));
+  const sentenceOrder = new Map(originalSentences.map(s => [s.id, s.order]));
+  
+  const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+  const foundSentences = new Set();
+  
+  // Recursively collect all sentences in hierarchy
+  const collectSentences = (nodeIds) => {
+    for (const id of nodeIds) {
+      if (sentenceIds.has(id)) {
+        foundSentences.add(id);
+      } else {
+        const node = nodeMap.get(id);
+        if (node) collectSentences(node.childIds || []);
+      }
+    }
+  };
+  
+  for (const node of subtree.newNodes) {
+    collectSentences(node.childIds || []);
+  }
+  
+  // Find missing sentences
+  const missingSentences = [...sentenceIds].filter(id => !foundSentences.has(id));
+  
+  if (missingSentences.length === 0) return subtree;
+  
+  console.warn(
+    `[Claude Service] Adding ${missingSentences.length} missing sentences to existing groups`
+  );
+  
+  const level2Groups = subtree.newNodes.filter(n => n.level === 2);
+  
+  // For each missing sentence, find best group and add it
+  for (const missingSentenceId of missingSentences) {
+    const missingOrder = sentenceOrder.get(missingSentenceId);
+    
+    // Find level 2 group with closest sentence order
+    let bestGroup = null;
+    let minDistance = Infinity;
+    
+    for (const group of level2Groups) {
+      const groupSentenceIds = (group.childIds || []).filter(id => sentenceIds.has(id));
+      if (groupSentenceIds.length === 0) continue;
+      
+      const groupOrders = groupSentenceIds.map(id => sentenceOrder.get(id));
+      const minGroupOrder = Math.min(...groupOrders);
+      const maxGroupOrder = Math.max(...groupOrders);
+      
+      // If missing sentence fits within or near this group, use it
+      if (missingOrder >= minGroupOrder && missingOrder <= maxGroupOrder) {
+        bestGroup = group;
+        break;
+      }
+      
+      // Find closest group by order distance
+      const distToMin = Math.abs(missingOrder - minGroupOrder);
+      const distToMax = Math.abs(missingOrder - maxGroupOrder);
+      const minDist = Math.min(distToMin, distToMax);
+      
+      if (minDist < minDistance) {
+        minDistance = minDist;
+        bestGroup = group;
+      }
+    }
+    
+    // Add to best group (or first if none found)
+    const targetGroup = bestGroup || level2Groups[0];
+    if (targetGroup && !targetGroup.childIds.includes(missingSentenceId)) {
+      // Insert in correct document position
+      let insertIndex = targetGroup.childIds.length;
+      for (let i = 0; i < targetGroup.childIds.length; i++) {
+        const id = targetGroup.childIds[i];
+        if (sentenceIds.has(id) && sentenceOrder.get(id) > missingOrder) {
+          insertIndex = i;
+          break;
+        }
+      }
+      targetGroup.childIds.splice(insertIndex, 0, missingSentenceId);
+    }
+  }
+  
+  // Re-sort nodes by document order
+  const getMinOrder = (node) => {
+    const orders = (node.childIds || [])
+      .filter(id => sentenceIds.has(id))
+      .map(id => sentenceOrder.get(id));
+    return orders.length > 0 ? Math.min(...orders) : Infinity;
+  };
+  
+  subtree.newNodes.sort((a, b) => {
+    const aOrder = getMinOrder(a);
+    const bOrder = getMinOrder(b);
+    return aOrder - bOrder;
+  });
+  
+  return subtree;
+}
+
+/**
+ * Fix hierarchy where a parent contains children of same/higher level
+ * Flattens invalid relationships by removing intermediate invalid nodes
+ */
+function fixInvalidParentChildLevels(subtree, topLevel) {
+  const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+  let changes = true;
+  let iterations = 0;
+  const maxIterations = 10;
+  
+  while (changes && iterations < maxIterations) {
+    changes = false;
+    iterations++;
+    
+    for (const node of subtree.newNodes) {
+      const invalidChildren = [];
+      const validChildren = [];
+      
+      for (const childId of node.childIds || []) {
+        const child = nodeMap.get(childId);
+        if (!child) {
+          validChildren.push(childId);
+          continue;
+        }
+        
+        // Child must be exactly level - 1
+        if (child.level !== node.level - 1) {
+          invalidChildren.push(childId);
+          changes = true;
+        } else {
+          validChildren.push(childId);
+        }
+      }
+      
+      if (invalidChildren.length === 0) continue;
+      
+      console.warn(
+        `[Claude Service] Fixing ${node.id} (level ${node.level}): has ${invalidChildren.length} invalid children`
+      );
+      
+      // If all children are invalid (same/higher level), promote them as siblings
+      if (validChildren.length === 0 && invalidChildren.length > 0) {
+        // Find parent of this node and replace it with its children
+        for (const potentialParent of subtree.newNodes) {
+          const idx = (potentialParent.childIds || []).indexOf(node.id);
+          if (idx !== -1) {
+            console.warn(
+              `[Claude Service]   Promoting ${invalidChildren.length} children to sibling level`
+            );
+            potentialParent.childIds = [
+              ...potentialParent.childIds.slice(0, idx),
+              ...invalidChildren,
+              ...potentialParent.childIds.slice(idx + 1)
+            ];
+            break;
+          }
+        }
+        
+        // Remove the invalid node
+        nodeMap.delete(node.id);
+        continue;
+      }
+      
+      // Otherwise keep valid children and remove invalid ones
+      node.childIds = validChildren;
+    }
+  }
+  
+  subtree.newNodes = Array.from(nodeMap.values());
+  return subtree;
+}
+
+/**
+ * Sort nodes by document order (based on minimum sentence position in their subtree)
+ */
+function sortNodesByDocumentOrder(subtree, originalSubtree) {
+  const sentenceOrder = new Map(
+    originalSubtree.sentences.map(s => [s.id, s.order])
+  );
+  const sentenceIds = new Set(sentenceOrder.keys());
+  const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+  
+  // Calculate minimum sentence order for each node
+  const nodeMinOrder = new Map();
+  
+  const getMinOrder = (nodeId) => {
+    if (nodeMinOrder.has(nodeId)) {
+      return nodeMinOrder.get(nodeId);
+    }
+    
+    const node = nodeMap.get(nodeId);
+    if (!node) return Infinity;
+    
+    let minOrder = Infinity;
+    
+    // Check direct sentence children
+    for (const childId of node.childIds || []) {
+      if (sentenceIds.has(childId)) {
+        minOrder = Math.min(minOrder, sentenceOrder.get(childId));
+      } else {
+        // Recurse into node children
+        minOrder = Math.min(minOrder, getMinOrder(childId));
+      }
+    }
+    
+    nodeMinOrder.set(nodeId, minOrder);
+    return minOrder;
+  };
+  
+  // Calculate all minimum orders
+  for (const node of subtree.newNodes) {
+    getMinOrder(node.id);
+  }
+  
+  // Sort all nodes by their minimum order
+  subtree.newNodes.sort((a, b) => {
+    const aOrder = nodeMinOrder.get(a.id) || Infinity;
+    const bOrder = nodeMinOrder.get(b.id) || Infinity;
+    return aOrder - bOrder;
+  });
+  
+  return subtree;
+}
+
+
 /**
  * Validate a complete subtree
  */
 function validateSubtree(subtree, originalSubtree, maxDepth) {
-    // Basic structure
     if (!subtree.rootNodeId) {
         throw new Error('Subtree missing "rootNodeId"');
     }
@@ -189,12 +511,23 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
         throw new Error(`Subtree ${subtree.rootNodeId} missing "newNodes" array`);
     }
 
-    const topLevel = originalSubtree.topLevel;
+    const topLevel = originalSubtree.topLevel;  // Should be 3 when maxDepth=4
     const originalSentences = originalSubtree.sentences;
 
-    console.log(`[Claude Service] Validating subtree ${subtree.rootNodeId} (topLevel=${topLevel}, ${originalSentences.length} sentences)`);
+    console.log(`[Claude Service] Validating subtree (topLevel=${topLevel})`);
 
-    // Validate each node's basic structure
+    // ← Fix invalid hierarchy FIRST
+    subtree = fixInvalidParentChildLevels(subtree, topLevel);
+
+    // ← Sanitize invalid levels FIRST (Claude sometimes violates constraints)
+    subtree.newNodes = normalizeNodeLevels(subtree.newNodes, topLevel);
+
+    subtree = recoverMissingSentences(subtree, originalSubtree);
+
+    // ← RE-SORT BY DOCUMENT ORDER (NEW)
+    subtree = sortNodesByDocumentOrder(subtree, originalSubtree);
+
+    // Now validate
     for (const node of subtree.newNodes) {
         validateNodeStructure(node, maxDepth, subtree.rootNodeId);
     }
