@@ -268,7 +268,7 @@ export default function Editor() {
   // =========================================================================
   // POETRY LOADING
   // =========================================================================
-  
+
   const [isLoadingPoetry, setIsLoadingPoetry] = useState(false);
 
   // =========================================================================
@@ -356,7 +356,7 @@ export default function Editor() {
     // Mark all reachable nodes via DFS
     const visited = new Set();
     const queue = [...(root.hierarchy.childIds || [])];
-    
+
     while (queue.length > 0) {
       const id = queue.shift();
       if (visited.has(id)) continue;
@@ -370,9 +370,9 @@ export default function Editor() {
 
     // Find orphaned top-level groups (level 1, but not reachable)
     const orphanedGroups = Array.from(nodeMap.values())
-      .filter(n => 
-        isGroupNode(n) && 
-        n.hierarchy.level === 1 && 
+      .filter(n =>
+        isGroupNode(n) &&
+        n.hierarchy.level === 1 &&
         !visited.has(n.id)
       );
 
@@ -384,14 +384,14 @@ export default function Editor() {
 
     const updated = new Map(nodeMap);
     const patchedRoot = cloneNode(root);
-    
+
     // Add orphaned groups to root
     for (const group of orphanedGroups) {
       if (!patchedRoot.hierarchy.childIds.includes(group.id)) {
         patchedRoot.hierarchy.childIds.push(group.id);
         console.warn(`[Editor]   - Re-attached orphaned group: ${group.id}`);
       }
-      
+
       // Ensure group's parent is set to root
       if (group.hierarchy.parentId !== rootId) {
         const patchedGroup = cloneNode(group);
@@ -407,9 +407,9 @@ export default function Editor() {
   const handleGenerateHierarchy = async () => {
     console.log('[CRITICAL] ▶ START handleGenerateHierarchy');
     console.log('  Current nodeMap size:', nodeMap.size);
-    console.log('  Current nodeMap keys sample:', 
-        Array.from(nodeMap.keys()).slice(0, 10).map(k => k.slice(0, 8)));
-    
+    console.log('  Current nodeMap keys sample:',
+      Array.from(nodeMap.keys()).slice(0, 10).map(k => k.slice(0, 8)));
+
     const contentNodes = Array.from(nodeMap.values()).filter(isContentNode);
     console.log('  Content nodes:', contentNodes.length);
     console.log('  Content IDs sample:', contentNodes.slice(0, 5).map(n => n.id.slice(0, 8)));
@@ -457,6 +457,14 @@ export default function Editor() {
             maxDepth
           );
 
+        // If invalid response, skip applying restructure and skip clearing dirty flags
+        if (!restructuredSubtrees) {
+          console.warn('[Editor] Claude restructure invalid; skipping applyClaudeRestructureToNodeMap');
+          // Keep dirty flags so user can retry.
+          setIsGenerating(false);
+          return;
+        }
+
         console.log('[Editor] ✓ Restructured dirty subtrees');
 
         // Apply restructuring to cleaned nodeMap
@@ -468,19 +476,19 @@ export default function Editor() {
           newRootEmotions,
           maxDepth
         )
-        
+
         if (newRootEmotions) {
           const updatedRoot = cloneNode(restructured.get(rootId));
           updatedRoot.emotion = {
-              profile: newRootEmotions,
-              dominantEmotion: deriveLegacyFromProfile(newRootEmotions).emotion,
-              dominantIntensity: deriveLegacyFromProfile(newRootEmotions).intensity,
-              source: 'ai',
-              timestamp: new Date().toISOString(),
+            profile: newRootEmotions,
+            dominantEmotion: deriveLegacyFromProfile(newRootEmotions).emotion,
+            dominantIntensity: deriveLegacyFromProfile(newRootEmotions).intensity,
+            source: 'ai',
+            timestamp: new Date().toISOString(),
           };
           restructured.set(rootId, updatedRoot);
           console.log('[Editor] ✓ Applied emotions to root node');
-        } 
+        }
       }
 
       // Step 4: Evaluate emotions for all content
@@ -504,11 +512,11 @@ export default function Editor() {
         const repaired = repairOrphanedNodes(final, rootId);
         // Verify all content is reachable
         try {
-            const reachable = getContentNodeIdsInDocumentOrder(repaired, rootId);
-            console.log('  Reachable content nodes:', reachable.length);
-            console.log('  Content nodes in repaired:', Array.from(repaired.values()).filter(isContentNode).length);
+          const reachable = getContentNodeIdsInDocumentOrder(repaired, rootId);
+          console.log('  Reachable content nodes:', reachable.length);
+          console.log('  Content nodes in repaired:', Array.from(repaired.values()).filter(isContentNode).length);
         } catch (e) {
-            console.error('  ❌ ERROR checking reachable nodes:', e.message);
+          console.error('  ❌ ERROR checking reachable nodes:', e.message);
         }
 
         // Clear dirty flags
@@ -562,36 +570,36 @@ export default function Editor() {
 
   // Handle dismissing the depth recommendation
   const handleDismissRecommendation = useCallback(() => {
-      setShowDepthRecommendation(false);
-      lastRecommendedDepthRef.current = recommendedDepth;
+    setShowDepthRecommendation(false);
+    lastRecommendedDepthRef.current = recommendedDepth;
 
-      posthog.capture('depth_recommendation_dismissed', {
-          current_depth: maxDepth,
-          recommended_depth: recommendedDepth,
-      });
+    posthog.capture('depth_recommendation_dismissed', {
+      current_depth: maxDepth,
+      recommended_depth: recommendedDepth,
+    });
   }, [maxDepth, recommendedDepth]);
 
   // Handle accepting the depth recommendation
   const handleAcceptRecommendation = useCallback(() => {
-      setShowDepthRecommendation(false);
-      setShowDepthConfirmation(true);
+    setShowDepthRecommendation(false);
+    setShowDepthConfirmation(true);
   }, []);
 
   // Handle confirming the depth change in modal
   const handleConfirmDepthChange = useCallback(() => {
-      setShowDepthConfirmation(false);
-      lastRecommendedDepthRef.current = recommendedDepth;
-      setMaxDepth(recommendedDepth);
+    setShowDepthConfirmation(false);
+    lastRecommendedDepthRef.current = recommendedDepth;
+    setMaxDepth(recommendedDepth);
 
-      posthog.capture('depth_recommendation_accepted', {
-          old_depth: maxDepth,
-          new_depth: recommendedDepth,
-      });
+    posthog.capture('depth_recommendation_accepted', {
+      old_depth: maxDepth,
+      new_depth: recommendedDepth,
+    });
   }, [maxDepth, recommendedDepth]);
 
   const handleCancelDepthChange = useCallback(() => {
-      setShowDepthConfirmation(false);
-      // Maybe reshown the snackbar? Or just close. Let's just close for now.
+    setShowDepthConfirmation(false);
+    // Maybe reshown the snackbar? Or just close. Let's just close for now.
   }, []);
 
   // =========================================================================
@@ -611,7 +619,7 @@ export default function Editor() {
   const processTextToNodes = useCallback(
     (newText) => {
       console.log('[Editor] Processing text:', newText.substring(0, 50));
-      
+
       const updated = syncNodeMapWithText(nodeMap, newText, {
         rootId,
         maxDepth,
@@ -815,10 +823,10 @@ export default function Editor() {
         parentId,
         [], // childIds filled below
         { metadata: {
-          isDirty: true,
-          autoCreated: true,
-          createdAt: new Date().toISOString(),
-          version: 1
+            isDirty: true,
+            autoCreated: true,
+            createdAt: new Date().toISOString(),
+            version: 1
         } }
       );
 
@@ -908,26 +916,26 @@ export default function Editor() {
     setIsLoadingPoetry(true);
     try {
       const poetryText = await getPoemLines(10);
-      
+
       // Append poetry to current text
       const newText = draftText + (draftText ? '\n\n' : '') + poetryText;
-      
+
       // Update draft text
       setDraftText(newText);
-      
+
       // Process the new text into nodes immediately
       processTextToNodes(newText);
-      
+
       // Mark hierarchy as having dirty nodes for potential regeneration
       setHierarchyState('has-dirty-nodes');
-      
+
       // Log event
       posthog.capture('poetry_inserted', {
         text_length: poetryText.length,
         line_count: poetryText.split('\n').length,
         total_text_length: newText.length,
       });
-      
+
       addCommit(nodeMap, 'Poetry inserted');
     } catch (error) {
       console.error('Failed to load poetry:', error);
@@ -948,7 +956,7 @@ export default function Editor() {
   const handleTreeUpdate = useCallback(updatedNodes => {
     console.log('[CRITICAL] AFTER tree update from subtree changes:');
     console.log('  Updated nodeMap size:', updatedNodes.size);
-    
+
     // Calculate new text from updated nodes
     const root = updatedNodes.get(rootId);
 
@@ -964,20 +972,20 @@ export default function Editor() {
     if (root) {
       const contentNodes = getContentNodesInDocumentOrder(updatedNodes, rootId);
       const newText = nodeMapToMarkdown(updatedNodes, rootId);
-      
+
       console.log('[Editor DEBUG] Tree update - syncing text:');
       console.log('  old draftText length:', draftText.length);
       console.log('  old draftText preview:', draftText.substring(0, 100));
       console.log('  new text length:', newText.length);
       console.log('  new text preview:', newText.substring(0, 100));
       console.log('  texts are equal:', draftText === newText);
-      
+
       // Check first few content nodes for order
       console.log('  First 5 nodes in new order:');
       contentNodes.slice(0, 5).forEach((node, i) => {
         console.log(`    ${i}: "${node.content?.substring(0, 40)}"`);
       });
-      
+
 
       // Clear timer FIRST
       if (textDebounceTimerRef.current) {
@@ -991,15 +999,15 @@ export default function Editor() {
 
       addCommit(updatedNodes, 'Tree updated');
       console.log('[Editor DEBUG] setPendingText called with new text');
-      
+
     } else {
       console.error('[Editor] Root not found in updated nodes!');
     }
-    
+
     posthog.capture('tree_updated', {
       node_count: updatedNodes.size,
     });
-    
+
   }, [rootId, addCommit]);
 
   // Add this effect near your other useEffect hooks
@@ -1096,158 +1104,158 @@ export default function Editor() {
    * - Decreased depth: Remove outermost group levels
    */
   useEffect(() => {
-  const root = nodeMap.get(rootId);
-  if (!root) return;
+    const root = nodeMap.get(rootId);
+    if (!root) return;
 
-  const groupNodes = Array.from(nodeMap.values())
-    .filter(isGroupNode)
-    .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
+    const groupNodes = Array.from(nodeMap.values())
+      .filter(isGroupNode)
+      .sort((a, b) => a.hierarchy.level - b.hierarchy.level);
 
-  if (groupNodes.length === 0) return;
+    if (groupNodes.length === 0) return;
 
-  const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
-  const currentDepth = currentMaxLevel + 2;
+    const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
+    const currentDepth = currentMaxLevel + 2;
 
-  if (currentDepth === maxDepth) return;
+    if (currentDepth === maxDepth) return;
 
-  console.log(`[Editor] maxDepth changed: ${currentDepth} → ${maxDepth}`);
+    console.log(`[Editor] maxDepth changed: ${currentDepth} → ${maxDepth}`);
 
-  restructuringRef.current = true;
-  const updated = new Map(nodeMap);
+    restructuringRef.current = true;
+    const updated = new Map(nodeMap);
 
-  if (maxDepth > currentDepth) {
-    // ===== INCREASE DEPTH =====
-    const levelDiff = maxDepth - currentDepth;
+    if (maxDepth > currentDepth) {
+      // ===== INCREASE DEPTH =====
+      const levelDiff = maxDepth - currentDepth;
 
-    const newGroupIds = [];
-    let currentParent = rootId;
+      const newGroupIds = [];
+      let currentParent = rootId;
 
-    for (let i = 0; i < levelDiff; i++) {
-      const newGroupId = uuidv4();
-      const newLevel = i + 1;
-      const newGroup = createGroupNode(
-        newGroupId,
-        `Level ${newLevel}`,
-        newLevel,
-        currentParent,
-        [],
-        {
-          metadata: {
-            isDirty: true, // ← Mark new groups as dirty so Claude recognizes them
-            createdAt: new Date().toISOString(),
-            version: 1,
-          },
+      for (let i = 0; i < levelDiff; i++) {
+        const newGroupId = uuidv4();
+        const newLevel = i + 1;
+        const newGroup = createGroupNode(
+          newGroupId,
+          `Level ${newLevel}`,
+          newLevel,
+          currentParent,
+          [],
+          {
+            metadata: {
+              isDirty: true, // ← Mark new groups as dirty so Claude recognizes them
+              createdAt: new Date().toISOString(),
+              version: 1,
+            },
+          }
+        );
+        updated.set(newGroupId, newGroup);
+        newGroupIds.push(newGroupId);
+        currentParent = newGroupId;
+      }
+
+      for (let i = 0; i < newGroupIds.length - 1; i++) {
+        const group = cloneNode(updated.get(newGroupIds[i]));
+        group.hierarchy.childIds = [newGroupIds[i + 1]];
+        updated.set(newGroupIds[i], group);
+      }
+
+      const currentRootChildren = (root.hierarchy.childIds || [])
+        .map(id => updated.get(id))
+        .filter(Boolean);
+
+      const lastNewGroupId = newGroupIds[newGroupIds.length - 1];
+
+      const lastNewGroup = cloneNode(updated.get(lastNewGroupId));
+      lastNewGroup.hierarchy.childIds = currentRootChildren.map(n => n.id);
+      updated.set(lastNewGroupId, lastNewGroup);
+
+      for (const child of currentRootChildren) {
+        const updated_child = cloneNode(child);
+        updated_child.hierarchy.parentId = lastNewGroupId;
+        updated_child.hierarchy.level += levelDiff;
+
+        if (updated_child.type === 'list-item') {
+          const lastGroupNode = updated.get(lastNewGroupId);
+          const normalized = normalizeListItemMarker(updated_child, lastGroupNode, updated);
+          updated.set(child.id, normalized);
+        } else {
+          updated.set(child.id, updated_child);
         }
-      );
-      updated.set(newGroupId, newGroup);
-      newGroupIds.push(newGroupId);
-      currentParent = newGroupId;
-    }
 
-    for (let i = 0; i < newGroupIds.length - 1; i++) {
-      const group = cloneNode(updated.get(newGroupIds[i]));
-      group.hierarchy.childIds = [newGroupIds[i + 1]];
-      updated.set(newGroupIds[i], group);
-    }
-
-    const currentRootChildren = (root.hierarchy.childIds || [])
-      .map(id => updated.get(id))
-      .filter(Boolean);
-
-    const lastNewGroupId = newGroupIds[newGroupIds.length - 1];
-
-    const lastNewGroup = cloneNode(updated.get(lastNewGroupId));
-    lastNewGroup.hierarchy.childIds = currentRootChildren.map(n => n.id);
-    updated.set(lastNewGroupId, lastNewGroup);
-
-    for (const child of currentRootChildren) {
-      const updated_child = cloneNode(child);
-      updated_child.hierarchy.parentId = lastNewGroupId;
-      updated_child.hierarchy.level += levelDiff;
-
-      if (updated_child.type === 'list-item') {
-        const lastGroupNode = updated.get(lastNewGroupId);
-        const normalized = normalizeListItemMarker(updated_child, lastGroupNode, updated);
-        updated.set(child.id, normalized);
-      } else {
-        updated.set(child.id, updated_child);
+        const descendants = getDescendants(updated_child, updated);
+        for (const descendant of descendants) {
+          const updated_desc = cloneNode(descendant);
+          updated_desc.hierarchy.level += levelDiff;
+          updated.set(descendant.id, updated_desc);
+        }
       }
 
-      const descendants = getDescendants(updated_child, updated);
-      for (const descendant of descendants) {
-        const updated_desc = cloneNode(descendant);
-        updated_desc.hierarchy.level += levelDiff;
-        updated.set(descendant.id, updated_desc);
-      }
-    }
+      const newRoot = cloneNode(root);
+      newRoot.hierarchy.childIds = [newGroupIds[0]];
+      newRoot.metadata.isDirty = true;
+      updated.set(rootId, newRoot);
 
-    const newRoot = cloneNode(root);
-    newRoot.hierarchy.childIds = [newGroupIds[0]];
-    newRoot.metadata.isDirty = true;
-    updated.set(rootId, newRoot);
+      console.log(`[Editor] ✓ Inserted ${levelDiff} levels, new structure ready for AI`);
 
-    console.log(`[Editor] ✓ Inserted ${levelDiff} levels, new structure ready for AI`);
+    } else {
+      // ===== DECREASE DEPTH =====
+      const levelDiff = currentDepth - maxDepth;
 
-  } else {
-    // ===== DECREASE DEPTH =====
-    const levelDiff = currentDepth - maxDepth;
+      const level1Groups = (root.hierarchy.childIds || [])
+        .map(id => updated.get(id))
+        .filter(n => n && isGroupNode(n) && n.hierarchy.level === 1);
 
-    const level1Groups = (root.hierarchy.childIds || [])
-      .map(id => updated.get(id))
-      .filter(n => n && isGroupNode(n) && n.hierarchy.level === 1);
+      const nodesToReparent = [];
+      const groupsToDelete = new Set();
 
-    const nodesToReparent = [];
-    const groupsToDelete = new Set();
-
-    for (const level1Group of level1Groups) {
-      groupsToDelete.add(level1Group.id);
-      const descendants = getDescendants(level1Group, updated);
-      nodesToReparent.push(...descendants);
-    }
-
-    const newRootChildren = [];
-
-    for (const node of nodesToReparent) {
-      const updated_node = cloneNode(node);
-      updated_node.hierarchy.level -= levelDiff;
-
-      if (level1Groups.some(g => g.id === node.hierarchy.parentId)) {
-        updated_node.hierarchy.parentId = rootId;
-        newRootChildren.push(node.id);
+      for (const level1Group of level1Groups) {
+        groupsToDelete.add(level1Group.id);
+        const descendants = getDescendants(level1Group, updated);
+        nodesToReparent.push(...descendants);
       }
 
-      updated.set(node.id, updated_node);
-    }
+      const newRootChildren = [];
 
-    const contentUnderLevel1 = (root.hierarchy.childIds || [])
-      .map(id => updated.get(id))
-      .filter(n => n && isContentNode(n));
+      for (const node of nodesToReparent) {
+        const updated_node = cloneNode(node);
+        updated_node.hierarchy.level -= levelDiff;
 
-    for (const content of contentUnderLevel1) {
-      const updated_content = cloneNode(content);
-      updated_content.hierarchy.level -= levelDiff;
-      updated.set(content.id, updated_content);
-      if (!newRootChildren.includes(content.id)) {
-        newRootChildren.push(content.id);
+        if (level1Groups.some(g => g.id === node.hierarchy.parentId)) {
+          updated_node.hierarchy.parentId = rootId;
+          newRootChildren.push(node.id);
+        }
+
+        updated.set(node.id, updated_node);
       }
+
+      const contentUnderLevel1 = (root.hierarchy.childIds || [])
+        .map(id => updated.get(id))
+        .filter(n => n && isContentNode(n));
+
+      for (const content of contentUnderLevel1) {
+        const updated_content = cloneNode(content);
+        updated_content.hierarchy.level -= levelDiff;
+        updated.set(content.id, updated_content);
+        if (!newRootChildren.includes(content.id)) {
+          newRootChildren.push(content.id);
+        }
+      }
+
+      const newRoot = cloneNode(root);
+      newRoot.hierarchy.childIds = newRootChildren;
+      updated.set(rootId, newRoot);
+
+      for (const groupId of groupsToDelete) {
+        updated.delete(groupId);
+      }
+
+      console.log(`[Editor] ✓ Removed ${levelDiff} levels`);
     }
 
-    const newRoot = cloneNode(root);
-    newRoot.hierarchy.childIds = newRootChildren;
-    updated.set(rootId, newRoot);
+    setNodeMap(updated);
+    addCommit(updated, `Depth changed: ${currentDepth} → ${maxDepth}`);
 
-    for (const groupId of groupsToDelete) {
-      updated.delete(groupId);
-    }
-
-    console.log(`[Editor] ✓ Removed ${levelDiff} levels`);
-  }
-
-  setNodeMap(updated);
-  addCommit(updated, `Depth changed: ${currentDepth} → ${maxDepth}`);
-
-  restructuringRef.current = false;
-}, [maxDepth, hierarchyState, nodeMap, rootId, addCommit]);
+    restructuringRef.current = false;
+  }, [maxDepth, hierarchyState, nodeMap, rootId, addCommit]);
 
   // =========================================================================
   // RENDER
@@ -1268,34 +1276,34 @@ export default function Editor() {
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      <LogoMenu 
-        maxDepth={maxDepth} 
+      <LogoMenu
+        maxDepth={maxDepth}
         setMaxDepth={setMaxDepth}
         nodeMap={nodeMap}
         setNodeMap={setNodeMap}
         setDraftText={setDraftText}
         rootId={rootId}
         onImportComplete={handleImportComplete}
-        onInsertPoetry={insertPoetry} 
+        onInsertPoetry={insertPoetry}
         isLoadingPoetry={isLoadingPoetry}
       />
 
       {/* Depth Recommendation Snackbar */}
       <DepthRecommendationSnackbar
-          isVisible={showDepthRecommendation}
-          recommendedDepth={recommendedDepth}
-          currentDepth={maxDepth}
-          onAccept={handleAcceptRecommendation}
-          onDismiss={handleDismissRecommendation}
+        isVisible={showDepthRecommendation}
+        recommendedDepth={recommendedDepth}
+        currentDepth={maxDepth}
+        onAccept={handleAcceptRecommendation}
+        onDismiss={handleDismissRecommendation}
       />
 
       {/* Depth Change Confirmation Modal */}
       <DepthChangeConfirmationModal
-          isOpen={showDepthConfirmation}
-          currentDepth={maxDepth}
-          newDepth={recommendedDepth}
-          onConfirm={handleConfirmDepthChange}
-          onCancel={handleCancelDepthChange}
+        isOpen={showDepthConfirmation}
+        currentDepth={maxDepth}
+        newDepth={recommendedDepth}
+        onConfirm={handleConfirmDepthChange}
+        onCancel={handleCancelDepthChange}
       />
 
       {/* Main Content Area */}
@@ -1360,7 +1368,7 @@ export default function Editor() {
                   style={{
                     ...floatingButtonStyle,
                     backgroundColor:
-                       ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff'),
+                      ((isGenerating || nodeMap.size === 1) ? '#7c7c7cff' : '#0c0c0eff'),
                     color: 'white',
                   }}
                 >

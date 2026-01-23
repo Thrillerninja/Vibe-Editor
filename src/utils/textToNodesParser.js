@@ -503,76 +503,81 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
     existingContentIdsOrdered
   );
 
-  const newContentIds = [];
+  // Create a map of content signature to existing node for matching
+  const contentToNodeMap = new Map();
+  for (const id of existingContentIdsOrdered) {
+    const node = updated.get(id);
+    if (node) {
+      const signature = `${node.type}:${node.content}:${JSON.stringify(node.structure || null)}`;
+      contentToNodeMap.set(signature, id);
+    }
+  }
 
-  // Update existing / create new
+  const newContentIds = [];
+  const usedNodeIds = new Set();
+
+  // Match units to existing nodes by content, or create new
   for (let index = 0; index < units.length; index++) {
     const unit = units[index];
+    const signature = `${unit.type}:${unit.content}:${JSON.stringify(unit.structure || null)}`;
+    const existingNodeId = contentToNodeMap.get(signature);
 
-    if (index < existingContentIdsOrdered.length) {
-      const nodeId = existingContentIdsOrdered[index];
-      const existingNode = updated.get(nodeId);
-      if (!existingNode) continue;
+    if (existingNodeId && !usedNodeIds.has(existingNodeId)) {
+      // Reuse existing node with matching content
+      const existingNode = updated.get(existingNodeId);
+      usedNodeIds.add(existingNodeId);
 
       const needsPatch =
-        existingNode.type !== unit.type ||
-        existingNode.content !== unit.content ||
-        JSON.stringify(existingNode.structure || null) !==
-          JSON.stringify(unit.structure || null) ||
-        JSON.stringify(existingNode.textRep || null) !==
-          JSON.stringify(unit.textRep || null);
+        JSON.stringify(existingNode.textRep || null) !== JSON.stringify(unit.textRep || null);
 
       if (needsPatch) {
         const patched = cloneNode(existingNode);
-        patched.type = unit.type;
-        patched.content = unit.content;
-        patched.structure = unit.structure;
         patched.textRep = unit.textRep;
         patched.metadata.isDirty = true;
         patched.metadata.modifiedAt = nowIso();
         patched.metadata.version = (patched.metadata.version || 1) + 1;
-        updated.set(nodeId, patched);
+        updated.set(existingNodeId, patched);
         
         if (patched.hierarchy.parentId) {
           markDirtyUp(updated, patched.hierarchy.parentId);
         }
       }
 
-      newContentIds.push(nodeId);
-      continue;
-    }
+      newContentIds.push(existingNodeId);
+    } else {
+      // Create new node
+      const nodeId = createId();
+      const newNode = createContentNode(
+        nodeId,
+        unit.type,
+        unit.content,
+        contentParentId,
+        maxDepth,
+        {
+          metadata: { isDirty: true, createdAt: nowIso(), version: 1 },
+          textRep: unit.textRep,
+          structure: unit.structure,
+        }
+      );
 
-    // Create new node
-    const nodeId = createId();
-    const newNode = createContentNode(
-      nodeId,
-      unit.type,
-      unit.content,
-      contentParentId,
-      maxDepth,
-      {
-        metadata: { isDirty: true, createdAt: nowIso(), version: 1 },
-        textRep: unit.textRep,
-        structure: unit.structure,
+      newNode.hierarchy.level = contentLevel;
+      updated.set(nodeId, newNode);
+      ensureParentHasChild(updated, contentParentId, nodeId);
+      
+      if (contentParentId) {
+        markDirtyUp(updated, contentParentId);
       }
-    );
 
-    newNode.hierarchy.level = contentLevel;
-    updated.set(nodeId, newNode);
-    ensureParentHasChild(updated, contentParentId, nodeId);
-    
-    if (contentParentId) {
-      markDirtyUp(updated, contentParentId);
+      newContentIds.push(nodeId);
     }
-
-    newContentIds.push(nodeId);
   }
 
-  // Delete excess content nodes
-  for (let i = units.length; i < existingContentIdsOrdered.length; i++) {
-    const idToDelete = existingContentIdsOrdered[i];
-    updated.delete(idToDelete);
-    removeChildReferencesEverywhere(updated, idToDelete);
+  // Delete unused existing content nodes
+  for (const id of existingContentIdsOrdered) {
+    if (!usedNodeIds.has(id)) {
+      updated.delete(id);
+      removeChildReferencesEverywhere(updated, id);
+    }
   }
 
   // If root currently has group children, preserve them
