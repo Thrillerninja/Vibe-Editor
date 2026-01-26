@@ -85,20 +85,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
   /** @type {[Array, Function, Function]} */
-  const [edges, setEdges, rawOnEdgesChange] = useEdgesState([]);
-
-  /**
-   * Handle edge changes - skip updates during drag to prevent flickering
-   * Edges are rebuilt by applyLayout() after drag ends
-   */
-  const onEdgesChange = useCallback(
-    (changes) => {
-      if (!skipEdgeUpdatesRef.current) {
-        rawOnEdgesChange(changes);
-      }
-    },
-    [rawOnEdgesChange]
-  );
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
 
   /** @type {React.MutableRefObject<any>} */
   const rfRef = useRef(null);
@@ -140,13 +127,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @type {React.MutableRefObject<boolean>}
    */
   const animateNextRef = useRef(false);
-
-  /**
-   * Track if edges should be updated during drag
-   * Prevents edge flickering during snap-back
-   * @type {React.MutableRefObject<boolean>}
-   */
-  const skipEdgeUpdatesRef = useRef(false);
 
   // =========================================================================
   //     Visual Feedback State
@@ -476,6 +456,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   /**
    * Apply layout to nodes using ELK algorithm
    * Skips if structure hasn't changed or dragging
+   * Only updates edges when NOT doing snap-back animation
    */  
   const applyLayout = useCallback(async () => {
 
@@ -492,12 +473,22 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
         }
 
         setNodes(laidOut);
-        setEdges(flowEdges);
+        
+        // Only update edges when NOT doing snap-back animation
+        // During animation, ReactFlow automatically positions edges based on node handles
+        // This prevents edges from jumping ahead of the animating nodes
+        if (!animateNextRef.current) {
+          setEdges(flowEdges);
+        }
 
+        // Note: We intentionally do NOT call setEdges after animation completes
+        // ReactFlow handles edge positions automatically based on node positions
+        // during the snap-back animation
         if (animateNextRef.current && containerRef.current) {
           setTimeout(() => {
             containerRef.current?.classList.remove('rf-animate-drop');
             animateNextRef.current = false;
+            // Edges stay at their current positions, which have been animating with nodes
           }, 300);
         }
       }
@@ -579,7 +570,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       isDraggingRef.current = true;
       draggedNodeIdRef.current = rfNode.id;
       treeChangedRef.current = false;
-      skipEdgeUpdatesRef.current = true; // Prevent edge updates during drag
 
       originalNodePositionsRef.current[rfNode.id] = {
         x: rfNode.position.x,
@@ -646,7 +636,6 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     (event, rfNode) => {
       console.log(`${LOG_PREFIX.DRAG} Drag stop: ${rfNode.id}`);
       isDraggingRef.current = false;
-      skipEdgeUpdatesRef.current = false; // Re-enable edge updates
       setReorderIndicator(null);
       animateNextRef.current = true;
 
@@ -666,6 +655,9 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       physics.stop();
       applyLayout();
+
+      // Edge changes during snap-back are handled by applyLayout
+      // No additional processing needed
     },
     [checkReorderDrop, physics, onTreeUpdate]
   );

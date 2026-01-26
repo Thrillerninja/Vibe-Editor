@@ -53,7 +53,7 @@ export function LeafSuggestionCard({
         border: '1px solid rgba(0,0,0,0.1)',
         borderRadius: 12,
         padding: 16,
-        background: 'rgba(255,255,255,0.4)',
+        background: 'rgba(255,255,255,0.9)',
       }}
     >
       {/* Suggestion controls (prev/next + counter) */}
@@ -136,7 +136,7 @@ export function LeafSuggestionCard({
           padding: '12px',
           borderRadius: '8px',
           border: '1px solid rgba(0, 0, 0, 0.1)',
-          background: 'rgba(255, 255, 255, 0.5)',
+          background: 'rgba(255, 255, 255, 0.95)',
           color: '#111827',
           resize: 'vertical',
           fontFamily: 'inherit',

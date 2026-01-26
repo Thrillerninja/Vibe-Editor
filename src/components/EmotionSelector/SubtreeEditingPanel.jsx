@@ -119,15 +119,15 @@ export function SubtreeEditingPanel({
                             style={{
                                 padding: '32px 16px',
                                 textAlign: 'center',
-                                color: '#9ca3af',
+                                color: '#4b5563',
                                 fontSize: 14,
                                 borderRadius: 12,
-                                background: 'rgba(0,0,0,0.02)',
-                                border: '1px dashed rgba(0,0,0,0.1)',
+                                background: 'rgba(243, 244, 246, 0.95)',
+                                border: '1px dashed rgba(0,0,0,0.15)',
                             }}
                         >
-                            <div style={{ marginBottom: 8 }}>No suggestions yet</div>
-                            <div style={{ fontSize: 12, color: '#d1d5db' }}>
+                            <div style={{ marginBottom: 8, color: '#374151', fontWeight: 500 }}>No suggestions yet</div>
+                            <div style={{ fontSize: 12, color: '#6b7280' }}>
                                 Click the ↻ button to generate rewrite options
                             </div>
                         </div>
