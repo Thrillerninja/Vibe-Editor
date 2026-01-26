@@ -161,13 +161,12 @@ export default function ToolbarPlugin() {
 
   return (
     <div
-      className="flex items-center min-w-[205px] max-w-[360px]  gap-1 flex-wrap flex-1"  // With Links Button: min-w-[235px] max-w-[405px]
+      className="flex items-center min-w-[205px] max-w-[365px] gap-1 flex-wrap flex-1"  // With Links Button: min-w-[235px] max-w-[405px]
       style={{
         padding: '0px 14px',
         backgroundColor: 'rgba(255,255,255,0.95)',
-        border: '1px solid #e5e7eb',
         borderRadius: '18px',
-        boxShadow: '0 2px 10px rgba(0,0,0,0.06)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
         backdropFilter: 'saturate(180%) blur(4px)',
         margin: '0 auto',
         height: 'fit-content',

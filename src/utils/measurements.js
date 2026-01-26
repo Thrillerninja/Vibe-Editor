@@ -34,8 +34,8 @@ export function measureNode(node) {
   let height = NODE_MIN_HEIGHT;
 
   // Measure label text
-  const labelMeasures = measureLabel(node.content);
-  height = Math.max(height, labelMeasures.height);
+  const measures = node.size || measureLabel(node.content);
+  height = Math.max(height, measures.height);
 
   // Add space for emotion display if present
   if (node.emotion) {

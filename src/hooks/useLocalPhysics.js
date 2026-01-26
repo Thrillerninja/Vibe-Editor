@@ -111,7 +111,7 @@ export function useLocalPhysics() {
         // Fix ALL nodes during drag - only the dragged node moves via ReactFlow
         fx: n.position.x,
         fy: n.position.y,
-        r: Math.max(28, measureLabel(n.data.content).height / 2),
+        r: Math.max(28, n.size.height / 2),
         type: n.data.type,
       }));
 

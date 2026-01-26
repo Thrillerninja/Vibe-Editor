@@ -373,7 +373,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     console.log('[TreeInner DEBUG] buildFlowStructure START');
     console.log('[TreeInner DEBUG] nodeMap size:', nodeMap.size);
     console.log('[TreeInner DEBUG] rootId:', rootId);
-    
+
     const flowNodes = [];
     const flowEdges = [];
 
@@ -395,7 +395,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       const children = node.hierarchy.childIds ?? [];
       console.log(`[TreeInner DEBUG]   children count: ${children.length}`, children);
-      
+
       for (const childId of children) dfs(childId, depth + 1);
     };
 
@@ -420,11 +420,24 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
 
       console.log(`[TreeInner DEBUG] Adding node to flow: ${id} type=${node.type}`);
 
+      const zoom = rfRef.current.getZoom();
+      const closestNodeElement = containerRef.current.querySelector(
+        `[data-id="${node.id}"]`
+      );
+      const height = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().height / zoom
+        : node.height ?? 60;
+      const width = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().width / zoom
+        : node.width ?? 200;
+
       flowNodes.push({
         id: node.id,
         type: 'animatedNode',
         position: { x: 0, y: 0 },
         style: { width: 'auto', height: 'auto' },
+        size: {width, height},
+
         data: {
           id: node.id,
           type: node.type,
@@ -598,13 +611,24 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       );
 
       if (closest) {
+        const zoom = rfRef.current.getZoom();
+        const closestNodeElement = containerRef.current.querySelector(
+          `[data-id="${closest.node.id}"]`
+        );
+        const height = closestNodeElement
+          ? closestNodeElement.getBoundingClientRect().height / zoom
+          : closest.node.height ?? 60;
+        const width = closestNodeElement
+        ? closestNodeElement.getBoundingClientRect().width / zoom
+          : closest.node.width ?? 200;
+
         const screenPos = toScreenPoint({
           x: closest.node.position.x,
           y: closest.node.position.y,
         });
         const screenSize = toScreenSize({
-          width: closest.node.width ?? 200,
-          height: closest.node.height ?? 60,
+          width: width,
+          height: height,
         });
 
         console.log(
@@ -910,7 +934,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
           style={{
             position: 'fixed',
             left: reorderIndicator.x - reorderIndicator.width / 2,
-            top: reorderIndicator.y + (reorderIndicator.isAbove ? -10 : 10),
+            top: reorderIndicator.y + (reorderIndicator.isAbove ? -10 : 5),
             width: reorderIndicator.width,
             height: 4,
             backgroundColor: '#3b82f6',

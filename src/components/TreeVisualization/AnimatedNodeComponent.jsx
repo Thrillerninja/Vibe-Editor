@@ -177,33 +177,31 @@ export function AnimatedNodeComponent({ id, data }) {
 
   return (
     <>
-      <div
-        style={{ position: "relative", display: "inline-block" }}
+      <motion.div
+        transition={{ type: 'spring', stiffness: 520, damping: 44 }}
+        onDoubleClick={() => setIsDialogOpen(true)}
+        title={"Double-click to edit this node."}
         onMouseEnter={openTooltip}
         onMouseLeave={scheduleCloseTooltip}
+        style={{
+          padding: 12,
+          borderRadius: 24,
+          color: "black",
+          textAlign: "center",
+          cursor: "pointer",
+          width: 220,
+          background: emotionColor,
+          border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
+          position: 'relative',
+          fontFamily:
+            '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
+          userSelect: 'none',
+          transition: 'box-shadow 0.2s, transform 0.2s',
+          boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
+        }}
       >
-        <motion.div
-          transition={{ type: 'spring', stiffness: 520, damping: 44 }}
-          onDoubleClick={() => setIsDialogOpen(true)}
-          style={{
-            padding: 12,
-            borderRadius: 24,
-            color: "black",
-            textAlign: "center",
-            cursor: "pointer",
-            width: 220,
-            background: emotionColor,
-            border: nodeModified ? `3px solid ${border}` : '3px solid rgba(255, 255, 255, 0.6)',
-            position: 'relative',
-            fontFamily:
-              '-apple-system, BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif',
-            userSelect: 'none',
-            transition: 'box-shadow 0.2s, transform 0.2s',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
-          }}
-        >
-          <Handle type="target" position={Position.Left} />
-          <Handle type="source" position={Position.Right} />
+        <Handle type="target" position={Position.Left} />
+        <Handle type="source" position={Position.Right} />
           <div
             style={{
               flex: 1,
@@ -298,7 +296,7 @@ export function AnimatedNodeComponent({ id, data }) {
                     alignItems: 'center',
                     justifyContent: 'center',
                     fontSize: 16,
-                    fontWeight: 700,
+                  fontWeight: 700,
                     color: '#fff',
                   }}
                 >
@@ -376,7 +374,6 @@ export function AnimatedNodeComponent({ id, data }) {
             </pre>
           </div>
         )}
-      </div>
 
       {isDialogOpen && <NewEmotionEditDialog 
         id={id}
