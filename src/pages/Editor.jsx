@@ -459,7 +459,7 @@ export default function Editor() {
           );
 
         // If invalid response, skip applying restructure and skip clearing dirty flags
-        if (!restructuredSubtrees) {
+        if (!restructuredSubtrees || restructuredSubtrees.length === 0) {
           console.warn('[Editor] Claude restructure invalid; skipping applyClaudeRestructureToNodeMap');
           // Keep dirty flags so user can retry.
           setIsGenerating(false);

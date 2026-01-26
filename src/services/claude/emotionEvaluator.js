@@ -18,11 +18,10 @@ import { normalizeEmotionProfile } from '@utils/emotionProfiles';
 
 /**
  * Get Anthropic client
- * @private
  * @returns {Anthropic}
  * @throws {Error} If API key not configured
  */
-function getClient() {
+export function getClient() {
   const apiKey = import.meta.env.VITE_CLAUDE_API_KEY;
   
   if (!apiKey || apiKey === 'your_api_key_here') {
@@ -36,6 +35,41 @@ function getClient() {
     apiKey,
     dangerouslyAllowBrowser: true,
   });
+}
+
+/**
+ * Extract JSON from response text (handles markdown code blocks and prose)
+ * @private
+ * @param {string} responseText - Raw response from Claude
+ * @returns {string} - Extracted JSON text
+ * @throws {Error} If no JSON found
+ */
+function extractJSON(responseText) {
+  if (!responseText || typeof responseText !== 'string') {
+    throw new Error('Response is not a string');
+  }
+
+  let jsonText = responseText.trim();
+
+  // Remove markdown code blocks if present
+  if (jsonText.startsWith('```')) {
+    const match = jsonText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (match) {
+      jsonText = match[1].trim();
+    }
+  }
+
+  // Extract JSON object or array from text (in case Claude added prose)
+  const jsonMatch = jsonText.match(/[\[\{][\s\S]*[\]\}]/);
+  if (jsonMatch) {
+    jsonText = jsonMatch[0];
+  }
+
+  if (!jsonText || jsonText.length === 0) {
+    throw new Error('Could not extract JSON from response');
+  }
+
+  return jsonText;
 }
 
 /**
@@ -101,16 +135,6 @@ function validateEmotionData(emotionData) {
  * @param {Array<{id: string, content: string}>} sentences - Sentences to evaluate
  * @returns {Promise<Array<{id: string, emotions: EmotionProfile}>>}
  * @throws {Error} If Claude API fails or response is invalid
- * 
- * @example
- * const result = await evaluateSentenceEmotions([
- *   { id: 's1', content: 'Hello world!' },
- *   { id: 's2', content: 'Goodbye cruel world.' }
- * ]);
- * // Returns: [
- * //   { id: 's1', emotions: {interest: 50, joy: 70, ...all 10 axes...} },
- * //   { id: 's2', emotions: {interest: 30, sadness: 60, ...all 10 axes...} }
- * // ]
  */
 export async function evaluateSentenceEmotions(sentences) {
   if (!Array.isArray(sentences) || sentences.length === 0) {
@@ -138,7 +162,7 @@ ${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
   
   try {
     const message = await client.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 4096,
       temperature: 0.3,
       messages: [{
@@ -150,13 +174,9 @@ ${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
     const responseText = message.content[0].text;
     console.log(`[emotionEvaluator] Received response (${responseText.length} chars)`);
     
-    // Parse JSON response
-    let emotionData;
-    try {
-      emotionData = JSON.parse(responseText);
-    } catch (parseError) {
-      throw new Error(`Failed to parse Claude response as JSON: ${parseError.message}`);
-    }
+    // Extract and parse JSON
+    const jsonText = extractJSON(responseText);
+    let emotionData = JSON.parse(jsonText);
     
     if (!Array.isArray(emotionData)) {
       throw new Error(`Expected array, got ${typeof emotionData}`);
@@ -202,16 +222,10 @@ ${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
  * Evaluate emotions for hierarchy nodes
  * Considers both node title and descendant content
  * 
- * @param {Array<{id: string, label: string, childIds: string[]}>} hierarchyNodes - Nodes to evaluate
+ * @param {Array<{id: string, title: string, childIds: string[]}>} hierarchyNodes - Nodes to evaluate
  * @param {Array<{id: string, content: string}>} sentences - All sentences for context
  * @returns {Promise<Array<{id: string, emotions: EmotionProfile}>>}
  * @throws {Error} If evaluation fails
- * 
- * @example
- * const nodeEmotions = await evaluateHierarchyNodeEmotions(
- *   [{ id: 'g1', label: 'Happy Chapter', childIds: ['s1', 's2'] }],
- *   [{ id: 's1', content: '...' }]
- * );
  */
 export async function evaluateHierarchyNodeEmotions(hierarchyNodes, sentences) {
   if (!Array.isArray(hierarchyNodes) || hierarchyNodes.length === 0) {
@@ -223,7 +237,7 @@ export async function evaluateHierarchyNodeEmotions(hierarchyNodes, sentences) {
   
   console.log(`[emotionEvaluator] Evaluating emotions for ${hierarchyNodes.length} hierarchy nodes`);
   
-  // Build text blocks for each node (label + descendant sentences)
+  // Build text blocks for each node (title + descendant sentences)
   const nodeTextBlocks = hierarchyNodes.map(node => {
     // Get all descendant sentence content
     const descendantContent = (node.childIds || [])
@@ -231,7 +245,7 @@ export async function evaluateHierarchyNodeEmotions(hierarchyNodes, sentences) {
       .filter(Boolean)
       .join(' ');
     
-    const fullText = [node.label, descendantContent]
+    const fullText = [node.title, descendantContent]
       .filter(Boolean)
       .join(': ');
     
@@ -240,7 +254,7 @@ export async function evaluateHierarchyNodeEmotions(hierarchyNodes, sentences) {
   
   const prompt = `${getEmotionPromptHeader()}
 
-Return ONLY valid JSON. DO NOT wrap in markdown code fences.
+Return ONLY valid JSON. DO NOT wrap in markdown code fences. NO PROSE.
 Start directly with opening bracket [ and end with closing bracket ].
 
 Format: array where each item is { "id": "<node-id>", "emotions": { ${EMOTION_AXES.map(k => `"${k}": 0-100`).join(', ')} } }
@@ -250,7 +264,7 @@ ${nodeTextBlocks}`;
   
   try {
     const message = await client.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 2048,
       temperature: 0.3,
       messages: [{
@@ -260,7 +274,14 @@ ${nodeTextBlocks}`;
     });
     
     const responseText = message.content[0].text;
-    let emotionData = JSON.parse(responseText);
+    console.log(`[emotionEvaluator] Received hierarchy response (${responseText.length} chars)`);
+    console.log(`[emotionEvaluator] Response preview:`, responseText.substring(0, 200));
+    
+    // Extract and parse JSON
+    const jsonText = extractJSON(responseText);
+    console.log(`[emotionEvaluator] Extracted JSON (${jsonText.length} chars)`);
+    
+    let emotionData = JSON.parse(jsonText);
     
     if (!Array.isArray(emotionData)) {
       throw new Error(`Expected array, got ${typeof emotionData}`);
@@ -274,7 +295,14 @@ ${nodeTextBlocks}`;
         throw new Error(`Node ${item.id} missing emotions`);
       }
       
-      validateEmotionData(item.emotions);
+      try {
+        validateEmotionData(item.emotions);
+      } catch (e) {
+        console.warn(`[emotionEvaluator] Validation failed for node ${item.id}: ${e.message}`);
+        // Create fallback emotions
+        item.emotions = createEmptyEmotionProfile();
+      }
+      
       const normalized = normalizeEmotionProfile(item.emotions);
       
       validated.push({
@@ -288,7 +316,13 @@ ${nodeTextBlocks}`;
     
   } catch (error) {
     console.error('[emotionEvaluator] ✗ Hierarchy node evaluation failed:', error.message);
-    throw new Error(`Failed to evaluate hierarchy node emotions: ${error.message}`);
+    
+    // Fallback: return default emotions for all nodes
+    console.warn('[emotionEvaluator] Returning fallback emotions');
+    return hierarchyNodes.map(n => ({
+      id: n.id,
+      emotions: createEmptyEmotionProfile()
+    }));
   }
 }
 
@@ -300,12 +334,6 @@ ${nodeTextBlocks}`;
  * @param {number} [maxChars=2000] - Max characters to include in evaluation
  * @returns {Promise<EmotionProfile>}
  * @throws {Error} If evaluation fails
- * 
- * @example
- * const rootEmotions = await evaluateDocumentEmotions(
- *   ['The story begins...', 'A happy ending.', '...'],
- *   2000
- * );
  */
 export async function evaluateDocumentEmotions(allSentenceContent, maxChars = 2000) {
   if (!Array.isArray(allSentenceContent) || allSentenceContent.length === 0) {
@@ -328,7 +356,7 @@ export async function evaluateDocumentEmotions(allSentenceContent, maxChars = 20
 
 Evaluate the OVERALL emotional tone of this entire document based on all its content.
 
-Return ONLY valid JSON (no markdown code fences, no extra text).
+Return ONLY valid JSON (no markdown code fences, no extra text). NO PROSE.
 Format: { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 }
 
 Document (${allSentenceContent.length} sentences, ${fullText.length} chars):
@@ -336,7 +364,7 @@ Document (${allSentenceContent.length} sentences, ${fullText.length} chars):
   
   try {
     const message = await client.messages.create({
-      model: 'claude-3-5-haiku-20241022',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       temperature: 0.2,
       messages: [{
@@ -346,22 +374,20 @@ Document (${allSentenceContent.length} sentences, ${fullText.length} chars):
     });
     
     const responseText = message.content[0].text;
+    console.log(`[emotionEvaluator] Received document response (${responseText.length} chars)`);
     
-    // Extract JSON more carefully
-    let emotionData;
+    // Extract and parse JSON
+    const jsonText = extractJSON(responseText);
+    let emotionData = JSON.parse(jsonText);
+    
     try {
-      // Try direct parse first
-      emotionData = JSON.parse(responseText);
-    } catch (e1) {
-      // Try extracting JSON from the response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        throw new Error('No JSON found in response');
-      }
-      emotionData = JSON.parse(jsonMatch[0]);
+      validateEmotionData(emotionData);
+    } catch (e) {
+      console.warn(`[emotionEvaluator] Document emotions validation failed: ${e.message}`);
+      // Return default
+      return createEmptyEmotionProfile();
     }
     
-    validateEmotionData(emotionData);
     const normalized = normalizeEmotionProfile(emotionData);
     
     console.log(`[emotionEvaluator] ✓ Evaluated root document emotions`);
@@ -370,22 +396,20 @@ Document (${allSentenceContent.length} sentences, ${fullText.length} chars):
   } catch (error) {
     console.error('[emotionEvaluator] ✗ Document emotion evaluation failed:', error.message);
     // Return default profile instead of throwing
-    return createEmotionProfile();
+    return createEmptyEmotionProfile();
   }
 }
 
-// Add this helper at the top of emotionEvaluator.js
-function createEmotionProfile(overrides = {}) {
-  const EMOTION_AXES = [
-    'interest', 'joy', 'surprise', 'sadness', 'anger',
-    'disgust', 'contempt', 'fear', 'shame', 'guilt'
-  ];
-  
+/**
+ * Create empty emotion profile (all 50 - neutral)
+ * @private
+ * @returns {EmotionProfile}
+ */
+function createEmptyEmotionProfile() {
   const profile = {};
   EMOTION_AXES.forEach(axis => {
-    profile[axis] = overrides[axis] ?? 50;
+    profile[axis] = 50;
   });
-  
   return profile;
 }
 

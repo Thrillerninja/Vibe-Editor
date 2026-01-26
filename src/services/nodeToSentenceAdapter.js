@@ -111,10 +111,10 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
 }
 
 /**
- * Apply restructuring result back to nodeMap
+ * Apply restructuring result back to nodeMap - SURGICAL APPROACH
  * 
- * Replaces the root-level hierarchy with new structure.
- * Preserves all content nodes, only updates grouping.
+ * Only modifies nodes within the dirty subtrees.
+ * Preserves all other hierarchy structure.
  * 
  * @param {Map<string, Node>} nodeMap - Current state
  * @param {string} rootId - Root node ID
@@ -123,16 +123,6 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
  * @param {Object | null} newRootEmotions - Updated root emotions (optional)
  * @param {number} maxDepth - Max hierarchy depth
  * @returns {Map<string, Node>} - Updated nodeMap
- * 
- * @example
- * const updated = applyClaudeRestructureToNodeMap(
- *   nodeMap,
- *   'root',
- *   [{rootNodeId: 'root', newNodes: [...]}],
- *   null,
- *   {interest: 50, joy: 60, ...},
- *   4
- * );
  */
 export function applyClaudeRestructureToNodeMap(
   nodeMap,
@@ -145,89 +135,190 @@ export function applyClaudeRestructureToNodeMap(
   const updated = new Map(nodeMap);
   const contentLevel = maxDepth - 1;
   
-  // No level conversion needed - Claude now returns app levels!
+  console.log('[adapter] Applying Claude restructure (SURGICAL MODE)');
+  console.log('[adapter]   Processing', restructuredSubtrees.length, 'dirty subtrees');
   
-  // 1) Delete old groups, keep root + content
-  for (const [id, node] of updated.entries()) {
-    if (id !== rootId && node && isGroupNode(node)) {
-      updated.delete(id);
-    }
-  }
-  
-  // 2) Add new groups directly with app levels
-  const rootSubtree = restructuredSubtrees.find(s => s.rootNodeId === rootId) 
-    ?? restructuredSubtrees[0];
-  
-  for (const nodeData of rootSubtree.newNodes) {
-    const group = createGroupNode(
-      nodeData.id,
-      nodeData.title,
-      nodeData.level, // Already app level!
-      nodeData.level === 1 ? rootId : null, // Will be set below
-      [...new Set(nodeData.childIds || [])],
-      { metadata: { isDirty: false, createdAt: new Date().toISOString(), version: 1 } }
-    );
+  // For EACH dirty subtree
+  for (const subtree of restructuredSubtrees) {
+    const dirtyRootId = subtree.rootNodeId;
     
-    const ef = buildEmotionField(nodeData.emotions);
-    if (ef) group.emotion = ef;
+    console.log(`[adapter] Processing subtree: ${dirtyRootId}`);
     
-    updated.set(nodeData.id, group);
-  }
-  
-  // 3) Fix parent pointers for groups
-  const parentMap = new Map();
-  for (const nodeData of rootSubtree.newNodes) {
-    for (const childId of nodeData.childIds) {
-      parentMap.set(childId, nodeData.id);
+    // Find the dirty root node in current nodeMap
+    const dirtyRootNode = updated.get(dirtyRootId);
+    if (!dirtyRootNode) {
+      console.warn(`[adapter] Warning: dirty root ${dirtyRootId} not found in nodeMap`);
+      continue;
     }
-  }
-  
-  for (const [id, node] of updated.entries()) {
-    if (isGroupNode(node)) {
-      const newParentId = parentMap.get(id) || rootId;
-      if (node.hierarchy.parentId !== newParentId) {
-        const patched = cloneNode(node);
-        patched.hierarchy.parentId = newParentId;
-        updated.set(id, patched);
+    
+    // STEP 1: Find all nodes WITHIN this dirty subtree (descendants of dirtyRoot)
+    const descendantsOfDirtyRoot = new Set();
+    const collectDescendants = (nodeId) => {
+      const node = updated.get(nodeId);
+      if (!node) return;
+      
+      for (const childId of node.hierarchy.childIds || []) {
+        if (!descendantsOfDirtyRoot.has(childId)) {
+          descendantsOfDirtyRoot.add(childId);
+          if (isGroupNode(updated.get(childId))) {
+            collectDescendants(childId);
+          }
+        }
+      }
+    };
+    collectDescendants(dirtyRootId);
+    
+    console.log(`[adapter]   Found ${descendantsOfDirtyRoot.size} descendants to replace`);
+    
+    // STEP 2: Delete ONLY nodes within the dirty subtree
+    // (Keep content nodes - they'll be reparented below)
+    for (const descendantId of descendantsOfDirtyRoot) {
+      const node = updated.get(descendantId);
+      if (node && isGroupNode(node)) {
+        updated.delete(descendantId);
       }
     }
-  }
-  
-  // 4) Reparent content nodes to level-1 groups
-  const level1Groups = rootSubtree.newNodes.filter(n => n.level === 1);
-  for (const group of level1Groups) {
-    for (const sentenceId of group.childIds) {
-      const content = updated.get(sentenceId);
-      if (content && isContentNode(content)) {
-        const patched = cloneNode(content);
-        patched.hierarchy.parentId = group.id;
+    
+    // STEP 3: Add new group nodes from restructure
+    const newNodeIds = new Set();
+    for (const nodeData of subtree.newNodes) {
+      newNodeIds.add(nodeData.id);
+      
+      const group = createGroupNode(
+        nodeData.id,
+        nodeData.title || `Section ${newNodeIds.size}`, // Keep or use placeholder
+        nodeData.level,
+        null, // Will be set below based on hierarchy
+        [...new Set(nodeData.childIds || [])],
+        { metadata: { isDirty: false, createdAt: new Date().toISOString(), version: 1 } }
+      );
+      
+      const ef = buildEmotionField(nodeData.emotions);
+      if (ef) group.emotion = ef;
+      
+      updated.set(nodeData.id, group);
+      console.log(`[adapter]   Added node: ${nodeData.id.substring(0, 8)} level=${nodeData.level} "${nodeData.title}"`);
+    }
+    
+    // STEP 4: Build parent map for new nodes
+    const parentMap = new Map();
+    for (const nodeData of subtree.newNodes) {
+      for (const childId of nodeData.childIds || []) {
+        parentMap.set(childId, nodeData.id);
+      }
+    }
+    
+    // STEP 5: Fix parent pointers for new group nodes
+    for (const nodeData of subtree.newNodes) {
+      const node = updated.get(nodeData.id);
+      if (node) {
+        // Parent is either another node in the subtree, or the dirtyRoot's parent
+        const parentInSubtree = parentMap.get(nodeData.id);
+        const parentId = parentInSubtree || dirtyRootNode.hierarchy.parentId;
+        
+        const patched = cloneNode(node);
+        patched.hierarchy.parentId = parentId;
+        updated.set(nodeData.id, patched);
+      }
+    }
+    
+    // STEP 6: Reparent content nodes to new groups
+    const level1Groups = subtree.newNodes.filter(n => n.level === 1);
+    const sentenceToGroup = new Map();
+    for (const group of level1Groups) {
+      for (const sentenceId of group.childIds || []) {
+        sentenceToGroup.set(sentenceId, group.id);
+      }
+    }
+    
+    for (const [sentenceId, groupId] of sentenceToGroup) {
+      const contentNode = updated.get(sentenceId);
+      if (contentNode && isContentNode(contentNode)) {
+        const patched = cloneNode(contentNode);
+        patched.hierarchy.parentId = groupId;
         patched.hierarchy.level = contentLevel;
         updated.set(sentenceId, patched);
       }
     }
-  }
-  
-  // 5) Update root
-  const root = updated.get(rootId);
-  if (root) {
-    const patched = cloneNode(root);
-    patched.hierarchy.childIds = rootSubtree.newNodes
-      .filter(n => n.level === Math.max(...rootSubtree.newNodes.map(x => x.level)))
-      .map(n => n.id);
     
-    if (newRootTitle) patched.content = newRootTitle;
-    if (newRootEmotions) {
-      patched.emotion = {
-        profile: newRootEmotions,
-        dominantEmotion: 'interest',
-        source: 'ai',
-        timestamp: new Date().toISOString(),
-      };
+    // STEP 7: Update the dirty root's parent to point to new top-level nodes
+    const topLevelNewNodes = subtree.newNodes.filter(
+      n => n.level === Math.max(...subtree.newNodes.map(x => x.level))
+    );
+    
+    const parentOfDirtyRoot = updated.get(dirtyRootNode.hierarchy.parentId);
+    if (parentOfDirtyRoot) {
+      const patched = cloneNode(parentOfDirtyRoot);
+      
+      // Replace dirtyRootId with new top-level node IDs in parent's childIds
+      const idx = patched.hierarchy.childIds.indexOf(dirtyRootId);
+      if (idx !== -1) {
+        patched.hierarchy.childIds = [
+          ...patched.hierarchy.childIds.slice(0, idx),
+          ...topLevelNewNodes.map(n => n.id),
+          ...patched.hierarchy.childIds.slice(idx + 1)
+        ];
+        updated.set(parentOfDirtyRoot.id, patched);
+        console.log(`[adapter]   Updated parent ${parentOfDirtyRoot.id.substring(0, 8)} to reference new nodes`);
+      }
+    } else if (dirtyRootId === rootId) {
+      // dirtyRoot IS the root - update root's children
+      const root = updated.get(rootId);
+      if (root) {
+        const patched = cloneNode(root);
+        patched.hierarchy.childIds = topLevelNewNodes.map(n => n.id);
+        updated.set(rootId, patched);
+      }
     }
     
-    updated.set(rootId, patched);
+    // STEP 8: Fix orphaned content nodes (safety net)
+    const orphanedContent = [];
+    for (const [id, node] of updated.entries()) {
+      if (isContentNode(node)) {
+        const parentExists = updated.has(node.hierarchy.parentId);
+        if (!parentExists) {
+          orphanedContent.push(id);
+        }
+      }
+    }
+    
+    if (orphanedContent.length > 0) {
+      console.warn(`[adapter] Reconnecting ${orphanedContent.length} orphaned content nodes`);
+      const fallbackGroup = level1Groups[0];
+      if (fallbackGroup) {
+        for (const orphanId of orphanedContent) {
+          const patched = cloneNode(updated.get(orphanId));
+          patched.hierarchy.parentId = fallbackGroup.id;
+          patched.hierarchy.level = contentLevel;
+          updated.set(orphanId, patched);
+          
+          if (!fallbackGroup.hierarchy.childIds.includes(orphanId)) {
+            fallbackGroup.hierarchy.childIds.push(orphanId);
+          }
+        }
+      }
+    }
   }
   
+  // Update root if needed
+  if (newRootTitle || newRootEmotions) {
+    const root = updated.get(rootId);
+    if (root) {
+      const patched = cloneNode(root);
+      if (newRootTitle) patched.content = newRootTitle;
+      if (newRootEmotions) {
+        patched.emotion = {
+          profile: newRootEmotions,
+          dominantEmotion: 'interest',
+          source: 'ai',
+          timestamp: new Date().toISOString(),
+        };
+      }
+      updated.set(rootId, patched);
+    }
+  }
+  
+  console.log('[adapter] ✓ Surgical restructure complete');
   return updated;
 }
 

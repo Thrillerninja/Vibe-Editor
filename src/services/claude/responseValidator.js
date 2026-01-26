@@ -495,14 +495,17 @@ function sortNodesByDocumentOrder(subtree, originalSubtree) {
     const bOrder = nodeMinOrder.get(b.id) || Infinity;
     return aOrder - bOrder;
   });
+
+  console.log(`[Claude Service]   Sorted nodes by document order in place`);
+  for (let i = 0; i < subtree.newNodes.length; i++) {
+    const minOrder = nodeMinOrder.get(subtree.newNodes[i].id);
+    console.log(`[Claude Service]     ${i}: minOrder ${minOrder}, title "${subtree.newNodes[i].title}"`);
+  }
   
   return subtree;
 }
 
 
-/**
- * Validate a complete subtree
- */
 function validateSubtree(subtree, originalSubtree, maxDepth) {
     if (!subtree.rootNodeId) {
         throw new Error('Subtree missing "rootNodeId"');
@@ -516,56 +519,44 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
 
     console.log(`[Claude Service] Validating subtree (topLevel=${topLevel})`);
 
-    // ← Fix invalid hierarchy FIRST
+    // ← VERY FIRST: Check for overlapping groups
+    if (structureHasOverlappingGroups(subtree, originalSentences)) {
+        console.warn(`[Claude Service] Overlapping groups detected - forcing rebuild from document order`);
+        subtree = forceValidStructureFromDocumentOrder(subtree, originalSentences);
+    }
+
+    // ← Fix invalid hierarchy
     subtree = fixInvalidParentChildLevels(subtree, topLevel);
 
-    // ← Sanitize invalid levels FIRST (Claude sometimes violates constraints)
+    // ← Sanitize invalid levels
     subtree.newNodes = normalizeNodeLevels(subtree.newNodes, topLevel);
 
+    // ← Recover missing sentences
     subtree = recoverMissingSentences(subtree, originalSubtree);
 
-    // ← RE-SORT BY DOCUMENT ORDER (NEW)
+    // ← RE-SORT BY DOCUMENT ORDER
     subtree = sortNodesByDocumentOrder(subtree, originalSubtree);
 
-    // Now validate
+    // ← Validate and repair sentence order (calls forceValid if needed)
+    validateSentenceOrder(subtree, originalSentences);
+
+    // Now validate structure
     for (const node of subtree.newNodes) {
-        // Check title is present and reasonable
         if (!node.title || node.title.trim().length === 0) {
-        throw new Error(`Node ${node.id} missing title`);
+            node.title = `Section ${subtree.newNodes.indexOf(node) + 1}`;
         }
 
         if (node.title.length > 100) {
-        console.warn(`Node ${node.id} title too long, truncating`);
-        node.title = node.title.substring(0, 100);
-        }
-
-        // Reject generic placeholders from Claude
-        if (/^(Section|Topic|Group|Level) \d+$/.test(node.title)) {
-        console.warn(
-            `Node ${node.id} has generic title, will be auto-generated: "${node.title}"`
-        );
+            node.title = node.title.substring(0, 100);
         }
     }
 
-    // Validate level completeness (all levels 2 to topLevel exist)
+    // Validate completeness
     validateLevelCompleteness(subtree, topLevel);
-
-    // Validate proper parent-child relationships
     validateParentChildRelationships(subtree, topLevel, originalSentences);
-
-    // Validate no orphaned nodes
     validateNoOrphanedNodes(subtree, topLevel, originalSentences);
-
-    // Validate all sentences are included exactly once
     validateSentenceCompleteness(subtree, originalSentences);
-
-    // Validate sentence order is preserved
-    validateSentenceOrder(subtree, originalSentences);
-
-    // Validate groups only contain contiguous sentences
     validateContiguousGrouping(subtree, originalSentences);
-
-    // Validate nodes array is sorted by document order
     validateNodesArrayOrder(subtree, originalSentences);
 
     console.log(`[Claude Service] ✓ Subtree ${subtree.rootNodeId} validation passed`);
@@ -615,7 +606,8 @@ function validateLevelCompleteness(subtree, topLevel) {
     const presentLevels = new Set(subtree.newNodes.map(n => n.level));
     const missingLevels = [];
 
-    for (let level = 2; level <= topLevel; level++) {
+    // START AT 1, NOT 2
+    for (let level = 1; level <= topLevel; level++) {
         if (!presentLevels.has(level)) {
             missingLevels.push(level);
         }
@@ -624,11 +616,11 @@ function validateLevelCompleteness(subtree, topLevel) {
     if (missingLevels.length > 0) {
         throw new Error(
             `Subtree ${subtree.rootNodeId}: Missing levels ${missingLevels.join(', ')}. ` +
-            `Must create ALL levels from 2 to ${topLevel} (inclusive).`
+            `Must create ALL levels from 1 to ${topLevel} (inclusive).`
         );
     }
 
-    console.log(`[Claude Service]   ✓ All levels 2-${topLevel} present`);
+    console.log(`[Claude Service]   ✓ All levels 1-${topLevel} present`);
 }
 
 /**
@@ -637,15 +629,17 @@ function validateLevelCompleteness(subtree, topLevel) {
 function validateParentChildRelationships(subtree, topLevel, originalSentences) {
     const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
     const sentenceIds = new Set(originalSentences.map(s => s.id));
+    // In partial regen, contentLevel tells us which level contains sentences
+    const contentLevel = subtree.contentLevel || topLevel;
 
     for (const node of subtree.newNodes) {
         for (const childId of node.childIds) {
             // If child is a sentence (check if ID is in original sentences)
             if (sentenceIds.has(childId)) {
-                if (node.level !== 2) {
+                if (node.level !== contentLevel) {
                     throw new Error(
                         `Subtree ${subtree.rootNodeId}: Node ${node.id} (level ${node.level}) ` +
-                        `contains sentence ${childId}, but only level 2 nodes can contain sentences`
+                        `contains sentence ${childId}, but only level ${contentLevel} nodes can contain sentences`
                     );
                 }
             }
@@ -752,77 +746,6 @@ function validateSentenceCompleteness(subtree, originalSentences) {
     }
 
     console.log(`[Claude Service]   ✓ All ${originalIds.size} sentences included exactly once`);
-}
-
-/**
- * Validate sentence order is preserved
- */
-function validateSentenceOrder(subtree, originalSentences) {
-    // Build a map of original sentence order
-    const originalOrder = new Map(originalSentences.map((s, idx) => [s.id, idx]));
-    const sentenceIds = new Set(originalSentences.map(s => s.id));
-
-    // Extract sentence sequence from the new hierarchy
-    const sentenceSequence = [];
-    const extractSequence = (nodeIds, nodeMap) => {
-        for (const childId of nodeIds) {
-            if (sentenceIds.has(childId)) {
-                sentenceSequence.push(childId);
-            } else {
-                const childNode = nodeMap.get(childId);
-                if (childNode) {
-                    extractSequence(childNode.childIds, nodeMap);
-                }
-            }
-        }
-    };
-
-    // Extract sequence by processing nodes in order
-    const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
-
-    // Find the top-level nodes and process them in order
-    const topLevel = Math.max(...subtree.newNodes.map(n => n.level));
-    const topNodes = subtree.newNodes.filter(n => n.level === topLevel);
-
-    for (const topNode of topNodes) {
-        extractSequence(topNode.childIds, nodeMap);
-    }
-
-    // Verify sequence is in ascending order
-    for (let i = 1; i < sentenceSequence.length; i++) {
-        const prevIdx = originalOrder.get(sentenceSequence[i - 1]);
-        const currIdx = originalOrder.get(sentenceSequence[i]);
-
-        if (currIdx < prevIdx) {
-            // Find which nodes contain these sentences to provide helpful error
-            let nodeWithCurr = null;
-            let nodeWithPrev = null;
-
-            for (const node of subtree.newNodes) {
-                if (node.childIds.includes(sentenceSequence[i])) {
-                    nodeWithCurr = node;
-                }
-                if (node.childIds.includes(sentenceSequence[i - 1])) {
-                    nodeWithPrev = node;
-                }
-            }
-
-            throw new Error(
-                `Subtree ${subtree.rootNodeId}: Sentence order violated.\n` +
-                `\n` +
-                `The newNodes array has groups in the wrong order:\n` +
-                `  - Node "${nodeWithPrev?.id}" contains sentence at position ${prevIdx}\n` +
-                `  - Node "${nodeWithCurr?.id}" contains sentence at position ${currIdx}\n` +
-                `\n` +
-                `But position ${currIdx} comes BEFORE position ${prevIdx} in the document!\n` +
-                `\n` +
-                `Fix: Reorder your newNodes array so groups appear in document order.\n` +
-                `The node containing position ${currIdx} must come before the node containing position ${prevIdx}.`
-            );
-        }
-    }
-
-    console.log(`[Claude Service]   ✓ Sentence order preserved`);
 }
 
 /**
@@ -958,4 +881,275 @@ function validateContiguousGrouping(subtree, originalSentences) {
     }
 
     console.log(`[Claude Service]   ✓ All groups contain contiguous sentences`);
+}
+/**
+ * Repair non-contiguous grouping by reordering groups and their children
+ * Ensures each group contains consecutive sentences in document order
+ */
+function repairContiguousGrouping(subtree, originalSentences) {
+    const sentenceOrder = new Map(
+        originalSentences.map(s => [s.id, s.order])
+    );
+    const sentenceIds = new Set(sentenceOrder.keys());
+    
+    // For each group, collect its sentences and their positions
+    const groupMetadata = subtree.newNodes.map(node => {
+        const sentencesInGroup = (node.childIds || [])
+            .filter(id => sentenceIds.has(id))
+            .map(id => ({
+                id,
+                position: sentenceOrder.get(id)
+            }))
+            .sort((a, b) => a.position - b.position);
+        
+        const minPos = sentencesInGroup.length > 0 ? sentencesInGroup[0].position : Infinity;
+        const maxPos = sentencesInGroup.length > 0 ? sentencesInGroup[sentencesInGroup.length - 1].position : -Infinity;
+        
+        return {
+            node,
+            sentencesInGroup,
+            minPos,
+            maxPos,
+            isContiguous: sentencesInGroup.length === (maxPos - minPos + 1)
+        };
+    });
+    
+    // Check if any groups are non-contiguous
+    const nonContiguousGroups = groupMetadata.filter(g => !g.isContiguous && g.sentencesInGroup.length > 0);
+    
+    if (nonContiguousGroups.length > 0) {
+        console.warn(`[Claude Service] Found ${nonContiguousGroups.length} non-contiguous groups, attempting to repair...`);
+        
+        for (const meta of nonContiguousGroups) {
+            const gaps = [];
+            for (let i = 1; i < meta.sentencesInGroup.length; i++) {
+                const prev = meta.sentencesInGroup[i - 1].position;
+                const curr = meta.sentencesInGroup[i].position;
+                if (curr !== prev + 1) {
+                    gaps.push(`${prev} → ${curr}`);
+                }
+            }
+            console.warn(`[Claude Service]   - "${meta.node.title}": positions ${meta.minPos}-${meta.maxPos}, gaps: ${gaps.join(', ')}`);
+        }
+    }
+    
+    // Sort groups by their minimum sentence position
+    const sortedGroupMetadata = groupMetadata.sort((a, b) => a.minPos - b.minPos);
+    
+    // Reorder nodes array
+    subtree.newNodes = sortedGroupMetadata.map(m => m.node);
+    
+    // For each group, ensure childIds are in sorted order
+    for (const meta of subtree.newNodes) {
+        const sentenceChildIds = (meta.childIds || []).filter(id => sentenceIds.has(id));
+        const groupChildIds = (meta.childIds || []).filter(id => !sentenceIds.has(id));
+        
+        // Sort sentence children by document order
+        const sortedSentenceChildren = sentenceChildIds.sort((a, b) => {
+            const posA = sentenceOrder.get(a) || Infinity;
+            const posB = sentenceOrder.get(b) || Infinity;
+            return posA - posB;
+        });
+        
+        meta.childIds = [...groupChildIds, ...sortedSentenceChildren];
+    }
+    
+    console.log(`[Claude Service] ✓ Repaired contiguous grouping, groups reordered`);
+    return subtree;
+}
+
+/**
+ * Force valid structure: Group consecutive sentences, ignore Claude's grouping
+ * 
+ * When Claude's groups don't respect document order, we rebuild the entire
+ * structure to ensure validity, preserving only the emotional metadata
+ */
+function forceValidStructureFromDocumentOrder(subtree, originalSentences) {
+    const sentenceOrder = new Map(
+        originalSentences.map(s => [s.id, s.order])
+    );
+    const sentenceIds = new Set(sentenceOrder.keys());
+    
+    console.warn(`[Claude Service] FORCING VALID STRUCTURE: Rebuilding based on document order`);
+    
+    // Step 1: Collect ALL sentences with their original positions
+    const allSentences = [];
+    for (const node of subtree.newNodes) {
+        for (const childId of node.childIds || []) {
+            if (sentenceIds.has(childId)) {
+                allSentences.push({
+                    id: childId,
+                    order: sentenceOrder.get(childId),
+                    originalNode: node  // Keep reference to get emotions
+                });
+            }
+        }
+    }
+    
+    // Step 2: Sort by document order
+    allSentences.sort((a, b) => a.order - b.order);
+    
+    if (allSentences.length === 0) {
+        console.error('[Claude Service] No sentences found in subtree!');
+        return subtree;
+    }
+    
+    console.log(`[Claude Service] Reconstructing with ${allSentences.length} sentences in order: [${allSentences.map(s => s.order).join(',')}]`);
+    
+    // Step 3: Create new groups based on consecutive sentences
+    // Use simple heuristic: group size = sqrt(total sentences)
+    const targetGroupSize = Math.max(2, Math.ceil(Math.sqrt(allSentences.length)));
+    const newNodes = [];
+    
+    for (let i = 0; i < allSentences.length; i += targetGroupSize) {
+        const chunk = allSentences.slice(i, i + targetGroupSize);
+        const groupNum = Math.floor(i / targetGroupSize) + 1;
+        
+        // Use emotions from the original node if available
+        const sourceNode = chunk[0].originalNode;
+        
+        const newGroup = {
+            id: `rebuilt-level1-${Date.now()}-${groupNum}`,
+            level: 1,
+            title: `Section ${groupNum}`,
+            emotions: sourceNode.emotions || {
+                interest: 50, joy: 50, surprise: 50, sadness: 50, anger: 50,
+                disgust: 50, contempt: 50, fear: 50, shame: 50, guilt: 50
+            },
+            childIds: chunk.map(s => s.id)
+        };
+        
+        newNodes.push(newGroup);
+        console.log(`[Claude Service]   Group ${groupNum}: sentences [${chunk.map(s => s.order).join(',')}]`);
+    }
+    
+    subtree.newNodes = newNodes;
+    console.log(`[Claude Service] ✓ Forced valid structure: ${newNodes.length} consecutive groups`);
+    
+    return subtree;
+}
+
+/**
+ * Check if structure is fundamentally broken (has overlapping groups)
+ */
+function structureHasOverlappingGroups(subtree, originalSentences) {
+    const sentenceOrder = new Map(
+        originalSentences.map(s => [s.id, s.order])
+    );
+    const sentenceIds = new Set(sentenceOrder.keys());
+    
+    // Get all sentences for each group
+    const groupSentenceRanges = subtree.newNodes.map(node => {
+        const positions = (node.childIds || [])
+            .filter(id => sentenceIds.has(id))
+            .map(id => sentenceOrder.get(id))
+            .filter(pos => pos !== undefined)
+            .sort((a, b) => a - b);
+        
+        if (positions.length === 0) return null;
+        
+        return {
+            nodeId: node.id,
+            minPos: positions[0],
+            maxPos: positions[positions.length - 1],
+            positions
+        };
+    }).filter(Boolean);
+    
+    // Check for overlaps
+    for (let i = 0; i < groupSentenceRanges.length; i++) {
+        for (let j = i + 1; j < groupSentenceRanges.length; j++) {
+            const a = groupSentenceRanges[i];
+            const b = groupSentenceRanges[j];
+            
+            // Check if ranges overlap
+            if ((a.minPos <= b.minPos && b.minPos <= a.maxPos) ||
+                (b.minPos <= a.minPos && a.minPos <= b.maxPos)) {
+                console.warn(`[Claude Service] Overlapping groups detected:`);
+                console.warn(`[Claude Service]   Group A: positions ${a.minPos}-${a.maxPos}`);
+                console.warn(`[Claude Service]   Group B: positions ${b.minPos}-${b.maxPos}`);
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * Repair and validate sentence order
+ * REPAIRS: Reorders childIds within each group + DETECTS OVERLAPPING GROUPS
+ */
+function validateSentenceOrder(subtree, originalSentences) {
+    const originalOrder = new Map(originalSentences.map((s, idx) => [s.id, idx]));
+    const sentenceIds = new Set(originalSentences.map(s => s.id));
+    const nodeMap = new Map(subtree.newNodes.map(n => [n.id, n]));
+
+    // Check for overlapping groups FIRST
+    if (structureHasOverlappingGroups(subtree, originalSentences)) {
+        console.warn(`[Claude Service] Structure has overlapping groups - forcing rebuild`);
+        return forceValidStructureFromDocumentOrder(subtree, originalSentences);
+    }
+
+    // ===== REPAIR PHASE: Fix childIds ordering within each group =====
+    console.log(`[Claude Service]   Repairing childIds ordering within groups...`);
+    
+    for (const node of subtree.newNodes) {
+        if (!node.childIds || node.childIds.length === 0) continue;
+
+        const sentenceChildren = node.childIds.filter(id => sentenceIds.has(id));
+        const groupChildren = node.childIds.filter(id => !sentenceIds.has(id));
+
+        if (sentenceChildren.length === 0) continue;
+
+        const sortedSentenceChildren = [...sentenceChildren].sort((a, b) => {
+            const orderA = originalOrder.get(a) ?? Infinity;
+            const orderB = originalOrder.get(b) ?? Infinity;
+            return orderA - orderB;
+        });
+
+        const orderChanged = sentenceChildren.some((child, i) => child !== sortedSentenceChildren[i]);
+        if (orderChanged) {
+            console.log(
+                `[Claude Service]     Group "${node.title}": reordered ${sentenceChildren.length} sentences`
+            );
+        }
+
+        node.childIds = [...groupChildren, ...sortedSentenceChildren];
+    }
+
+    // ===== VALIDATION PHASE: Check final order =====
+    const sentenceSequence = [];
+    const extractSequence = (nodeIds) => {
+        for (const childId of nodeIds) {
+            if (sentenceIds.has(childId)) {
+                sentenceSequence.push(childId);
+            } else {
+                const childNode = nodeMap.get(childId);
+                if (childNode) {
+                    extractSequence(childNode.childIds);
+                }
+            }
+        }
+    };
+
+    const topLevel = Math.max(...subtree.newNodes.map(n => n.level));
+    const topNodes = subtree.newNodes.filter(n => n.level === topLevel);
+
+    for (const topNode of topNodes) {
+        extractSequence(topNode.childIds);
+    }
+
+    // Verify sequence is ascending
+    for (let i = 1; i < sentenceSequence.length; i++) {
+        const prevPos = originalOrder.get(sentenceSequence[i - 1]);
+        const currPos = originalOrder.get(sentenceSequence[i]);
+
+        if (currPos < prevPos) {
+            console.error(`[Claude Service] Groups still out of order after repair - forcing rebuild`);
+            return forceValidStructureFromDocumentOrder(subtree, originalSentences);
+        }
+    }
+
+    console.log(`[Claude Service]   ✓ Sentence order valid`);
 }

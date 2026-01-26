@@ -5,6 +5,7 @@
  * Enables incremental updates instead of full regeneration
  */
 
+import { findSentencesInNode } from '@services/claude/dirtyNodeFinder.js';
 import * as NodeTypes from '../types/node.js';
 
 // ==================== MARKING DIRTY ====================
@@ -163,42 +164,76 @@ export function countDirtyByType(nodes) {
 // ==================== DIRTY SUBTREES ====================
 
 /**
- * Build subtree information for dirty roots
- * Collects all affected nodes and sentences for AI processing
+ * Build subtree information for dirty root nodes
+ * @param {Array} dirtyRootNodes - Root nodes of dirty subtrees
+ * @param {Object} hierarchyMeta - Hierarchy metadata
+ * @param {Array} sentences - All sentences
+ * @param {Array} dirtySentenceIds - IDs of modified sentences
+ * @returns {Array} Array of subtree information objects
  * 
- * @param {NodeTypes.Node} dirtyRoot
- * @param {Map<string, NodeTypes.Node>} nodeMap
- * @returns {{rootId: string, level: number, descendants: NodeTypes.Node[]}}
+ * HIERARCHY SEMANTICS:
+ * - Sentences are NOT nodes - they're just IDs referenced by nodes
+ * - contentLevel = maxDepth - 1 (reference point, not a node level)
+ * - maxGroupLevel = maxDepth - 2 (highest grouping node level)
+ * - topLevel = maxGroupLevel (highest node to create)
+ * 
+ * Example maxDepth=3:
+ *   Root (0) → Level 1 groups → Sentence IDs
+ *   topLevel = 1
+ * 
+ * Example maxDepth=4:
+ *   Root (0) → Level 2 groups → Level 1 groups → Sentence IDs
+ *   topLevel = 2
  */
-export function buildDirtySubtree(dirtyRoot, nodeMap) {
-  const descendants = [];
-  const queue = [...dirtyRoot.hierarchy.childIds];
-  const visited = new Set([dirtyRoot.id]);
+function buildDirtySubtree(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds) {
+    const dirtySubtrees = [];
 
-  while (queue.length > 0) {
-    const nodeId = queue.shift();
+    console.log(`[Claude Service] Building dirty subtrees for ${dirtyRootNodes.length} root nodes`);
+    console.log(`[Claude Service] Total sentences in document: ${sentences.length}`);
 
-    if (visited.has(nodeId)) continue;
-    visited.add(nodeId);
+    // Calculate hierarchy levels
+    const contentLevel = hierarchyMeta.maxLevel; // maxDepth - 1 (reference, not a node level)
+    const maxGroupLevel = contentLevel - 1;     // Highest actual grouping node level
 
-    const node = nodeMap.get(nodeId);
-    if (!node) continue;
+    for (const rootNode of dirtyRootNodes) {
+        const sentencesInSubtree = findSentencesInNode(rootNode, hierarchyMeta, sentences);
 
-    descendants.push(node);
+        console.log(`[Claude Service] Subtree ${rootNode.id} contains ${sentencesInSubtree.length} sentences`);
+        console.log(`[Claude Service]   Sentence orders: ${sentencesInSubtree.map(s => sentences.indexOf(s)).join(', ')}`);
 
-    // Add children to queue
-    for (const childId of node.hierarchy.childIds) {
-      if (!visited.has(childId)) {
-        queue.push(childId);
-      }
+        if (sentencesInSubtree.length === 0) {
+            console.warn(
+                `[Claude Service] Skipping dirty root ${rootNode.id} because it contains 0 sentences`
+            );
+            continue;
+        }
+
+        dirtySubtrees.push({
+            rootNodeId: rootNode.id,
+            // topLevel = highest grouping node level (NOT contentLevel which is just a reference)
+            topLevel: maxGroupLevel,
+            contentLevel: contentLevel,
+            sentences: sentencesInSubtree.map((s, index) => ({
+                id: s.id,
+                order: sentences.indexOf(s),
+                content: s.content,
+                isDirty: dirtySentenceIds.includes(s.id)
+            }))
+        });
     }
-  }
 
-  return {
-    rootId: dirtyRoot.id,
-    level: dirtyRoot.hierarchy.level,
-    descendants,
-  };
+    const coveredSentenceIds = new Set(dirtySubtrees.flatMap(st => st.sentences.map(s => s.id)));
+    const allSentenceIds = new Set(sentences.map(s => s.id));
+    const missingSentenceIds = [...allSentenceIds].filter(id => !coveredSentenceIds.has(id));
+
+    if (missingSentenceIds.length > 0) {
+        console.warn(`[Claude Service] ⚠️ WARNING: ${missingSentenceIds.length} sentences are NOT in any dirty subtree!`);
+        console.warn(`[Claude Service] Missing sentence IDs:`, missingSentenceIds);
+        const missingSentences = sentences.filter(s => missingSentenceIds.includes(s.id));
+        console.warn(`[Claude Service] Missing sentences:`, missingSentences.map(s => `[${sentences.indexOf(s)}] "${s.content.substring(0, 50)}..."`));
+    }
+
+    return dirtySubtrees;
 }
 
 /**

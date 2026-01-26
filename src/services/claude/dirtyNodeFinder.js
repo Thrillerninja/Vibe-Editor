@@ -77,13 +77,19 @@ export function findSentencesInNode(node, hierarchyMeta, sentences) {
  * @param {Array} dirtySentenceIds - IDs of modified sentences
  * @returns {Array} Array of subtree information objects
  * 
- * CRITICAL SEMANTICS:
- * - topLevel is the level of nodes at the TOP of the new hierarchy
- * - This is the same as the level of the dirty root node being replaced
- * - Claude must create ALL levels from 2 up to and including topLevel
+ * HIERARCHY SEMANTICS:
+ * - Sentences are NOT nodes - they're just IDs referenced by nodes
+ * - contentLevel = maxDepth - 1 (reference point, not a node level)
+ * - maxGroupLevel = maxDepth - 2 (highest grouping node level)
+ * - topLevel = maxGroupLevel (highest node to create)
  * 
- * Example: If replacing a level-5 node, topLevel=5
- * Claude creates levels 2, 3, 4, 5 (complete hierarchy)
+ * Example maxDepth=3:
+ *   Root (0) → Level 1 groups → Sentence IDs
+ *   topLevel = 1
+ * 
+ * Example maxDepth=4:
+ *   Root (0) → Level 2 groups → Level 1 groups → Sentence IDs
+ *   topLevel = 2
  */
 export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dirtySentenceIds) {
     const dirtySubtrees = [];
@@ -91,12 +97,9 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
     console.log(`[Claude Service] Building dirty subtrees for ${dirtyRootNodes.length} root nodes`);
     console.log(`[Claude Service] Total sentences in document: ${sentences.length}`);
 
-    const clampTopLevel = (level) => {
-        const maxLevel = typeof hierarchyMeta.maxLevel === 'number'
-            ? hierarchyMeta.maxLevel
-            : Infinity;
-        return Math.max(2, Math.min(level, maxLevel));
-    };
+    // Calculate hierarchy levels
+    const contentLevel = hierarchyMeta.maxLevel; // maxDepth - 1 (reference, not a node level)
+    const maxGroupLevel = contentLevel - 1;     // Highest actual grouping node level
 
     for (const rootNode of dirtyRootNodes) {
         const sentencesInSubtree = findSentencesInNode(rootNode, hierarchyMeta, sentences);
@@ -104,9 +107,6 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
         console.log(`[Claude Service] Subtree ${rootNode.id} contains ${sentencesInSubtree.length} sentences`);
         console.log(`[Claude Service]   Sentence orders: ${sentencesInSubtree.map(s => sentences.indexOf(s)).join(', ')}`);
 
-        // If a dirty root has no sentences beneath it, it cannot be meaningfully
-        // restructured by Claude. Skip it (it will typically be removed when we
-        // rebuild groups anyway).
         if (sentencesInSubtree.length === 0) {
             console.warn(
                 `[Claude Service] Skipping dirty root ${rootNode.id} because it contains 0 sentences`
@@ -116,18 +116,18 @@ export function buildDirtySubtrees(dirtyRootNodes, hierarchyMeta, sentences, dir
 
         dirtySubtrees.push({
             rootNodeId: rootNode.id,
-            // Claude/validator semantics require topLevel >= 2.
-            topLevel: clampTopLevel(rootNode.level),
+            // topLevel = highest grouping node level (NOT contentLevel which is just a reference)
+            topLevel: maxGroupLevel,
+            contentLevel: contentLevel,
             sentences: sentencesInSubtree.map((s, index) => ({
                 id: s.id,
-                order: sentences.indexOf(s), // Compute order from position in main sentences array
+                order: sentences.indexOf(s),
                 content: s.content,
                 isDirty: dirtySentenceIds.includes(s.id)
             }))
         });
     }
 
-    // Check if all sentences are covered
     const coveredSentenceIds = new Set(dirtySubtrees.flatMap(st => st.sentences.map(s => s.id)));
     const allSentenceIds = new Set(sentences.map(s => s.id));
     const missingSentenceIds = [...allSentenceIds].filter(id => !coveredSentenceIds.has(id));
