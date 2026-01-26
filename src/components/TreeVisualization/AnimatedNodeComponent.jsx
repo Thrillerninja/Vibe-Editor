@@ -65,6 +65,8 @@ export function AnimatedNodeComponent({ id, data }) {
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
   const [nodeModified, setNodeModified] = useState(data.isDirty);
+  // Check for merging state from data prop
+  const [isNodeMerging, setIsNodeMerging] = useState(false);
   const initialProfile = normalizeEmotionProfile(
     data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
   );
@@ -92,6 +94,20 @@ export function AnimatedNodeComponent({ id, data }) {
   useEffect(() => {
     setNodeModified(data.isDirty);
   }, [data.isDirty]);
+
+  useEffect(() => {
+    setIsNodeMerging(data.isMerging || false);
+  }, [data.isMerging]);
+
+  // Sync nodeText and previousText with data.content when data changes
+  // This is important for when AI merge completes and updates the content
+  useEffect(() => {
+    if (isDialogOpen) {
+      setNodeText(data.content || data.label || "");
+      setPreviousText(data.content || data.label || "");
+      console.log('[AnimatedNodeComponent] Synced nodeText with new data.content:', data.content || data.label);
+    }
+  }, [data.content, data.label, isDialogOpen]);
 
   useEffect(() => {
     const profile = normalizeEmotionProfile(
@@ -875,6 +891,27 @@ export function AnimatedNodeComponent({ id, data }) {
             </svg>
           </>
         )}
+        {/* Spinning wheel when node is being processed after merge - positioned at top right */}
+        {isNodeMerging && (
+          <div
+            style={{
+              position: 'absolute',
+              top: -12,
+              right: -12,
+              width: 24,
+              height: 24,
+              borderRadius: '50%',
+              backgroundColor: '#fff',
+              border: '3px solid #8b5cf6',
+              borderTopColor: 'transparent',
+              animation: 'spin 0.8s linear infinite',
+              boxShadow: '0 2px 8px rgba(139, 92, 246, 0.4)',
+              zIndex: 20,
+            }}
+            title="Processing with AI..."
+          />
+        )}
+
         {/* Emotion badges - show additional emotions */}
         {significantEmotions.length > 0 && (
           <div

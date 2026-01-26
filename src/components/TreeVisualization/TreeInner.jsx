@@ -23,12 +23,37 @@ import { useFlowScreenConverters } from '../../utils/coords';
 import { applyReordering } from '../../utils/sentenceEditor';
 import { editSentence } from '../../utils/sentenceEditor';
 import { markSentenceAndAncestorsDirty, removeSentenceFromHierarchy } from '../../utils/dirtyTracking';
-import { normalizeEmotionProfile, deriveLegacyFromProfile } from '../../utils/emotionProfiles';
+import { normalizeEmotionProfile, deriveLegacyFromProfile, EMPTY_EMOTION_PROFILE } from '../../utils/emotionProfiles';
 import { mergeTwoSentences } from '../../services/claude/claudeApi';
 import { sortNodesByDocumentOrder } from '../../utils/hierarchyIntegration';
 import { v4 as uuidv4 } from 'uuid';
 // Move nodeTypes outside component to prevent recreation
 const nodeTypes = { animatedNode: AnimatedNodeComponent };
+
+/**
+ * Merges two emotion profiles by taking the maximum value for each emotion.
+ * This ensures that strong emotions from either input are preserved.
+ * @param {Object} profile1 - First emotion profile
+ * @param {Object} profile2 - Second emotion profile
+ * @returns {Object} Merged emotion profile with maximum values
+ */
+function mergeEmotionProfiles(profile1, profile2) {
+  const normalized1 = normalizeEmotionProfile(profile1 || EMPTY_EMOTION_PROFILE);
+  const normalized2 = normalizeEmotionProfile(profile2 || EMPTY_EMOTION_PROFILE);
+  
+  const merged = { ...EMPTY_EMOTION_PROFILE };
+  
+  // Get all emotion keys from both profiles
+  const allEmotions = new Set([...Object.keys(normalized1), ...Object.keys(normalized2)]);
+  
+  for (const emotion of allEmotions) {
+    const val1 = normalized1[emotion] || 0;
+    const val2 = normalized2[emotion] || 0;
+    merged[emotion] = Math.max(val1, val2);
+  }
+  
+  return merged;
+}
 
 /**
  * TreeInner - Main tree visualization logic
@@ -45,6 +70,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const [mergeTarget, setMergeTarget] = useState(null);
   const [openEmotionNodeId, setOpenEmotionNodeId] = useState(null);
   const [showDebugHitboxes, setShowDebugHitboxes] = useState(false);
+  const [isMerging, setIsMerging] = useState(false);
+  const [mergingNodeId, setMergingNodeId] = useState(null);
   const rfRef = useRef(null);
   const containerRef = useRef(null);
   const isDraggingRef = useRef(false);
@@ -243,7 +270,57 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         if (animateNextRef.current && containerRef.current) {
           containerRef.current.classList.add('rf-animate-drop');
         }
-        setNodes(laidOut);
+        
+        
+        
+        
+        // Final pass: preserve isMerging flag and isDirty computed from current sentences
+        // IMPORTANT: Always use new label/content from flatStructure.nodes
+        // Don't let existing node data override the new content (which has the AI-merged text)
+        const finalNodes = laidOut.map((n) => {
+          const existing = currentNodes.find((x) => x.id === n.id);
+          
+          // Compute isDirty from dirtySentenceIds in current hierarchy metadata
+          const isNodeDirty = sentencesRef.current._hierarchyMeta?.dirtySentenceIds?.includes(n.id) || 
+                            sentencesRef.current._hierarchyMeta?.dirtyNodeIds?.includes(n.id);
+          
+          // Check if this node is currently being merged
+          const isNodeMerging = existing?.data?.isMerging || false;
+          
+          if (existing && existing.data) {
+            return {
+              ...n,
+              data: {
+                ...existing.data, // Start with existing data (preserves everything)
+                // Override with new values from rebuilt tree
+                label: n.data.label,
+                content: n.data.content,
+                type: n.data.type,
+                // Preserve emotion metadata if already set
+                emotion: existing.data.emotion || n.data.emotion,
+                emotions: existing.data.emotions || n.data.emotions,
+                intensity: existing.data.intensity !== undefined ? existing.data.intensity : n.data.intensity,
+                // Use computed isMerging and isDirty
+                isMerging: isNodeMerging,
+                isDirty: isNodeDirty,
+              },
+            };
+          }
+          
+          // For new nodes (like after merge), initialize with correct state
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              // New nodes start with isMerging=false
+              isMerging: false,
+              // Use computed isDirty status
+              isDirty: isNodeDirty,
+            },
+          };
+        });
+        
+        setNodes(finalNodes);
         if (animateNextRef.current && containerRef.current) {
           setTimeout(() => {
             containerRef.current?.classList.remove('rf-animate-drop');
@@ -466,20 +543,26 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       const mergedId = uuidv4();
       const immediateMergedContent = `${draggedSentence.content} ${targetSentence.content}`;
       
-      // Use target sentence's emotion profile
+      // Merge emotion profiles by taking maximum value for each emotion
+      const mergedEmotions = mergeEmotionProfiles(draggedSentence.emotions, targetSentence.emotions);
+      const mergedLegacy = deriveLegacyFromProfile(mergedEmotions);
+      
       const mergedSentence = {
         id: mergedId,
         type: 'sentence',
         content: immediateMergedContent,
-        emotion: targetSentence.emotion,
-        intensity: targetSentence.intensity,
-        emotions: targetSentence.emotions,
+        emotion: mergedLegacy.emotion,
+        intensity: mergedLegacy.intensity,
+        emotions: mergedEmotions,
         punctuation: targetSentence.punctuation,
         delimiter: targetSentence.delimiter,
         delimiterContent: targetSentence.delimiterContent,
+        // Mark as modified so the UI shows the indicator
+        isDirty: true,
       };
 
       console.log(`${LOG_PREFIX.DRAG} Immediate merged content: "${immediateMergedContent}"`);
+      console.log(`${LOG_PREFIX.DRAG} Merged emotion profile:`, mergedEmotions);
 
       // Remove both old sentences and insert merged one at target position
       const targetIndex = current.indexOf(targetSentence);
@@ -538,9 +621,21 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         updatedSentences._hierarchyMeta = meta;
       }
 
+      // Prune empty hierarchy branches after merge
+      const prunedSentences = pruneEmptyHierarchyBranches(updatedSentences);
+
+      // Debug: log the merged sentence content
+      const mergedSentenceDebug = prunedSentences.find(s => s.id === mergedId);
+      console.log(`${LOG_PREFIX.DRAG} Merged sentence in prunedSentences:`, mergedSentenceDebug?.content);
+      console.log(`${LOG_PREFIX.DRAG} Merged sentence ID: ${mergedId}`);
+
       // Update UI immediately with concatenated version
       console.log(`${LOG_PREFIX.DRAG} Updating UI with immediate merged sentence`);
-      onTreeUpdate(updatedSentences);
+      onTreeUpdate(prunedSentences);
+
+      // Set merging state to show spinner
+      setIsMerging(true);
+      setMergingNodeId(mergedId);
 
       // Call AI to get intelligent merge (async, don't block UI)
       console.log(`${LOG_PREFIX.DRAG} Starting AI merge in background...`);
@@ -554,15 +649,31 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         console.log(`${LOG_PREFIX.DRAG} AI merge complete: "${aiMergedContent}"`);
 
         // Update the merged sentence with AI result
-        const currentSentences = sentencesRef.current;
-        const edited = editSentence(mergedId, aiMergedContent, currentSentences);
+        // Use prunedSentences which has the merged sentence already
+        const edited = editSentence(mergedId, aiMergedContent, prunedSentences);
+        
+        // Debug: Check if edit worked
+        const beforeEdit = prunedSentences.find(s => s.id === mergedId);
+        const afterEdit = edited.find(s => s.id === mergedId);
+        console.log(`${LOG_PREFIX.DRAG} Before edit content:`, beforeEdit?.content);
+        console.log(`${LOG_PREFIX.DRAG} After edit content:`, afterEdit?.content);
+        console.log(`${LOG_PREFIX.DRAG} IDs match:`, beforeEdit?.id === afterEdit?.id);
+        
         const marked = markSentenceAndAncestorsDirty(edited, mergedId);
 
+        // Debug: log the AI-edited sentence content
+        const aiEditedSentence = marked.find(s => s.id === mergedId);
+        console.log(`${LOG_PREFIX.DRAG} AI edited sentence content:`, aiEditedSentence?.content);
+        console.log(`${LOG_PREFIX.DRAG} Updated sentences has hierarchyMeta:`, !!marked._hierarchyMeta);
+        console.log(`${LOG_PREFIX.DRAG} dirtySentenceIds:`, marked._hierarchyMeta?.dirtySentenceIds);
         console.log(`${LOG_PREFIX.DRAG} Updating UI with AI-merged sentence`);
         onTreeUpdate(marked);
       } catch (error) {
         console.error(`${LOG_PREFIX.DRAG} AI merge failed:`, error);
         // Keep the concatenated version if AI fails
+      } finally {
+        setIsMerging(false);
+        setMergingNodeId(null);
       }
     },
     [onTreeUpdate]
@@ -647,18 +758,25 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       console.log(`${LOG_PREFIX.DRAG} Merged ${mergedChildren.length} children in document order`);
       console.log(`${LOG_PREFIX.DRAG} Dragged node min position: ${draggedMinPos}, Target node min position: ${targetMinPos}`);
 
+      // Merge emotion profiles by taking maximum value for each emotion
+      const mergedEmotions = mergeEmotionProfiles(draggedNode.emotions, targetNode.emotions);
+      const mergedLegacy = deriveLegacyFromProfile(mergedEmotions);
+
       const mergedNode = {
         id: mergedId,
         type: 'group',
         level: targetNode.level,
         label: immediateMergedLabel,
         childIds: mergedChildren,
-        emotion: targetNode.emotion,
-        intensity: targetNode.intensity,
-        emotions: targetNode.emotions,
+        emotion: mergedLegacy.emotion,
+        intensity: mergedLegacy.intensity,
+        emotions: mergedEmotions,
+        // Mark as dirty so UI shows modified indicator
+        isDirty: true,
       };
 
       console.log(`${LOG_PREFIX.DRAG} Merged node will have ${mergedChildren.length} children`);
+      console.log(`${LOG_PREFIX.DRAG} Merged group emotion profile:`, mergedEmotions);
 
       // Find parent of target node to insert merged node
       const targetParent = nodes.find(n => n.childIds.includes(targetId));
@@ -699,8 +817,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         console.log(`${LOG_PREFIX.DRAG} Dragged node ${draggedId} is top-level (no parent)`);
       }
 
-      // DON'T mark the merged node as dirty - it's a final result, not something to regenerate
-      // Also clear dirty flags from all descendants to prevent AI from restructuring them
+      // Clear dirty flags from all children to prevent AI from restructuring them
+      // But mark the merged node as dirty so it shows the modified indicator
       const dirtyNodeIds = new Set(meta.dirtyNodeIds || []);
       const dirtySentenceIds = new Set(meta.dirtySentenceIds || []);
       
@@ -709,7 +827,6 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       dirtyNodeIds.delete(targetId);
       
       // CRITICAL: Remove all descendants from dirty tracking to preserve the merge
-      // If any child is marked dirty, AI will restructure and potentially split the merge
       const clearDirtyDescendants = (nodeId) => {
         // If it's a sentence, remove from dirty sentences
         if (sentenceIds.has(nodeId)) {
@@ -732,22 +849,22 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         clearDirtyDescendants(childId);
       }
       
-      // CRITICAL: Also clear dirty flag from the parent of the merged node
-      // If the parent is dirty, AI will restructure the entire parent's subtree,
-      // which would undo the merge by regenerating the structure
+      // Mark the merged node as dirty so it shows the modified indicator
+      dirtyNodeIds.add(mergedId);
+      
+      // CRITICAL: Also mark the parent of the merged node dirty
+      // If the parent is dirty, it indicates there are pending changes
       if (targetParent) {
-        dirtyNodeIds.delete(targetParent.id);
-        console.log(`${LOG_PREFIX.DRAG} Cleared dirty flag from parent ${targetParent.id}`);
+        dirtyNodeIds.add(targetParent.id);
+        console.log(`${LOG_PREFIX.DRAG} Marked parent ${targetParent.id} as dirty`);
       }
       if (draggedParent && draggedParent.id !== targetParent?.id) {
-        dirtyNodeIds.delete(draggedParent.id);
-        console.log(`${LOG_PREFIX.DRAG} Cleared dirty flag from dragged parent ${draggedParent.id}`);
+        dirtyNodeIds.add(draggedParent.id);
+        console.log(`${LOG_PREFIX.DRAG} Marked dragged parent ${draggedParent.id} as dirty`);
       }
       
-      console.log(`${LOG_PREFIX.DRAG} Cleared dirty flags from merged node, all descendants, and parents`);
+      console.log(`${LOG_PREFIX.DRAG} Cleared dirty flags from descendants, marked merged node as dirty`);
       
-      // Don't mark anything as dirty to preserve the merge
-
       // CRITICAL: Sort all nodes by document order to ensure hierarchy consistency
       const sortedNodes = sortNodesByDocumentOrder(updatedNodes, current);
       
@@ -762,9 +879,16 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       const reorderedSentences = rebuildSentenceOrderFromHierarchy(current, sortedNodes, meta.maxLevel);
       reorderedSentences._hierarchyMeta = meta;
 
+      // Prune empty hierarchy branches after merge
+      const prunedSentences = pruneEmptyHierarchyBranches(reorderedSentences);
+
       // Update UI immediately
       console.log(`${LOG_PREFIX.DRAG} Updating UI with merged group node and reordered sentences`);
-      onTreeUpdate(reorderedSentences);
+      onTreeUpdate(prunedSentences);
+
+      // Set merging state to show spinner
+      setIsMerging(true);
+      setMergingNodeId(mergedId);
 
       // Call AI to get intelligent merged label (async, don't block UI)
       console.log(`${LOG_PREFIX.DRAG} Starting AI merge for group labels in background...`);
@@ -778,15 +902,15 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         console.log(`${LOG_PREFIX.DRAG} AI merge complete for group: "${aiMergedLabel}"`);
 
         // Update the merged node's label with AI result
-        const currentSentences = sentencesRef.current;
-        if (currentSentences._hierarchyMeta) {
-          const currentMeta = { ...currentSentences._hierarchyMeta };
+        // Use prunedSentences which has the merged node already
+        if (prunedSentences._hierarchyMeta) {
+          const currentMeta = { ...prunedSentences._hierarchyMeta };
           const currentNodes = currentMeta.nodes.map(n => 
             n.id === mergedId ? { ...n, label: aiMergedLabel } : n
           );
           currentMeta.nodes = currentNodes;
 
-          const updated = [...currentSentences];
+          const updated = [...prunedSentences];
           updated._hierarchyMeta = currentMeta;
 
           console.log(`${LOG_PREFIX.DRAG} Updating UI with AI-merged group label`);
@@ -795,6 +919,9 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       } catch (error) {
         console.error(`${LOG_PREFIX.DRAG} AI merge failed for group:`, error);
         // Keep the concatenated version if AI fails
+      } finally {
+        setIsMerging(false);
+        setMergingNodeId(null);
       }
     },
     [onTreeUpdate]
@@ -1187,24 +1314,21 @@ export function TreeInner({ sentences, onTreeUpdate }) {
   const deleteNodeSentence = useCallback((nodeId) => {
     console.log(`[TreeInner] Deleting node ${nodeId}`);
     const current = sentencesRef.current;
-    
-    // Update hierarchy metadata (removes from parent chains, marks dirty)
-    const afterMeta = current._hierarchyMeta
-      ? removeSentenceFromHierarchy(current, nodeId)
-      : current;
 
-    // Remove the sentence from the list
-    const filtered = current.filter(s => s.id !== nodeId);
-    if (afterMeta && afterMeta._hierarchyMeta) {
-      filtered._hierarchyMeta = afterMeta._hierarchyMeta;
-    }
+    // Use removeSentenceFromHierarchy which properly handles:
+    // 1. Removing the sentence from parent's childIds
+    // 2. Recursively removing empty parent nodes
+    // 3. Marking affected ancestors as dirty
+    const updatedSentences = current._hierarchyMeta
+      ? removeSentenceFromHierarchy(current, nodeId)
+      : current.filter(s => s.id !== nodeId);
 
     // Immediately remove the node and related edges from ReactFlow state
     setNodes((nds) => nds.filter((n) => n.id !== nodeId));
     setEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
 
-    // Push update to parent
-    onTreeUpdate(filtered);
+    // Push update to parent - this triggers re-layout which will clean up empty parent nodes
+    onTreeUpdate(updatedSentences);
   }, [onTreeUpdate, setNodes, setEdges]);
     
   // Pass emotion handler and position to nodes via data
@@ -1220,9 +1344,10 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           applySubtreeChanges: applySubtreeChanges,
           deleteNodeSentence: deleteNodeSentence,
           nodePosition: node.position, // Pass position for screen calculation
+          isMerging: isMerging && mergingNodeId === node.id,
         },
       })),
-    [nodes, openEmotionNodeId]
+    [nodes, openEmotionNodeId, isMerging, mergingNodeId]
   );
 
   const controlButtonStyle = {
