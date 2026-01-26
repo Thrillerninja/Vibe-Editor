@@ -76,6 +76,7 @@ import { nodeMapToMarkdown } from '@utils/nodeToMarkdown';
 import getPoemLines from '@utils/poetry';
 import { deriveLegacyFromProfile } from '@utils/emotionProfiles';
 import { markDirtyWithDescendants } from '@utils/dirtyTracking';
+import { evaluateHierarchyNodeEmotions } from '@services/claude/emotionEvaluator';
 
 // ============================================================================
 // CONSTANTS
@@ -542,15 +543,32 @@ export default function Editor() {
           content: n.content,
         }));
 
+      const sentencesWithEmotions = await evaluateSentenceEmotions(
+        contentNodesToEvaluate
+      );
+
+      // Step 4b: Evaluate emotions for GROUP NODES ← ADD THIS
+      const groupNodesToEvaluate = Array.from(restructured.values())
+        .filter(isGroupNode)
+        .map((n) => ({ 
+          id: n.id, 
+          label: n.content,
+          childIds: n.hierarchy.childIds 
+        }));
+
+
+      // Merge both
       if (contentNodesToEvaluate.length > 0) {
-        const sentencesWithEmotions = await evaluateSentenceEmotions(
-          contentNodesToEvaluate
-        );
+        const groupEmotions = groupNodesToEvaluate.length > 0
+          ? await evaluateHierarchyNodeEmotions(groupNodesToEvaluate, contentNodesToEvaluate)
+          : [];
+          
+        const allEmotions = [...sentencesWithEmotions, ...groupEmotions];
 
         console.log('[Editor] ✓ Evaluated emotions');
 
         // Step 5: Apply emotions back to nodeMap
-        const final = applyEmotionsToNodeMap(restructured, sentencesWithEmotions);
+        const final = applyEmotionsToNodeMap(restructured, allEmotions);
 
         const repaired = repairOrphanedNodes(final, rootId);
         // Verify all content is reachable
@@ -1165,7 +1183,7 @@ export default function Editor() {
     if (groupNodes.length === 0) return;
 
     const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
-    const currentDepth = currentMaxLevel + 1;
+    const currentDepth = currentMaxLevel + 2;
 
     if (currentDepth === maxDepth) return;
 

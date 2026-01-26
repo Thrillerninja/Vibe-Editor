@@ -226,8 +226,12 @@ export function buildHierarchyFromTopics(topics, sentences, maxDepth) {
   console.log(`[hierarchyBuilder] Building with App levels (1-${maxDepth-2})`);
   
   const nodes = [];
-  const contentLevel = maxDepth - 1;
   const sentenceIds = sentences.map(s => s.id);
+  const maxGroupLevel = maxDepth - 2; // Maximum allowed group level
+  
+  if (maxGroupLevel < 1) {
+    throw new Error(`maxDepth ${maxDepth} is too small to create groups`);
+  }
   
   // LEVEL 1: ONE NODE PER TOPIC
   const level1Nodes = topics.map(topic => ({
@@ -247,28 +251,34 @@ export function buildHierarchyFromTopics(topics, sentences, maxDepth) {
   let currentLevel = 2;
   let currentGroups = level1Nodes;
   
-  while (currentLevel <= maxDepth - 2 && currentGroups.length > 1) {
+    while (currentLevel <= maxGroupLevel && currentGroups.length > 1) {
+    const groupSize = Math.max(2, Math.ceil(Math.sqrt(currentGroups.length)));
     const nextGroups = [];
-    const groupSize = Math.ceil(Math.sqrt(currentGroups.length));
-    
+
     for (let i = 0; i < currentGroups.length; i += groupSize) {
       const chunk = currentGroups.slice(i, i + groupSize);
       const sectionNum = Math.floor(i / groupSize) + 1;
-      
-      nextGroups.push({
-        id: `level${currentLevel}-${uuidv4()}`,
-        level: currentLevel,
-        title: `Section ${sectionNum}`,
-        emotions: createEmotionProfile(),
-        childIds: chunk.map(g => g.id),
-      });
+
+      // Only create if we won't exceed maxGroupLevel
+      if (currentLevel <= maxGroupLevel) {
+        nextGroups.push({
+          id: `level${currentLevel}-${uuidv4()}`,
+          level: currentLevel,
+          title: `Section ${sectionNum}`, // Will be replaced with real title
+          emotions: createEmotionProfile(),
+          childIds: chunk.map(g => g.id),
+        });
+      }
     }
-    
+
+    if (nextGroups.length === 0 || nextGroups.length === currentGroups.length) {
+      console.log(`[hierarchyBuilder] Stopping at level ${currentLevel - 1} (no further grouping needed)`);
+      break;
+    }
+
     nodes.push(...nextGroups);
     console.log(`[hierarchyBuilder] Created ${nextGroups.length} level-${currentLevel} groups`);
-    
-    if (nextGroups.length === currentGroups.length) break;
-    
+
     currentGroups = nextGroups;
     currentLevel++;
   }
