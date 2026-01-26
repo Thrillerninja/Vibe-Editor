@@ -85,7 +85,20 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
 
   /** @type {[Array, Function, Function]} */
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [edges, setEdges, rawOnEdgesChange] = useEdgesState([]);
+
+  /**
+   * Handle edge changes - skip updates during drag to prevent flickering
+   * Edges are rebuilt by applyLayout() after drag ends
+   */
+  const onEdgesChange = useCallback(
+    (changes) => {
+      if (!skipEdgeUpdatesRef.current) {
+        rawOnEdgesChange(changes);
+      }
+    },
+    [rawOnEdgesChange]
+  );
 
   /** @type {React.MutableRefObject<any>} */
   const rfRef = useRef(null);
@@ -127,6 +140,13 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
    * @type {React.MutableRefObject<boolean>}
    */
   const animateNextRef = useRef(false);
+
+  /**
+   * Track if edges should be updated during drag
+   * Prevents edge flickering during snap-back
+   * @type {React.MutableRefObject<boolean>}
+   */
+  const skipEdgeUpdatesRef = useRef(false);
 
   // =========================================================================
   //     Visual Feedback State
@@ -559,6 +579,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
       isDraggingRef.current = true;
       draggedNodeIdRef.current = rfNode.id;
       treeChangedRef.current = false;
+      skipEdgeUpdatesRef.current = true; // Prevent edge updates during drag
 
       originalNodePositionsRef.current[rfNode.id] = {
         x: rfNode.position.x,
@@ -625,6 +646,7 @@ export function TreeInner({ rootId, nodeMap, onTreeUpdate }) {
     (event, rfNode) => {
       console.log(`${LOG_PREFIX.DRAG} Drag stop: ${rfNode.id}`);
       isDraggingRef.current = false;
+      skipEdgeUpdatesRef.current = false; // Re-enable edge updates
       setReorderIndicator(null);
       animateNextRef.current = true;
 
