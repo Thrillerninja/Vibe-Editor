@@ -269,15 +269,12 @@ export function applyClaudeRestructureToNodeMap(
       maxDepth
     );
 
-    // Apply root metadata updates
+    // Apply root metadata
     const root = result.get(rootId);
     if (root) {
       const patchedRoot = cloneNode(root);
       if (newRootTitle) patchedRoot.content = newRootTitle;
-
-      const emotionField = buildEmotionField(newRootEmotions);
-      if (emotionField) patchedRoot.emotion = emotionField;
-
+      if (newRootEmotions) patchedRoot.emotion = buildEmotionField(newRootEmotions);
       result.set(rootId, patchedRoot);
     }
 
@@ -355,40 +352,3 @@ const buildEmotionField = (profile) => {
     timestamp: new Date().toISOString(),
   };
 };
-
-export function applyClaudeRestructureToNodeMap(
-  nodeMap,
-  rootId,
-  restructuredSubtrees,
-  newRootTitle,
-  newRootEmotions,
-  maxDepth
-) {
-  console.log('[Adapter] Applying Claude restructure to nodeMap');
-
-  // Special case: root-level restructuring (new two-phase approach)
-  if (
-    restructuredSubtrees.length === 1 &&
-    restructuredSubtrees[0].rootNodeId === rootId
-  ) {
-    const result = applyRootLevelRestructure(
-      nodeMap,
-      rootId,
-      restructuredSubtrees[0].newNodes,
-      maxDepth
-    );
-
-    // Apply root metadata
-    const root = result.get(rootId);
-    if (root) {
-      const patchedRoot = cloneNode(root);
-      if (newRootTitle) patchedRoot.content = newRootTitle;
-      if (newRootEmotions) patchedRoot.emotion = buildEmotionField(newRootEmotions);
-      result.set(rootId, patchedRoot);
-    }
-
-    return result;
-  }
-
-  // ... rest of original code for subtree restructuring ...
-}
