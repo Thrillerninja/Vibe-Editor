@@ -477,6 +477,49 @@ export default function Editor() {
           maxDepth
         )
 
+        console.log('[Editor] After applyClaudeRestructureToNodeMap:');
+        const rootAfterRestructure = restructured.get(rootId);
+        console.log('[Editor]   Root:', {
+          id: rootAfterRestructure?.id,
+          childIds: rootAfterRestructure?.hierarchy.childIds,
+          childIdsCount: rootAfterRestructure?.hierarchy.childIds?.length || 0,
+        });
+        console.log('[Editor] NodeMap integrity check:');
+        const allGroups = Array.from(restructured.values()).filter(n => isGroupNode(n));
+        const allContent = Array.from(restructured.values()).filter(n => isContentNode(n));
+        const contentIds = new Set(allContent.map(n => n.id));
+
+        console.log('[Editor]', {
+          totalNodes: restructured.size,
+          groups: allGroups.length,
+          content: allContent.length,
+        });
+
+        // Check if all group childIds point to valid nodes
+        for (const group of allGroups) {
+          const validChildren = group.hierarchy.childIds.filter(id => restructured.has(id));
+          const invalidChildren = group.hierarchy.childIds.filter(id => !restructured.has(id));
+          
+          if (invalidChildren.length > 0) {
+            console.error('[Editor] ⚠️ GROUP HAS INVALID CHILDREN:', {
+              groupId: group.id,
+              childIds: group.hierarchy.childIds,
+              invalid: invalidChildren,
+            });
+          }
+        }
+
+        // Check if root points to valid children
+        const root = restructured.get(rootId);
+        const rootValidChildren = root.hierarchy.childIds.filter(id => restructured.has(id));
+        const rootInvalidChildren = root.hierarchy.childIds.filter(id => !restructured.has(id));
+
+        console.log('[Editor] Root child validation:', {
+          childIds: root.hierarchy.childIds,
+          valid: rootValidChildren,
+          invalid: rootInvalidChildren,
+        });
+
         if (newRootEmotions) {
           const updatedRoot = cloneNode(restructured.get(rootId));
           updatedRoot.emotion = {
@@ -521,6 +564,14 @@ export default function Editor() {
 
         // Clear dirty flags
         const clean = clearAllDirtyFlags(repaired);
+    
+        console.log('[Editor] After clearAllDirtyFlags:');
+        const rootAfterClean = clean.get(rootId);
+        console.log('[Editor]   Root:', {
+          id: rootAfterClean?.id,
+          childIds: rootAfterClean?.hierarchy.childIds,
+          childIdsCount: rootAfterClean?.hierarchy.childIds?.length || 0,
+        });
 
         const childToParents = new Map();
         for (const parent of clean.values()) {
@@ -901,10 +952,10 @@ export default function Editor() {
     // Build hierarchy if:
     // 1. No groups exist yet, OR
     // 2. Some content nodes are still direct children of root (not reorganized)
-    if (!hasIntermediateGroups || contentNodesUnderRoot.length > 0) {
-      console.log(
-        `[Editor] Rebuilding hierarchy: ${contentNodesUnderRoot.length} content nodes under root`
-      );
+    const hasAnyGroupNodes = Array.from(nodeMap.values()).some(isGroupNode);
+
+    // Only auto-build when we have NO groups at all
+    if (!hasAnyGroupNodes) {
       createHierarchyStructure();
     }
   }, [nodeMap, rootId, maxDepth, createHierarchyStructure]);
@@ -1114,7 +1165,7 @@ export default function Editor() {
     if (groupNodes.length === 0) return;
 
     const currentMaxLevel = Math.max(...groupNodes.map(n => n.hierarchy.level));
-    const currentDepth = currentMaxLevel + 2;
+    const currentDepth = currentMaxLevel + 1;
 
     if (currentDepth === maxDepth) return;
 

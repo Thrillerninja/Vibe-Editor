@@ -382,7 +382,8 @@ function chooseNewContentParentId(nodeMap, rootId, maxDepth, existingContentIdsO
     const last = nodeMap.get(lastId);
 
     if (last?.hierarchy?.parentId) {
-      return last.hierarchy.parentId;
+      const pid = last.hierarchy.parentId;
+      if (nodeMap.has(pid)) return pid;
     }
   }
 
@@ -475,8 +476,8 @@ export function syncNodeMapWithText(prevNodeMap, text, options) {
 
   // Instead of computing topGroupIds from root.childIds,
   // find ALL groups that should be under root
-  const existingTopGroups = groupNodes.filter(g => 
-    g.hierarchy.parentId === rootId || g.hierarchy.level === 1
+  const existingTopGroups = groupNodes.filter(
+    (g) => g.hierarchy.parentId === rootId
   );
   const existingTopGroupIds = existingTopGroups.map(g => g.id);
 

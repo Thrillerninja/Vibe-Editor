@@ -1,311 +1,310 @@
 /**
- * Claude API Service
- * Main entry point for Claude API interactions
+ * @fileoverview Claude API Service - Main Orchestration
+ * 
+ * Coordinates the complete hierarchy generation pipeline:
+ * 1. Detect topic boundaries (Claude)
+ * 2. Build hierarchy from topics (System algorithm)
+ * 3. Evaluate all emotions (Claude)
+ * 4. Return complete result
+ * 
+ * Handles all error cases gracefully with logging.
+ * 
+ * @typedef {import('../../types/node').Node} Node
+ * @typedef {import('../../types/node').EmotionProfile} EmotionProfile
  */
 
-import Anthropic from '@anthropic-ai/sdk';
-import { findDirtyRootNodes, buildDirtySubtrees, findSentencesInNode } from './dirtyNodeFinder.js';
-import { buildDirtyRestructurePrompt } from './promptBuilder.js';
-import { parseDirtyRestructureResponse } from './responseValidator.js';
-import { EMOTIONS, EMOTION_AXES } from '@utils/constants.js';
 import {
-    normalizeEmotionProfile,
-    deriveLegacyFromProfile,
-    profileFromLegacy,
-    describeEmotionProfile,
-} from '@utils/emotionProfiles.js';
-
-// Initialize the Anthropic client
-const getClient = () => {
-    const apiKey = import.meta.env.VITE_CLAUDE_API_KEY;
-
-    if (!apiKey || apiKey === 'your_api_key_here') {
-        throw new Error(
-            'Claude API key not configured. Please set VITE_CLAUDE_API_KEY in your .env file.\n' +
-            'Get your API key from https://console.anthropic.com/'
-        );
-    }
-
-    return new Anthropic({
-        apiKey,
-        dangerouslyAllowBrowser: true // Note: In production, API calls should go through a backend
-    });
-};
+  detectTopicBoundaries,
+  boundariesToTopics,
+  validateBoundaryResult,
+} from './claudeTopicDetection';
+import {
+  buildHierarchyFromTopics,
+  buildHierarchyFromTopicsWithTitles,
+  validateHierarchyStructure,
+} from './hierarchyBuilder';
+import {
+  evaluateSentenceEmotions,
+  evaluateHierarchyNodeEmotions,
+  evaluateDocumentEmotions,
+} from './emotionEvaluator';
+import { deriveLegacyFromProfile, describeEmotionProfile, normalizeEmotionProfile, profileFromLegacy } from '@utils/emotionProfiles';
 
 /**
- * Restructure dirty portions of the hierarchy
- * Allows Claude to add/remove/reorganize nodes for dirty sentences
- * @param {Array} sentences - Array of sentence objects
- * @param {Object} hierarchyMeta - Existing hierarchy metadata
- * @param {Array} dirtyNodeIds - IDs of nodes affected by changes
- * @param {Array} dirtySentenceIds - IDs of sentences that were modified
- * @param {number} maxDepth - Maximum depth of hierarchy
- * @returns {Promise<Object>} Updated hierarchy structure
+ * Main entry point: Generate complete hierarchy with emotions
+ * 
+ * PIPELINE:
+ * 1. Clear old emotions from current hierarchy (prevent carryover)
+ * 2. Detect topic boundaries with Claude
+ * 3. Convert boundaries to topics
+ * 4. Build hierarchy with system algorithm
+ * 5. Evaluate all emotions (content, hierarchy, root)
+ * 6. Return structured result
+ * 
+ * ERROR HANDLING: Returns empty restructure on any fatal error
+ * Non-fatal errors are logged but don't halt the process
+ * 
+ * @param {Array<{id: string, content: string, isDirty: boolean}>} sentences - All sentences
+ * @param {Object} hierarchyMeta - Current hierarchy metadata
+ * @param {number[]} dirtyNodeIds - IDs of nodes that changed (DEPRECATED, ignored)
+ * @param {number[]} dirtySentenceIds - IDs of sentences that changed (DEPRECATED, ignored)
+ * @param {number} maxDepth - Maximum hierarchy depth (3-6)
+ * @returns {Promise<{
+ *   restructuredSubtrees: Array<{rootNodeId: string, newNodes: Array}>,
+ *   newRootTitle: string | null,
+ *   newRootEmotions: EmotionProfile | null
+ * }>}
+ * 
+ * @example
+ * const result = await updateDirtyNodes(sentences, hierarchyMeta, [], [], 4);
+ * if (result.restructuredSubtrees.length > 0) {
+ *   // Apply changes to nodeMap
+ * } else {
+ *   // No changes (error or no dirty nodes)
+ * }
  */
-export async function updateDirtyNodes(
+async function updateDirtyNodes(
   sentences,
   hierarchyMeta,
   dirtyNodeIds,
   dirtySentenceIds,
   maxDepth
 ) {
-  console.log('[Claude Service] Phase 1: Detecting topic boundaries...');
+  console.log('[claudeApi] ========================================');
+  console.log('[claudeApi] Starting hierarchy generation pipeline');
+  console.log('[claudeApi]', {
+    sentenceCount: sentences.length,
+    maxDepth,
+    hierarchyNodeCount: hierarchyMeta?.nodes?.length || 0,
+  });
+  console.log('[claudeApi] ========================================');
 
-  const { detectTopicBoundaries, boundariesToTopics } = await import(
-    './claudeTopicDetection.js'
-  );
-
-  let boundaryResult;
-  try {
-    // Calculate target group count based on maxDepth
-    const targetGroupCount = Math.max(2, maxDepth - 1);
-    
-    boundaryResult = await detectTopicBoundaries(sentences, targetGroupCount);
-    console.log('[Claude Service] ✓ Phase 1 complete');
-  } catch (error) {
-    console.error('[Claude Service] ✗ Phase 1 failed:', error.message);
-    return {
-      dirtyRootNodes: [],
-      restructuredSubtrees: [],
-      newRootTitle: null,
-      newRootEmotions: null,
-    };
+  // Validate inputs
+  if (!Array.isArray(sentences) || sentences.length === 0) {
+    console.warn('[claudeApi] No sentences provided, returning empty result');
+    return createEmptyResult();
   }
 
-  // Convert boundaries to contiguous topics
-  const topics = boundariesToTopics(boundaryResult.boundaryIndices, sentences);
-  console.log(`[Claude Service] Created ${topics.length} topics from boundaries`);
-
-  console.log('[Claude Service] Phase 2: Building hierarchy...');
-
-  const { buildHierarchyFromTopics } = await import('./hierarchyBuilder.js');
-
-  let hierarchyNodes;
-  try {
-    hierarchyNodes = buildHierarchyFromTopics(topics, sentences, maxDepth);
-    console.log('[Claude Service] ✓ Phase 2 complete');
-  } catch (error) {
-    console.error('[Claude Service] ✗ Phase 2 failed:', error.message);
-    return {
-      dirtyRootNodes: [],
-      restructuredSubtrees: [],
-      newRootTitle: null,
-      newRootEmotions: null,
-    };
+  if (maxDepth < 3 || maxDepth > 6) {
+    console.error(`[claudeApi] Invalid maxDepth ${maxDepth}, must be 3-6`);
+    return createEmptyResult();
   }
 
-  const restructuredSubtrees = [
-    {
-      rootNodeId: 'root',
-      newNodes: hierarchyNodes,
-    },
-  ];
+  try {
+    // ===== PHASE 1: TOPIC BOUNDARY DETECTION =====
+    console.log('[claudeApi] ▶ PHASE 1: Topic boundary detection');
+    let boundaryResult;
+    try {
+      const targetGroupCount = Math.max(2, maxDepth - 1);
+      boundaryResult = await detectTopicBoundaries(sentences, targetGroupCount);
 
+      // Validate boundaries
+      validateBoundaryResult(boundaryResult, sentences.length);
+      console.log('[claudeApi] ✓ Phase 1 complete:', {
+        boundaryCount: boundaryResult.boundaryIndices.length,
+      });
+    } catch (error) {
+      console.error('[claudeApi] ✗ Phase 1 failed:', error.message);
+      return createEmptyResult();
+    }
+
+    // ===== PHASE 2: BUILD TOPICS =====
+    console.log('[claudeApi] ▶ PHASE 2: Building topics from boundaries');
+    let topics;
+    try {
+      topics = boundariesToTopics(boundaryResult.boundaryIndices, sentences);
+      console.log('[claudeApi] ✓ Phase 2 complete:', {
+        topicCount: topics.length,
+        avgSentencesPerTopic: (sentences.length / topics.length).toFixed(1),
+      });
+    } catch (error) {
+      console.error('[claudeApi] ✗ Phase 2 failed:', error.message);
+      return createEmptyResult();
+    }
+
+    // ===== PHASE 3: BUILD HIERARCHY =====
+    console.log('[claudeApi] ▶ PHASE 3: Building hierarchy structure');
+    let hierarchyNodes;
+    try {
+      const sentenceIds = sentences.map(s => s.id);
+      hierarchyNodes = await buildHierarchyFromTopicsWithTitles(
+        topics,
+        sentences,
+        maxDepth
+      );
+
+      // Validate structure
+      validateHierarchyStructure(hierarchyNodes, maxDepth, sentenceIds);
+      console.log('[claudeApi] ✓ Phase 3 complete:', {
+        nodeCount: hierarchyNodes.length,
+        levels: `2-${maxDepth - 1}`,
+      });
+    } catch (error) {
+      console.error('[claudeApi] ✗ Phase 3 failed:', error.message);
+      return createEmptyResult();
+    }
+
+    // ===== PHASE 4: EVALUATE EMOTIONS =====
+    console.log('[claudeApi] ▶ PHASE 4: Evaluating emotions');
+
+    // 4a. Evaluate sentence emotions
+    let sentenceEmotions = [];
+    try {
+      const sentencesToEvaluate = sentences.map(s => ({
+        id: s.id,
+        content: s.content,
+      }));
+
+      sentenceEmotions = await evaluateSentenceEmotions(sentencesToEvaluate);
+      console.log('[claudeApi] ✓ 4a: Evaluated sentence emotions');
+    } catch (error) {
+      console.error('[claudeApi] ⚠️ 4a failed (non-fatal):', error.message);
+      // Create empty emotions as fallback
+      sentenceEmotions = sentences.map(s => ({
+        id: s.id,
+        emotions: createEmptyEmotionProfile(),
+      }));
+    }
+
+    // 4b. Evaluate hierarchy node emotions
+    let hierarchyEmotions = [];
+    try {
+      hierarchyEmotions = await evaluateHierarchyNodeEmotions(
+        hierarchyNodes,
+        sentences
+      );
+      console.log('[claudeApi] ✓ 4b: Evaluated hierarchy node emotions');
+    } catch (error) {
+      console.error('[claudeApi] ⚠️ 4b failed (non-fatal):', error.message);
+      // Create empty emotions as fallback
+      hierarchyEmotions = hierarchyNodes.map(n => ({
+        id: n.id,
+        emotions: createEmptyEmotionProfile(),
+      }));
+    }
+
+    // 4c. Evaluate root document emotions
+    let rootEmotions = null;
+    try {
+      const allContent = sentences.map(s => s.content);
+      rootEmotions = await evaluateDocumentEmotions(allContent, 3000);
+      console.log('[claudeApi] ✓ 4c: Evaluated root document emotions');
+    } catch (error) {
+      console.error('[claudeApi] ⚠️ 4c failed (non-fatal):', error.message);
+      rootEmotions = null;
+    }
+
+    console.log('[claudeApi] ✓ Phase 4 complete: All emotions evaluated');
+
+    // ===== PHASE 5: APPLY EMOTIONS TO NODES =====
+    console.log('[claudeApi] ▶ PHASE 5: Applying emotions to hierarchy');
+
+    const emotionMap = new Map();
+    for (const item of hierarchyEmotions) {
+      emotionMap.set(item.id, item.emotions);
+    }
+
+    const finalNodes = hierarchyNodes.map(node => {
+      const emotions = emotionMap.get(node.id) || createEmptyEmotionProfile();
+      return {
+        ...node,
+        emotions,
+      };
+    });
+
+    console.log('[claudeApi] ✓ Phase 5 complete: Emotions applied');
+
+    // ===== RETURN RESULT =====
+    console.log('[claudeApi] ========================================');
+    console.log('[claudeApi] ✓ PIPELINE COMPLETE - SUCCESS');
+    console.log('[claudeApi] ========================================');
+
+    return {
+      restructuredSubtrees: [
+        {
+          rootNodeId: 'root',
+          newNodes: finalNodes,
+        },
+      ],
+      newRootTitle: null,
+      newRootEmotions: rootEmotions,
+    };
+
+  } catch (error) {
+    console.error('[claudeApi] ========================================');
+    console.error('[claudeApi] ✗ FATAL ERROR:', error.message);
+    console.error('[claudeApi] ========================================');
+    return createEmptyResult();
+  }
+}
+
+/**
+ * Create empty result (no changes)
+ * @private
+ * @returns {{restructuredSubtrees: Array, newRootTitle: null, newRootEmotions: null}}
+ */
+function createEmptyResult() {
   return {
-    dirtyRootNodes: [],
-    restructuredSubtrees,
+    restructuredSubtrees: [],
     newRootTitle: null,
     newRootEmotions: null,
   };
 }
 
-
-export async function evaluateSentenceEmotions(sentences) {
-    const client = getClient();
-
-    console.log('[Claude Service] Evaluating emotions for sentences');
-    const prompt = `For each input sentence, assign a 10-axis emotion profile using the Differential Emotions Scale (DES) by Izard (1997).
-
-The DES measures these 10 fundamental, distinct emotions:
-1. INTEREST (0-100): Curiosity, excitement, fascination, engagement with content
-2. JOY (0-100): Happiness, delight, pleasure, enjoyment, contentment
-3. SURPRISE (0-100): Amazement, astonishment, unexpectedness
-4. SADNESS (0-100): Sorrow, melancholy, distress, downheartedness, grief
-5. ANGER (0-100): Hostility, rage, frustration, irritation
-6. DISGUST (0-100): Revulsion, repugnance, distaste, aversion
-7. CONTEMPT (0-100): Scorn, disdain, disrespect, superiority
-8. FEAR (0-100): Anxiety, worry, terror, nervousness, apprehension
-9. SHAME (0-100): Embarrassment, humiliation, feeling exposed or inadequate
-10. GUILT (0-100): Remorse, regret, self-blame, moral distress
-
-Rate each emotion independently based on the sentence's content, tone, and implied emotional state.
-Multiple emotions can be present simultaneously with varying intensities.
-
-Return ONLY valid JSON. DO NOT wrap your response in markdown code fences (no \`\`\`json).
-Start directly with the opening bracket [ and end with the closing bracket ].
-
-Format: an array where each item is { "id": "<sentence-id>", "emotions": { "interest": 0-100, "joy": 0-100, "surprise": 0-100, "sadness": 0-100, "anger": 0-100, "disgust": 0-100, "contempt": 0-100, "fear": 0-100, "shame": 0-100, "guilt": 0-100 } }.
-- Use all ten DES emotion keys exactly: ${EMOTION_AXES.join(', ')}.
-- Clamp every value to 0-100.
-- Do not add extra fields or prose.
-
-Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
-
-    console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
-    try {
-        const message = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 4096,
-            messages: [{
-                role: 'user',
-                content: prompt
-            }]
-        });
-
-        const responseText = message.content[0].text;
-        console.log('[Claude Service] Received emotion evaluation:', responseText);
-
-        // Parse the JSON response
-        const emotionData = JSON.parse(responseText);
-        console.log('[Claude Service] Parsed emotion data:', emotionData);
-
-        return applyEmotionsToSentences(sentences, emotionData); // Array with emotion profiles
-    } catch (error) {
-        console.error('[Claude Service] Error evaluating sentence emotions:', error);
-        console.error('[Claude Service] Error stack:', error.stack);
-        throw new Error(`Failed to evaluate sentence emotions: ${error.message}`);
-    }
-}
-
-export async function evaluateHierarchyNodeEmotions(sentences, hierarchyMeta, nodeIds) {
-    const client = getClient();
-
-    if (!hierarchyMeta?.nodes?.length || !Array.isArray(nodeIds) || nodeIds.length === 0) {
-        return { updatedHierarchyMeta: hierarchyMeta };
-    }
-
-    const nodesById = new Map(hierarchyMeta.nodes.map(n => [n.id, n]));
-    const targets = nodeIds.map(id => nodesById.get(id)).filter(Boolean);
-
-    if (targets.length === 0) {
-        return { updatedHierarchyMeta: hierarchyMeta };
-    }
-
-    const nodeTextBlocks = targets.map((node) => {
-        const descendantSentences = findSentencesInNode(node, hierarchyMeta, sentences);
-        const text = descendantSentences.map(s => s.content).join(' ');
-        return `- (${node.id}) TITLE: ${node.label}\n  TEXT: ${text}`;
-    }).join('\n');
-
-    const prompt = `For each input NODE, assign a 10-axis emotion profile using the Differential Emotions Scale (DES) by Izard (1997).
-
-The DES measures these 10 fundamental, distinct emotions (0-100):
-${EMOTION_AXES.map((a, i) => `${i + 1}. ${a.toUpperCase()}`).join('\n')}
-
-Rate each emotion independently based on the node's title and the combined text of its descendant sentences.
-
-Return ONLY valid JSON. DO NOT wrap your response in markdown code fences (no \`\`\`json).
-Start directly with the opening bracket [ and end with the closing bracket ].
-
-Format: an array where each item is { "id": "<node-id>", "emotions": { ${EMOTION_AXES.map(k => `"${k}": 0-100`).join(', ')} } }.
-- Use all ten DES emotion keys exactly: ${EMOTION_AXES.join(', ')}.
-- Clamp every value to 0-100.
-- Do not add extra fields or prose.
-
-Nodes:\n${nodeTextBlocks}`;
-
-    try {
-        const message = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 2048,
-            messages: [{ role: 'user', content: prompt }]
-        });
-
-        const responseText = message.content[0].text;
-        const emotionData = JSON.parse(responseText);
-
-        const emotionMap = new Map();
-        for (const item of emotionData) {
-            const profile = normalizeEmotionProfile(
-                item.emotions ?? profileFromLegacy(item.emotion, item.intensity)
-            );
-            emotionMap.set(item.id, profile);
-        }
-
-        const updatedNodes = hierarchyMeta.nodes.map((n) => {
-            if (!emotionMap.has(n.id)) return n;
-            const profile = emotionMap.get(n.id);
-            const legacy = deriveLegacyFromProfile(profile);
-            return {
-                ...n,
-                emotions: profile,
-                emotion: legacy.emotion,
-                intensity: legacy.intensity,
-            };
-        });
-
-        return {
-            updatedHierarchyMeta: {
-                ...hierarchyMeta,
-                nodes: updatedNodes,
-            }
-        };
-    } catch (error) {
-        console.error('[Claude Service] Error evaluating hierarchy node emotions:', error);
-        throw new Error(`Failed to evaluate hierarchy node emotions: ${error.message}`);
-    }
-}
-
-
-function applyEmotionsToSentences(sentences, emotionData) {
-    const hierarchy = sentences._hierarchyMeta;
-    const emotionMap = new Map();
-    for (const item of emotionData) {
-        const profile = normalizeEmotionProfile(
-            item.emotions ?? profileFromLegacy(item.emotion, item.intensity)
-        );
-        emotionMap.set(item.id, profile);
-    }
-
-    const newSentences = sentences.map(s => {
-        if (emotionMap.has(s.id)) {
-            const profile = emotionMap.get(s.id);
-            const legacy = deriveLegacyFromProfile(profile);
-            return { ...s, emotions: profile, emotion: legacy.emotion, intensity: legacy.intensity };
-        }
-        return s;
-    });
-    newSentences._hierarchyMeta = hierarchy; // Preserve hierarchy meta
-    return newSentences;
+/**
+ * Create empty emotion profile (all zeros)
+ * @private
+ * @returns {{interest: 0, joy: 0, surprise: 0, sadness: 0, anger: 0, disgust: 0, contempt: 0, fear: 0, shame: 0, guilt: 0}}
+ */
+function createEmptyEmotionProfile() {
+  return {
+    interest: 0,
+    joy: 0,
+    surprise: 0,
+    sadness: 0,
+    anger: 0,
+    disgust: 0,
+    contempt: 0,
+    fear: 0,
+    shame: 0,
+    guilt: 0,
+  };
 }
 
 /**
- * Rewrite a sentence to match a specific emotion and intensity
- * @param {string} sentence - Original sentence to rewrite
- * @param {string} emotion - Target emotion (from EMOTIONS constant)
- * @param {number} intensity - Emotional intensity (0-99)
- * @returns {Promise<string>} Rewritten sentence
+ * @fileoverview Additional Claude API functions for interactive editing
+ * 
+ * These functions support the interactive UI (emotion radar, suggestion cycling)
+ * They're separate from the main hierarchy generation pipeline
  */
-function coerceEmotionProfile(inputProfile) {
-    if (inputProfile && typeof inputProfile === 'object' && !Array.isArray(inputProfile)) {
-        return normalizeEmotionProfile(inputProfile);
-    }
-    if (typeof inputProfile === 'string') {
-        return profileFromLegacy(inputProfile, 0);
-    }
-    return normalizeEmotionProfile();
-}
 
-function formatProfileForPrompt(profile) {
-    // Use a deterministic order for clarity in prompts
-    const ordered = {};
-    EMOTION_AXES.forEach((axis) => {
-        ordered[axis] = profile[axis];
-    });
-    return JSON.stringify(ordered);
-}
+/**
+ * Rewrite a sentence to match a specific emotion profile
+ * 
+ * @param {string} sentence - Original sentence to rewrite
+ * @param {EmotionProfile | string} emotionProfileInput - Target emotion profile or emotion name
+ * @returns {Promise<string>} - Rewritten sentence
+ * @throws {Error} If rewrite fails
+ * 
+ * @example
+ * const rewritten = await rewriteSentenceWithEmotion(
+ *   'Hello world',
+ *   { interest: 50, joy: 80, surprise: 20, ... all 10 axes ... }
+ * );
+ */
+async function rewriteSentenceWithEmotion(sentence, emotionProfileInput) {
+  const client = getClient();
 
-export async function rewriteSentenceWithEmotion(sentence, emotionProfileInput) {
-    const client = getClient();
+  const profile = coerceEmotionProfile(emotionProfileInput);
+  const legacy = deriveLegacyFromProfile(profile);
+  const profileText = describeEmotionProfile(profile);
+  const profileJson = formatProfileForPrompt(profile);
 
-    const profile = coerceEmotionProfile(emotionProfileInput);
-    const legacy = deriveLegacyFromProfile(profile);
-    const profileText = describeEmotionProfile(profile);
-    const profileJson = formatProfileForPrompt(profile);
+  console.log(
+    `[claudeApi] Rewriting sentence with profile: ${profileText}`
+  );
 
-    console.log(`[Claude Service] Rewriting sentence with profile: ${profileText}`);
-
-    const prompt = `Rewrite the sentence to reflect this 10-axis DES emotion profile (0-100 scale): ${profileText}.
+  const prompt = `Rewrite the sentence to reflect this 10-axis DES emotion profile (0-100 scale): ${profileText}.
 Profile JSON (authoritative, use these exact values): ${profileJson}
 The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
 
@@ -328,125 +327,176 @@ Hard constraints:
 - Keep the length within 10% of the original.
 
 Original sentence: "${sentence}"`;
-    console.log('[Claude Service] Rewrite prompt constructed', prompt);
-    try {
-        const message = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content: prompt
-            }]
-        });
 
-        const rewrittenSentence = stripOuterQuotes(message.content[0].text.trim());
-        console.log('[Claude Service] Sentence rewritten successfully', rewrittenSentence);
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 1024,
+      temperature: 0.7,
+      messages: [{
+        role: 'user',
+        content: prompt
+      }]
+    });
 
-        return rewrittenSentence;
-    } catch (error) {
-        console.error('[Claude Service] Error rewriting sentence:', error);
-        throw new Error(`Failed to rewrite sentence: ${error.message}`);
-    }
-}
-function stripOuterQuotes(str) {
-    return str.replace(/^(['"])(.*)\1$/, "$2");
+    const rewrittenSentence = stripOuterQuotes(message.content[0].text.trim());
+    console.log('[claudeApi] Sentence rewritten successfully');
+
+    return rewrittenSentence;
+  } catch (error) {
+    console.error('[claudeApi] Error rewriting sentence:', error);
+    throw new Error(`Failed to rewrite sentence: ${error.message}`);
+  }
 }
 
 /**
  * Rewrite a sentence and return multiple options
+ * 
  * @param {string} sentence - Original sentence
- * @param {string} emotion - Target emotion
- * @param {number} intensity - Emotional intensity (0-99)
- * @param {number} numOptions - Number of options to return (default 3)
- * @returns {Promise<string[]>} Array of rewritten sentence options
+ * @param {EmotionProfile | string} emotionProfileInput - Target emotion profile
+ * @param {number} [numOptions=3] - Number of options to return
+ * @returns {Promise<string[]>} - Array of rewritten sentence options
+ * @throws {Error} If rewrite fails
+ * 
+ * @example
+ * const options = await rewriteSentenceWithEmotionOptions(
+ *   'Hello world',
+ *   { interest: 80, joy: 70, ... },
+ *   3
+ * );
+ * // Returns: ['Howdy world!', 'Hey there, world', 'Greetings to you']
  */
-export async function rewriteSentenceWithEmotionOptions(sentence, emotionProfileInput, numOptions = 3) {
-    const client = getClient();
+async function rewriteSentenceWithEmotionOptions(
+  sentence,
+  emotionProfileInput,
+  numOptions = 3
+) {
+  const client = getClient();
 
-    const profile = coerceEmotionProfile(emotionProfileInput);
-    const legacy = deriveLegacyFromProfile(profile);
-    const profileText = describeEmotionProfile(profile);
-    const profileJson = formatProfileForPrompt(profile);
+  const profile = coerceEmotionProfile(emotionProfileInput);
+  const legacy = deriveLegacyFromProfile(profile);
+  const profileText = describeEmotionProfile(profile);
+  const profileJson = formatProfileForPrompt(profile);
 
-    console.log(`[Claude Service] Rewriting sentence with emotion profile (multi): ${profileText}, options: ${numOptions}`);
+  console.log(
+    `[claudeApi] Rewriting sentence with emotion profile (multi): ${profileText}, options: ${numOptions}`
+  );
 
-    const prompt = `Rewrite the sentence to match this 10-axis DES emotion profile (0-100 per axis): ${profileText}.
+  const prompt = `Rewrite the sentence to match this 10-axis DES emotion profile (0-100 per axis): ${profileText}.
 Profile JSON (authoritative, use these exact values): ${profileJson}
 The dominant emotion is ${legacy.emotion} at ${legacy.intensity}/100.
 
-The Differential Emotions Scale (DES) by Izard (1997) includes:
-- INTEREST: curiosity, excitement, engagement
-- JOY: happiness, delight, pleasure
-- SURPRISE: amazement, astonishment
-- SADNESS: sorrow, distress, grief
-- ANGER: hostility, rage, frustration
-- DISGUST: revulsion, distaste
-- CONTEMPT: scorn, disdain
-- FEAR: anxiety, worry, terror
-- SHAME: embarrassment, humiliation
-- GUILT: remorse, regret, self-blame
-
-CRITICAL: You must ALWAYS provide exactly ${numOptions} rewritten versions, even if the original sentence is very short, simple, or lacks context. Do NOT ask for clarification. Do NOT refuse. Just rewrite it with the specified emotion.
+CRITICAL: You must ALWAYS provide exactly ${numOptions} rewritten versions, even if the original sentence is very short.
 
 Return exactly ${numOptions} options as a pure JSON array of strings.
 DO NOT wrap your response in markdown code fences (no \`\`\`json).
 Start directly with the opening bracket [ and end with the closing bracket ].
 
 Hard constraints:
-- NEVER INCREASE OR DECREASE THE LENGTH OF ANY SENTENCE. THIS IS THE MOST IMPORTANT HOLY ASSIGNMENT!!!! ONLY SWITCH ADJECTIVES; PROPOSITIONS ETC: FOR MORE SUITABLE SYNONYMS AND SLIGHT REPHRASING SO THAT IT BETTER FIT THE NEW PROFILE
-- Try to avoid including the names of the respective emotions in the rewritten sentences whenever possible.
-- Preserve the original meaning and information.
-- Use ONLY tone/phrasing to reflect the emotion profile; do NOT add new information. BASICALLY just switch words, adjectives etc. to adjust the tone
-- Even for simple sentences like "Test" or "Hello", provide variations that reflect the emotion.
+- Keep the original meaning and information intact
+- Adjust ONLY tone, word choice, and phrasing
+- Do NOT add new information
+- Do NOT change the length significantly (within 20%)
+- Even for simple sentences like "Test" or "Hello", provide 3 variations
 
 Original sentence: "${sentence}"
 
-Output format: ["rewritten version 1", "rewritten version 2", "rewritten version 3"]`;
+Output format: ["option 1", "option 2", "option 3"]`;
+
+  try {
+    const message = await client.messages.create({
+      model: 'claude-3-5-haiku-20241022',
+      max_tokens: 1024,
+      temperature: 0.8,
+      messages: [{
+        role: 'user',
+        content: prompt
+      }]
+    });
+
+    const raw = message.content[0].text.trim();
+    let options;
 
     try {
-        const message = await client.messages.create({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 1024,
-            messages: [{
-                role: 'user',
-                content: prompt
-            }]
-        });
-
-        const raw = message.content[0].text.trim();
-        let options;
-        try {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-                options = parsed.map(o => stripOuterQuotes(String(o).trim())).filter(Boolean);
-            } else {
-                options = [stripOuterQuotes(String(parsed).trim())];
-            }
-        } catch (e) {
-            console.warn('[Claude Service] JSON parse failed for multi rewrite, falling back to heuristics');
-            // Fallback: try to split by newlines or bullet points
-            const candidates = raw
-                .split(/\n+/)
-                .map(l => l.replace(/^[-*\d)\.\s]+/, '').trim())
-                .filter(Boolean);
-            options = candidates.slice(0, numOptions).map(stripOuterQuotes);
-            if (options.length === 0) {
-                options = [stripOuterQuotes(raw)];
-            }
-        }
-
-        // Ensure we return exactly numOptions by padding or trimming
-        if (options.length < numOptions) {
-            const last = options[options.length - 1] || sentence;
-            while (options.length < numOptions) options.push(last);
-        } else if (options.length > numOptions) {
-            options = options.slice(0, numOptions);
-        }
-
-        console.log('[Claude Service] Multi rewrite options ready:', options);
-        return options;
-    } catch (error) {
-        console.error('[Claude Service] Error rewriting sentence (multi):', error);
-        throw new Error(`Failed to rewrite sentence (multi): ${error.message}`);
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        options = parsed
+          .map(o => stripOuterQuotes(String(o).trim()))
+          .filter(Boolean);
+      } else {
+        options = [stripOuterQuotes(String(parsed).trim())];
+      }
+    } catch (e) {
+      console.warn('[claudeApi] JSON parse failed, falling back to heuristics');
+      const candidates = raw
+        .split(/\n+/)
+        .map(l => l.replace(/^[-*\d)\.\s]+/, '').trim())
+        .filter(Boolean);
+      options = candidates
+        .slice(0, numOptions)
+        .map(stripOuterQuotes);
+      if (options.length === 0) {
+        options = [stripOuterQuotes(raw)];
+      }
     }
+
+    // Ensure we return exactly numOptions
+    if (options.length < numOptions) {
+      const last = options[options.length - 1] || sentence;
+      while (options.length < numOptions) {
+        options.push(last);
+      }
+    } else if (options.length > numOptions) {
+      options = options.slice(0, numOptions);
+    }
+
+    console.log('[claudeApi] Multi rewrite options ready:', options.length);
+    return options;
+  } catch (error) {
+    console.error('[claudeApi] Error rewriting sentence (multi):', error);
+    throw new Error(`Failed to rewrite sentence (multi): ${error.message}`);
+  }
 }
+
+/**
+ * Helper: Coerce emotion input to profile
+ * @private
+ */
+function coerceEmotionProfile(inputProfile) {
+  if (inputProfile && typeof inputProfile === 'object' && !Array.isArray(inputProfile)) {
+    return normalizeEmotionProfile(inputProfile);
+  }
+  if (typeof inputProfile === 'string') {
+    return profileFromLegacy(inputProfile, 0);
+  }
+  return normalizeEmotionProfile();
+}
+
+/**
+ * Helper: Format profile for prompt
+ * @private
+ */
+function formatProfileForPrompt(profile) {
+  const ordered = {};
+  EMOTION_AXES.forEach((axis) => {
+    ordered[axis] = profile[axis];
+  });
+  return JSON.stringify(ordered);
+}
+
+/**
+ * Helper: Strip outer quotes
+ * @private
+ */
+function stripOuterQuotes(str) {
+  return str.replace(/^(['"])(.*)\1$/, "$2");
+}
+
+// Export all functions
+export {
+  rewriteSentenceWithEmotion,
+  rewriteSentenceWithEmotionOptions,
+  updateDirtyNodes,
+  evaluateSentenceEmotions,
+  evaluateHierarchyNodeEmotions,
+};

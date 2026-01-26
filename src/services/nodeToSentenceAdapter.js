@@ -1,32 +1,63 @@
 /**
- * Adapter between node-based system and existing Claude service
- * Converts nodeMap to sentence-like format for Claude integration
+ * @fileoverview Node to Sentence Format Adapter
+ * 
+ * Converts between nodeMap and sentence format for Claude.
+ * Also applies restructuring results back to nodeMap.
  * 
  * @typedef {import('../types/node').Node} Node
  */
 
 import { getContentNodeIdsInDocumentOrder } from '@utils/nodeHelpers';
-import { isContentNode, isGroupNode, createGroupNode, cloneNode } from '../types/node';
-import { v4 as uuidv4 } from 'uuid';
+import {
+  isContentNode,
+  isGroupNode,
+  createGroupNode,
+  cloneNode,
+} from '../types/node';
 
+function buildEmotionField(profile) {
+  if (!profile || typeof profile !== 'object') return null;
+  const entries = Object.entries(profile).filter(([, v]) => typeof v === 'number');
+  let dominantEmotion = 'interest';
+  let dominantIntensity = 0;
+  for (const [k, v] of entries) {
+    if (v > dominantIntensity) {
+      dominantEmotion = k;
+      dominantIntensity = v;
+    }
+  }
+  return {
+    profile,
+    dominantEmotion,
+    dominantIntensity,
+    source: 'ai',
+    timestamp: new Date().toISOString(),
+  };
+}
 
 /**
- * Convert nodeMap to sentences array format for Claude service
- * Creates a pseudo-sentences array with _hierarchyMeta
- *
- * @param {Map<string, Node>} nodeMap - Current node map
+ * Convert nodeMap to sentences array (for Claude processing)
+ * 
+ * Creates a "pseudo-sentences" array that Claude can work with,
+ * plus _hierarchyMeta for context reconstruction.
+ * 
+ * @param {Map<string, Node>} nodeMap - All nodes
  * @param {string} rootId - Root node ID
  * @param {number} maxDepth - Hierarchy depth
- * @returns {Array<string>} Sentences-like array with _hierarchyMeta
+ * @returns {Array<{id: string, content: string, emotions: Object, isDirty: boolean}> & {_hierarchyMeta: Object}}
+ * 
+ * @example
+ * const sentences = nodeMapToSentenceFormat(nodeMap, 'root', 4);
+ * // sentences[0] = {id: 's1', content: '...', emotions: {...}, isDirty: false}
+ * // sentences._hierarchyMeta = {rootTitle: '...', maxLevel: 3, nodes: [...], ...}
  */
 export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
-  console.log('[Adapter] Converting nodeMap to sentence format');
+  console.log('[adapter] Converting nodeMap to sentence format');
 
   const root = nodeMap.get(rootId);
-  if (!root) throw new Error('Root node not found');
-
-  // Convert app level to Claude level
-  const toClaudeLevel = (appLevel) => maxDepth - appLevel;
+  if (!root) {
+    throw new Error('Root node not found');
+  }
 
   // Extract content nodes in document order
   const contentIds = getContentNodeIdsInDocumentOrder(nodeMap, rootId);
@@ -35,29 +66,27 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
     .filter(Boolean)
     .filter(isContentNode);
 
+  // Build sentences array
   const sentences = [];
-  contentNodes.forEach((node) => {
+  for (const node of contentNodes) {
     sentences.push({
       id: node.id,
       content: node.content,
-      emotion: null,
-      intensity: 0,
       emotions: node.emotion?.profile || {},
       isDirty: node.metadata.isDirty,
     });
-  });
+  }
 
-  // Build hierarchy metadata with CLAUDE levels (converted from app levels)
+  // Build hierarchy metadata for context
   const hierarchyMeta = {
     rootTitle: root.content,
     maxLevel: maxDepth - 1,
     nodes: Array.from(nodeMap.values())
-      .filter((n) => n.id !== rootId)
-      .filter(isGroupNode)
+      .filter((n) => n.id !== rootId && isGroupNode(n))
       .map((n) => ({
         id: n.id,
         type: n.type,
-        level: toClaudeLevel(n.hierarchy.level), // ← Convert to Claude level
+        level: n.hierarchy.level,
         label: n.content,
         childIds: [...n.hierarchy.childIds],
       })),
@@ -72,7 +101,7 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
 
   sentences._hierarchyMeta = hierarchyMeta;
 
-  console.log('[Adapter] Converted:', {
+  console.log('[adapter] Converted:', {
     sentences: sentences.length,
     dirtyNodes: hierarchyMeta.dirtyNodeIds.length,
     dirtySentences: hierarchyMeta.dirtySentenceIds.length,
@@ -80,172 +109,30 @@ export function nodeMapToSentenceFormat(nodeMap, rootId, maxDepth) {
 
   return sentences;
 }
-/**
- * Apply restructuring where rootNodeId is 'root' (full hierarchy rebuild)
- * This happens when Claude/system rebuilds the entire structure
- */
-function applyRootLevelRestructure(
-  nodeMap,
-  rootId,
-  newNodes,
-  maxDepth
-) {
-  console.log('[Adapter] Applying root-level restructure (rebuilding full hierarchy)');
-
-  const updated = new Map(nodeMap);
-  const contentLevel = maxDepth - 1;
-  const toAppLevel = (claudeLevel) => maxDepth - claudeLevel;
-
-  const buildEmotionField = (profile) => {
-    if (!profile || typeof profile !== 'object') return null;
-
-    const entries = Object.entries(profile).filter(
-      ([, v]) => typeof v === 'number'
-    );
-
-    let dominantEmotion = 'interest';
-    let dominantIntensity = 0;
-
-    for (const [k, v] of entries) {
-      if (v > dominantIntensity) {
-        dominantEmotion = k;
-        dominantIntensity = v;
-      }
-    }
-
-    return {
-      profile,
-      dominantEmotion,
-      dominantIntensity,
-      source: 'ai',
-      timestamp: new Date().toISOString(),
-    };
-  };
-
-  // Step 1: Delete all existing group nodes (keep content nodes)
-  const nodesToDelete = new Set();
-  for (const [id, node] of updated.entries()) {
-    if (isGroupNode(node) && id !== rootId) {
-      nodesToDelete.add(id);
-    }
-  }
-
-  console.log(`[Adapter] Deleting ${nodesToDelete.size} old group nodes`);
-  for (const id of nodesToDelete) {
-    updated.delete(id);
-  }
-
-  // Step 2: Create new group nodes from restructuring output
-  const nodeMap_new = new Map();
-  const sentenceIds = new Set(
-    Array.from(updated.values())
-      .filter(isContentNode)
-      .map(n => n.id)
-  );
-
-  for (const n of newNodes) {
-    const appLevel = toAppLevel(n.level);
-    const childIds = [...new Set(n.childIds || [])];
-
-    const group = createGroupNode(
-      n.id,
-      n.title,
-      appLevel,
-      null, // parentId will be set below
-      childIds,
-      {
-        metadata: {
-          isDirty: false,
-          createdAt: new Date().toISOString(),
-          version: 1,
-        },
-      }
-    );
-
-    const emotionField = buildEmotionField(n.emotions);
-    if (emotionField) group.emotion = emotionField;
-
-    nodeMap_new.set(n.id, group);
-  }
-
-  // Step 3: Fix parent references and build parent map
-  const topLevelNodes = newNodes.filter(n => !newNodes.map(x => x.id).includes(n.childIds?.[0] ? 
-    newNodes.find(x => x.childIds?.includes(n.id))?.id : null)).filter(n => n);
-  
-  // Actually, simpler: find nodes whose parents aren't in the new hierarchy
-  const topLevel = Math.max(...newNodes.map(n => n.level));
-  const topLevelNewIds = newNodes
-    .filter(n => n.level === topLevel)
-    .map(n => n.id);
-
-  // Build parent references for new hierarchy
-  for (const n of newNodes) {
-    const parentNode = newNodes.find(parent => parent.childIds?.includes(n.id));
-    if (parentNode) {
-      const nodeRecord = nodeMap_new.get(n.id);
-      if (nodeRecord) {
-        nodeRecord.hierarchy.parentId = parentNode.id;
-      }
-    } else if (n.level === topLevel) {
-      // Top-level nodes: parent is root
-      const nodeRecord = nodeMap_new.get(n.id);
-      if (nodeRecord) {
-        nodeRecord.hierarchy.parentId = rootId;
-      }
-    }
-  }
-
-  // Add new group nodes to updated map
-  for (const [id, node] of nodeMap_new.entries()) {
-    updated.set(id, node);
-  }
-
-  // Step 4: Fix content node parents (attach to correct level-2 groups)
-  const level2Groups = newNodes.filter(n => n.level === 2);
-
-  for (const level2 of level2Groups) {
-    for (const sentenceId of level2.childIds || []) {
-      const content = updated.get(sentenceId);
-      if (!content || !isContentNode(content)) continue;
-
-      // Detach from old parent
-      const prevParentId = content.hierarchy.parentId;
-      if (prevParentId && prevParentId !== level2.id) {
-        const prevParent = updated.get(prevParentId);
-        if (prevParent && (prevParent.hierarchy.childIds || []).includes(sentenceId)) {
-          const patched = cloneNode(prevParent);
-          patched.hierarchy.childIds = (patched.hierarchy.childIds || []).filter(
-            (id) => id !== sentenceId
-          );
-          updated.set(prevParentId, patched);
-        }
-      }
-
-      const patched = cloneNode(content);
-      patched.hierarchy.parentId = level2.id;
-      patched.hierarchy.level = contentLevel;
-      patched.metadata.isDirty = false;
-      patched.metadata.modifiedAt = new Date().toISOString();
-      updated.set(sentenceId, patched);
-    }
-  }
-
-  // Step 5: Update root to point to top-level groups
-  const root = updated.get(rootId);
-  if (root) {
-    const patchedRoot = cloneNode(root);
-    patchedRoot.hierarchy.childIds = topLevelNewIds;
-    updated.set(rootId, patchedRoot);
-  }
-
-  console.log(
-    `[Adapter] Root-level restructure complete: ${newNodes.length} groups created`
-  );
-  return updated;
-}
 
 /**
- * Main function - updated to handle root-level restructuring
+ * Apply restructuring result back to nodeMap
+ * 
+ * Replaces the root-level hierarchy with new structure.
+ * Preserves all content nodes, only updates grouping.
+ * 
+ * @param {Map<string, Node>} nodeMap - Current state
+ * @param {string} rootId - Root node ID
+ * @param {Array<{rootNodeId: string, newNodes: Array}>} restructuredSubtrees - From Claude
+ * @param {string | null} newRootTitle - Updated root title (optional)
+ * @param {Object | null} newRootEmotions - Updated root emotions (optional)
+ * @param {number} maxDepth - Max hierarchy depth
+ * @returns {Map<string, Node>} - Updated nodeMap
+ * 
+ * @example
+ * const updated = applyClaudeRestructureToNodeMap(
+ *   nodeMap,
+ *   'root',
+ *   [{rootNodeId: 'root', newNodes: [...]}],
+ *   null,
+ *   {interest: 50, joy: 60, ...},
+ *   4
+ * );
  */
 export function applyClaudeRestructureToNodeMap(
   nodeMap,
@@ -255,100 +142,146 @@ export function applyClaudeRestructureToNodeMap(
   newRootEmotions,
   maxDepth
 ) {
-  console.log('[Adapter] Applying Claude restructure to nodeMap');
-
-  // Special case: root-level restructuring (new two-phase approach)
-  if (
-    restructuredSubtrees.length === 1 &&
-    restructuredSubtrees[0].rootNodeId === rootId
-  ) {
-    const result = applyRootLevelRestructure(
-      nodeMap,
-      rootId,
-      restructuredSubtrees[0].newNodes,
-      maxDepth
-    );
-
-    // Apply root metadata
-    const root = result.get(rootId);
-    if (root) {
-      const patchedRoot = cloneNode(root);
-      if (newRootTitle) patchedRoot.content = newRootTitle;
-      if (newRootEmotions) patchedRoot.emotion = buildEmotionField(newRootEmotions);
-      result.set(rootId, patchedRoot);
+  const updated = new Map(nodeMap);
+  const contentLevel = maxDepth - 1;
+  
+  // No level conversion needed - Claude now returns app levels!
+  
+  // 1) Delete old groups, keep root + content
+  for (const [id, node] of updated.entries()) {
+    if (id !== rootId && node && isGroupNode(node)) {
+      updated.delete(id);
     }
-
-    return result;
   }
-
-  // Original code for subtree-level restructuring continues below...
-  const updated = new Map(nodeMap);
-  // ... rest of original applyClaudeRestructureToNodeMap code ...
-}
-
-/**
- * Apply emotion evaluation to nodeMap
- *
- * @param {Map<string, Node>} nodeMap - Current node map
- * @param {Array} emotionData - From Claude evaluateSentenceEmotions
- * @returns {Map<string, Node>} Updated nodeMap with emotions
- */
-export function applyEmotionsToNodeMap(nodeMap, emotionData) {
-  console.log('[Adapter] Applying emotions to nodeMap');
-
-  const updated = new Map(nodeMap);
-
-  emotionData.forEach(item => {
-    const node = updated.get(item.id);
-    if (node && isContentNode(node)) {
-      const updatedNode = cloneNode(node);
-
-      // Get emotion profile - check both formats
-      const emotionProfile = item.emotions || {};
-
-      // Find dominant emotion
-      const dominantEntry = Object.entries(emotionProfile).sort(
-        (a, b) => b[1] - a[1]
-      )[0];
-
-      updatedNode.emotion = {
-        profile: emotionProfile,
-        dominantEmotion: dominantEntry ? dominantEntry[0] : (item.emotion || 'interest'),
-        dominantIntensity: dominantEntry ? dominantEntry[1] : (item.intensity || 0),
+  
+  // 2) Add new groups directly with app levels
+  const rootSubtree = restructuredSubtrees.find(s => s.rootNodeId === rootId) 
+    ?? restructuredSubtrees[0];
+  
+  for (const nodeData of rootSubtree.newNodes) {
+    const group = createGroupNode(
+      nodeData.id,
+      nodeData.title,
+      nodeData.level, // Already app level!
+      nodeData.level === 1 ? rootId : null, // Will be set below
+      [...new Set(nodeData.childIds || [])],
+      { metadata: { isDirty: false, createdAt: new Date().toISOString(), version: 1 } }
+    );
+    
+    const ef = buildEmotionField(nodeData.emotions);
+    if (ef) group.emotion = ef;
+    
+    updated.set(nodeData.id, group);
+  }
+  
+  // 3) Fix parent pointers for groups
+  const parentMap = new Map();
+  for (const nodeData of rootSubtree.newNodes) {
+    for (const childId of nodeData.childIds) {
+      parentMap.set(childId, nodeData.id);
+    }
+  }
+  
+  for (const [id, node] of updated.entries()) {
+    if (isGroupNode(node)) {
+      const newParentId = parentMap.get(id) || rootId;
+      if (node.hierarchy.parentId !== newParentId) {
+        const patched = cloneNode(node);
+        patched.hierarchy.parentId = newParentId;
+        updated.set(id, patched);
+      }
+    }
+  }
+  
+  // 4) Reparent content nodes to level-1 groups
+  const level1Groups = rootSubtree.newNodes.filter(n => n.level === 1);
+  for (const group of level1Groups) {
+    for (const sentenceId of group.childIds) {
+      const content = updated.get(sentenceId);
+      if (content && isContentNode(content)) {
+        const patched = cloneNode(content);
+        patched.hierarchy.parentId = group.id;
+        patched.hierarchy.level = contentLevel;
+        updated.set(sentenceId, patched);
+      }
+    }
+  }
+  
+  // 5) Update root
+  const root = updated.get(rootId);
+  if (root) {
+    const patched = cloneNode(root);
+    patched.hierarchy.childIds = rootSubtree.newNodes
+      .filter(n => n.level === Math.max(...rootSubtree.newNodes.map(x => x.level)))
+      .map(n => n.id);
+    
+    if (newRootTitle) patched.content = newRootTitle;
+    if (newRootEmotions) {
+      patched.emotion = {
+        profile: newRootEmotions,
+        dominantEmotion: 'interest',
         source: 'ai',
         timestamp: new Date().toISOString(),
       };
-      updated.set(item.id, updatedNode);
     }
-  });
-
-  console.log(`[Adapter] Applied emotions to ${emotionData.length} nodes`);
-
+    
+    updated.set(rootId, patched);
+  }
+  
   return updated;
 }
 
-const buildEmotionField = (profile) => {
-  if (!profile || typeof profile !== 'object') return null;
+/**
+ * Apply emotion evaluation to content nodes
+ * 
+ * Updates all content nodes with their evaluated emotions.
+ * Clears old emotions before applying (prevents carryover).
+ * 
+ * @param {Map<string, Node>} nodeMap
+ * @param {Array<{id: string, emotions: Object}>} emotionData - From emotion evaluator
+ * @returns {Map<string, Node>} - Updated nodeMap
+ */
+export function applyEmotionsToNodeMap(nodeMap, emotionData) {
+  console.log('[adapter] Applying emotions to nodeMap');
 
-  const entries = Object.entries(profile).filter(
-    ([, v]) => typeof v === 'number'
-  );
+  const updated = new Map(nodeMap);
+  const emotionMap = new Map();
 
-  let dominantEmotion = 'interest';
-  let dominantIntensity = 0;
+  // Build emotion map
+  for (const item of emotionData) {
+    emotionMap.set(item.id, item.emotions);
+  }
 
-  for (const [k, v] of entries) {
-    if (v > dominantIntensity) {
-      dominantEmotion = k;
-      dominantIntensity = v;
+  // Apply emotions to nodes
+  for (const [id, node] of updated.entries()) {
+    if (!isContentNode(node)) continue;
+
+    if (emotionMap.has(id)) {
+      const emotions = emotionMap.get(id);
+      const updatedNode = cloneNode(node);
+
+      // Find dominant emotion
+      const entries = Object.entries(emotions).sort((a, b) => b[1] - a[1]);
+      const [dominantKey, dominantValue] = entries[0] || ['interest', 0];
+
+      updatedNode.emotion = {
+        profile: emotions,
+        dominantEmotion: dominantKey,
+        dominantIntensity: dominantValue,
+        source: 'ai',
+        timestamp: new Date().toISOString(),
+      };
+
+      updated.set(id, updatedNode);
     }
   }
 
-  return {
-    profile,
-    dominantEmotion,
-    dominantIntensity,
-    source: 'ai',
-    timestamp: new Date().toISOString(),
-  };
+  console.log(`[adapter] ✓ Applied emotions to ${emotionData.length} nodes`);
+  return updated;
+}
+
+export default {
+  nodeMapToSentenceFormat,
+  applyClaudeRestructureToNodeMap,
+  applyEmotionsToNodeMap,
 };

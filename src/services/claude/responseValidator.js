@@ -511,7 +511,7 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
         throw new Error(`Subtree ${subtree.rootNodeId} missing "newNodes" array`);
     }
 
-    const topLevel = originalSubtree.topLevel;  // Should be 3 when maxDepth=4
+    const topLevel = originalSubtree.topLevel;
     const originalSentences = originalSubtree.sentences;
 
     console.log(`[Claude Service] Validating subtree (topLevel=${topLevel})`);
@@ -529,7 +529,22 @@ function validateSubtree(subtree, originalSubtree, maxDepth) {
 
     // Now validate
     for (const node of subtree.newNodes) {
-        validateNodeStructure(node, maxDepth, subtree.rootNodeId);
+        // Check title is present and reasonable
+        if (!node.title || node.title.trim().length === 0) {
+        throw new Error(`Node ${node.id} missing title`);
+        }
+
+        if (node.title.length > 100) {
+        console.warn(`Node ${node.id} title too long, truncating`);
+        node.title = node.title.substring(0, 100);
+        }
+
+        // Reject generic placeholders from Claude
+        if (/^(Section|Topic|Group|Level) \d+$/.test(node.title)) {
+        console.warn(
+            `Node ${node.id} has generic title, will be auto-generated: "${node.title}"`
+        );
+        }
     }
 
     // Validate level completeness (all levels 2 to topLevel exist)

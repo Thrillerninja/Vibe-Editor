@@ -19,73 +19,68 @@ import { cloneNode, isContentNode, isGroupNode, isRootNode } from '../types/node
  * @returns {string[]} out
  */
 export function getContentNodeIdsInDocumentOrder(nodeMap, rootId) {
-  console.log(
-    '[DEBUG getContentNodeIdsInDocumentOrder] Starting traversal from root:',
-    rootId
-  );
+  console.log('[DEBUG getContentNodeIdsInDocumentOrder] Starting traversal from root:', rootId);
 
   const root = nodeMap.get(rootId);
   if (!root) {
-    console.warn('[DEBUG getContentNodeIdsInDocumentOrder] Root not found');
-    return [];
+    throw new Error(`Root node ${rootId} not found`);
   }
 
-  console.log(
-    '[DEBUG getContentNodeIdsInDocumentOrder] Root children:',
-    root.hierarchy.childIds
-  );
+  console.log('[DEBUG getContentNodeIdsInDocumentOrder] Root children:', root.hierarchy.childIds);
 
-  const out = [];
-  const stack = [...(root.hierarchy.childIds || [])].reverse(); // keep order
+  const contentIds = [];
   const visited = new Set();
-  const unreachable = new Set(nodeMap.keys());
+  const queue = [...root.hierarchy.childIds];
 
-  while (stack.length) {
-    const id = stack.pop();
-    if (!id) {
-      console.log(
-        `[DEBUG getContentNodeIdsInDocumentOrder] Returning Early`
-      );
-      return [];
-    }
-    
+  while (queue.length > 0) {
+    const id = queue.shift();
     if (visited.has(id)) continue;
     visited.add(id);
-    unreachable.delete(id);
 
     const node = nodeMap.get(id);
     if (!node) {
-      console.warn(`[WARNING] Node ${id} referenced but not found in nodeMap`);
+      console.warn(`[DEBUG] Node ${id} not found in nodeMap!`);
       continue;
     }
 
     if (isContentNode(node)) {
-      out.push(id);
-    }
-
-    if (isGroupNode(node) || isRootNode(node)) {
-      const kids = node.hierarchy.childIds || [];
-      for (let i = kids.length - 1; i >= 0; i--) {
-        stack.push(kids[i]);
-      }
+      contentIds.push(id);
+      console.log(`[DEBUG]   Found content: ${id.substring(0, 8)}`);
+    } else if (isGroupNode(node)) {
+      console.log(`[DEBUG]   Visiting group: ${id.substring(0, 8)}, children=${node.hierarchy.childIds.length}`);
+      queue.push(...node.hierarchy.childIds);
     }
   }
 
-  console.log(
-    `[DEBUG getContentNodeIdsInDocumentOrder] Final order: ${out.length} content nodes`
-  );
+  console.log('[DEBUG getContentNodeIdsInDocumentOrder] Final order:', contentIds.length, 'content nodes');
 
-  // Check for unreachable content nodes
-  const unreachableContent = Array.from(unreachable)
-    .map(id => nodeMap.get(id))
-    .filter(n => isContentNode(n));
-  
+  // Better error reporting
+  const allContent = Array.from(nodeMap.values()).filter(isContentNode);
+  const unreachableContent = allContent.filter(n => !contentIds.includes(n.id));
+
   if (unreachableContent.length > 0) {
     console.error('[ERROR] Found unreachable content nodes:', unreachableContent.map(n => n.id));
-    throw new Error(`Invariant violated: ${unreachableContent.length} content nodes unreachable from root`);
+    
+    // Debug: Show which nodes are reachable from where
+    console.error('[DEBUG] Unreachable nodes details:');
+    for (const node of unreachableContent) {
+      console.error(`  ${node.id.substring(0, 8)}: parentId=${node.hierarchy.parentId}, parent exists=${nodeMap.has(node.hierarchy.parentId)}`);
+      
+      // Check if parent exists and if this node is in parent's childIds
+      const parent = nodeMap.get(node.hierarchy.parentId);
+      if (parent) {
+        const inParentList = parent.hierarchy.childIds.includes(node.id);
+        console.error(`    Parent exists, in childIds=${inParentList}`);
+      }
+    }
+
+    throw new Error(
+      `Invariant violated: ${unreachableContent.length} content nodes unreachable from root\n` +
+      `Unreachable IDs: ${unreachableContent.map(n => n.id.substring(0, 8)).join(', ')}`
+    );
   }
 
-  return out;
+  return contentIds;
 }
 
 /**
