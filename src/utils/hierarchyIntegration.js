@@ -14,8 +14,32 @@ import {
 } from './emotionProfiles';
 
 const ensureEmotionShape = (payload) => {
+    // Only process if payload exists
+    if (!payload) {
+        return { emotions: { ...EMPTY_EMOTION_PROFILE }, emotion: 'interest', intensity: 0 };
+    }
+    
+    // Check if emotions already exist in the payload with a valid DES structure
+    const existingEmotions = payload?.emotions;
+    const hasValidEmotionStructure = existingEmotions && 
+        typeof existingEmotions === 'object' && 
+        Object.keys(existingEmotions).length > 0;
+    
+    // If emotions already exist with valid structure, normalize and preserve them
+    if (hasValidEmotionStructure) {
+        const profile = normalizeEmotionProfile(existingEmotions);
+        const legacy = deriveLegacyFromProfile(profile);
+        return {
+            ...payload,
+            emotions: profile,
+            emotion: legacy.emotion,
+            intensity: legacy.intensity,
+        };
+    }
+    
+    // No existing emotions, create a default profile from legacy fields if available
     const profile = normalizeEmotionProfile(
-        payload?.emotions ?? profileFromLegacy(payload?.emotion, payload?.intensity)
+        existingEmotions ?? profileFromLegacy(payload?.emotion, payload?.intensity)
     );
     const legacy = deriveLegacyFromProfile(profile);
     return {

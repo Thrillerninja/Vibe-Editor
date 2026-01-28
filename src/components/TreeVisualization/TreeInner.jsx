@@ -288,6 +288,18 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           const isNodeMerging = existing?.data?.isMerging || false;
           
           if (existing && existing.data) {
+            // Helper to check if an emotion profile has actual data (not all zeros)
+            const hasEmotionData = (profile) => {
+              if (!profile || typeof profile !== 'object') return false;
+              return Object.keys(profile).some(key => {
+                const val = profile[key];
+                return typeof val === 'number' && val > 0;
+              });
+            };
+            
+            // Prefer existing emotions if they have data; otherwise use new
+            const existingHasEmotion = hasEmotionData(existing.data.emotions);
+            
             return {
               ...n,
               data: {
@@ -296,10 +308,10 @@ export function TreeInner({ sentences, onTreeUpdate }) {
                 label: n.data.label,
                 content: n.data.content,
                 type: n.data.type,
-                // Preserve emotion metadata if already set
-                emotion: existing.data.emotion || n.data.emotion,
-                emotions: existing.data.emotions || n.data.emotions,
-                intensity: existing.data.intensity !== undefined ? existing.data.intensity : n.data.intensity,
+                // Preserve emotion metadata - prefer existing if it has data
+                emotion: existingHasEmotion ? existing.data.emotion : n.data.emotion,
+                emotions: existingHasEmotion ? existing.data.emotions : n.data.emotions,
+                intensity: existingHasEmotion ? existing.data.intensity : n.data.intensity,
                 // Use computed isMerging and isDirty
                 isMerging: isNodeMerging,
                 isDirty: isNodeDirty,
