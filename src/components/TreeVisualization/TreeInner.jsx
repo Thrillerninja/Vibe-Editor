@@ -898,11 +898,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       console.log(`${LOG_PREFIX.DRAG} Updating UI with merged group node and reordered sentences`);
       onTreeUpdate(prunedSentences);
 
-      // Set merging state to show spinner
-      setIsMerging(true);
-      setMergingNodeId(mergedId);
-
-      // Call AI to get intelligent merged label (async, don't block UI)
+      // Note: No spinning wheel for group merges - the merge is immediate
+      // Only sentence merges show the spinner as they call AI for intelligent merging
       console.log(`${LOG_PREFIX.DRAG} Starting AI merge for group labels in background...`);
       try {
         const aiMergedLabel = await mergeTwoSentences(
@@ -931,10 +928,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       } catch (error) {
         console.error(`${LOG_PREFIX.DRAG} AI merge failed for group:`, error);
         // Keep the concatenated version if AI fails
-      } finally {
-        setIsMerging(false);
-        setMergingNodeId(null);
       }
+      // No spinner to clear - group merges don't show the spinning wheel
     },
     [onTreeUpdate]
   );
