@@ -327,23 +327,6 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
                     </div>
                 </div>
 
-
-                {/* VIEW SECTION */}
-                <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}>View</div>
-                    <button
-                        onClick={() => {
-                            navigate('/stats');
-                            closeMenu();
-                        }}
-                        style={menuItemStyle}
-                        onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6')}
-                        onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
-                    >
-                        📊 Analytics
-                    </button>
-                </div>
-
                 {/* SPACER */}
                 <div style={{ flexGrow: 1 }}></div>
 
@@ -380,52 +363,6 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
                         </div>
                     </div>
 
-                    {/* Theme Selector */}
-                    <div style={{ padding: '0 16px 12px 16px' }}>
-                        <label style={{ fontSize: '13px', color: '#606b7eff', display: 'block', marginBottom: '8px' }}>
-                            Theme
-                        </label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                                onClick={() => setTheme('light')}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px',
-                                    border: theme === 'light' ? '2px solid #111827' : '1px solid #e5e7eb',
-                                    borderRadius: '4px',
-                                    backgroundColor: theme === 'light' ? '#f9fafb' : 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: theme === 'light' ? 600 : 400,
-                                    color: '#374151',
-                                    transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => !theme === 'light' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'light' && (e.target.style.borderColor = '#e5e7eb')}
-                            >
-                                ☀️ Light
-                            </button>
-                            <button
-                                onClick={() => setTheme('dark')}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px',
-                                    border: theme === 'dark' ? '2px solid #111827' : '1px solid #e5e7eb',
-                                    borderRadius: '4px',
-                                    backgroundColor: theme === 'dark' ? '#f9fafb' : 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: theme === 'dark' ? 600 : 400,
-                                    color: '#374151',
-                                    transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => !theme === 'dark' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'dark' && (e.target.style.borderColor = '#e5e7eb')}
-                            >
-                                🌙 Dark
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </>
