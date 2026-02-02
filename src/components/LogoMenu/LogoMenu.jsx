@@ -1,29 +1,39 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoadingPoetry }) {
+export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoadingPoetry, onImport, onExport }) {
     const [isMenuOpen, setIsMenuOpen] = useState(false);
     const [theme, setTheme] = useState('light');
     const [isDragActive, setIsDragActive] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
     const navigate = useNavigate();
 
-    const handleExport = (fileType) => {
-        console.log(`Exporting as ${fileType.toUpperCase()}`);
-        // TODO: Implement export functionality
-        // exportDocument(fileType);
-    };
+    // Handle file import via file picker
     const handleImportClick = () => {
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
-        fileInput.accept = '.txt,.md,.html,.pdf';
-        fileInput.onchange = (e) => {
+        fileInput.accept = '.txt,.md,.html,.htm,.pdf,.docx,.doc';
+        fileInput.onchange = async (e) => {
             const file = e.target.files[0];
             if (file) {
-                console.log(`Importing file: ${file.name}`);
-                // TODO: Implement import functionality
+                setIsImporting(true);
+                try {
+                    await onImport(file);
+                    closeMenu();
+                } finally {
+                    setIsImporting(false);
+                    fileInput.value = ''; // Reset input to ensure onchange fires reliably on next selection
+                }
+            } else {
+                fileInput.value = ''; // Reset input even if no file selected
             }
         };
         fileInput.click();
+    };
+
+    // Handle file export
+    const handleExport = (fileType) => {
+        onExport(fileType);
     };
 
     const handleDrag = (e) => {
@@ -36,7 +46,7 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
         }
     };
 
-    const handleDrop = (e) => {
+    const handleDrop = async (e) => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragActive(false);
@@ -45,7 +55,13 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
         if (files && files.length > 0) {
             const file = files[0];
             console.log(`Dropped file: ${file.name}`);
-            // TODO: Implement import functionality
+            setIsImporting(true);
+            try {
+                await onImport(file);
+                closeMenu();
+            } finally {
+                setIsImporting(false);
+            }
         }
     };
 
@@ -204,25 +220,37 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
                         {/* Import Button */}
                         <button
                             onClick={handleImportClick}
+                            disabled={isImporting}
                             style={{
                                 ...buttonBaseStyle,
                                 padding: '16px',
                                 gap: '8px',
+                                opacity: isImporting ? 0.7 : 1,
+                                cursor: isImporting ? 'not-allowed' : 'pointer',
                             }}
                             onMouseEnter={(e) => {
-                                e.currentTarget.style.transform = 'translateY(-1px)';
-                                e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)';
+                                if (!isImporting) {
+                                    e.currentTarget.style.transform = 'translateY(-1px)';
+                                    e.currentTarget.style.boxShadow = '0 4px 6px rgba(0,0,0,0.05)';
+                                }
                             }}
                             onMouseLeave={(e) => {
                                 e.currentTarget.style.transform = 'translateY(0)';
                                 e.currentTarget.style.boxShadow = '0 1px 2px rgba(0,0,0,0.05)';
                             }}
                         >
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                                <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                                <path d="M12 11v6m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            <span style={{ fontSize: '13px', fontWeight: 500 }}>Upload</span>
+                            {isImporting ? (
+                                <svg className="animate-spin" width="24" height="24" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                </svg>
+                            ) : (
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                                    <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                                    <path d="M12 11v6m0 0l-3-3m3 3l3-3" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                            )}
+                            <span style={{ fontSize: '13px', fontWeight: 500 }}>{isImporting ? 'Loading...' : 'Upload'}</span>
                         </button>
 
                         {/* Drag & Drop Zone */}
@@ -327,23 +355,6 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
                     </div>
                 </div>
 
-
-                {/* VIEW SECTION */}
-                <div style={sectionStyle}>
-                    <div style={sectionTitleStyle}>View</div>
-                    <button
-                        onClick={() => {
-                            navigate('/stats');
-                            closeMenu();
-                        }}
-                        style={menuItemStyle}
-                        onMouseEnter={(e) => (e.target.style.backgroundColor = '#f3f4f6')}
-                        onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
-                    >
-                        📊 Analytics
-                    </button>
-                </div>
-
                 {/* SPACER */}
                 <div style={{ flexGrow: 1 }}></div>
 
@@ -380,54 +391,9 @@ export default function LogoMenu({ maxDepth, setMaxDepth, onInsertPoetry, isLoad
                         </div>
                     </div>
 
-                    {/* Theme Selector */}
-                    <div style={{ padding: '0 16px 12px 16px' }}>
-                        <label style={{ fontSize: '13px', color: '#606b7eff', display: 'block', marginBottom: '8px' }}>
-                            Theme
-                        </label>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <button
-                                onClick={() => setTheme('light')}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px',
-                                    border: theme === 'light' ? '2px solid #111827' : '1px solid #e5e7eb',
-                                    borderRadius: '4px',
-                                    backgroundColor: theme === 'light' ? '#f9fafb' : 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: theme === 'light' ? 600 : 400,
-                                    color: '#374151',
-                                    transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => !theme === 'light' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'light' && (e.target.style.borderColor = '#e5e7eb')}
-                            >
-                                ☀️ Light
-                            </button>
-                            <button
-                                onClick={() => setTheme('dark')}
-                                style={{
-                                    flex: 1,
-                                    padding: '8px',
-                                    border: theme === 'dark' ? '2px solid #111827' : '1px solid #e5e7eb',
-                                    borderRadius: '4px',
-                                    backgroundColor: theme === 'dark' ? '#f9fafb' : 'white',
-                                    cursor: 'pointer',
-                                    fontSize: '12px',
-                                    fontWeight: theme === 'dark' ? 600 : 400,
-                                    color: '#374151',
-                                    transition: 'all 0.2s',
-                                }}
-                                onMouseEnter={(e) => !theme === 'dark' && (e.target.style.borderColor = '#d1d5db')}
-                                onMouseLeave={(e) => !theme === 'dark' && (e.target.style.borderColor = '#e5e7eb')}
-                            >
-                                🌙 Dark
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
         </>
     );
 }
+
