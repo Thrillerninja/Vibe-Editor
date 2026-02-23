@@ -463,10 +463,6 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       if (mergeTargetNode) {
         // Merge takes priority for sentence nodes
         const screenPos = toScreenPoint({ x: mergeTargetNode.position.x, y: mergeTargetNode.position.y });
-        const screenSize = toScreenSize({
-          width: mergeTargetNode.width || 200,
-          height: mergeTargetNode.height || 60,
-        });
 
         console.log(
           `${LOG_PREFIX.DRAG} 🟣 MERGE INDICATOR ACTIVE:`,
@@ -476,11 +472,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           `\n  Screen pos: (${screenPos.x.toFixed(1)}, ${screenPos.y.toFixed(1)})`
         );
 
-        setMergeTarget({
-          node: mergeTargetNode,
-          screenPosition: screenPos,
-          screenSize: screenSize,
-        });
+        setMergeTarget({ nodeId: mergeTargetNode.id });
         setReorderIndicator(null);
         setReparentTarget(null);
         return;
@@ -963,8 +955,9 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
       // Check for merge first (highest priority)
       if (mergeTarget) {
-        const isSentenceMerge = isSentenceNode(node) && isSentenceNode(mergeTarget.node);
-        const isGroupMerge = isGroupNode(node) && isGroupNode(mergeTarget.node);
+        const mergeTargetLiveNode = nodes.find(n => n.id === mergeTarget.nodeId);
+        const isSentenceMerge = mergeTargetLiveNode && isSentenceNode(node) && isSentenceNode(mergeTargetLiveNode);
+        const isGroupMerge = mergeTargetLiveNode && isGroupNode(node) && isGroupNode(mergeTargetLiveNode);
 
         if (isSentenceMerge) {
           console.log(`${LOG_PREFIX.DRAG} Sentence merge detected: merging sentences`);
@@ -973,7 +966,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           physics.stop();
 
           // Perform sentence merge
-          mergeSentenceNodes(node.id, mergeTarget.node.id);
+          mergeSentenceNodes(node.id, mergeTarget.nodeId);
 
           // Re-layout will happen automatically via useEffect when sentences change
           return;
@@ -984,7 +977,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
           physics.stop();
 
           // Perform group merge
-          mergeGroupNodes(node.id, mergeTarget.node.id);
+          mergeGroupNodes(node.id, mergeTarget.nodeId);
 
           // Re-layout will happen automatically via useEffect when hierarchy changes
           return;
@@ -1458,19 +1451,29 @@ export function TreeInner({ sentences, onTreeUpdate }) {
 
       {/* Merge indicator - purple highlight on target node */}
       {mergeTarget && (() => {
-        const isGroupMerge = mergeTarget.node.data.type === 'group';
+        const mergeNode = nodes.find(n => n.id === mergeTarget.nodeId);
+        if (!mergeNode) return null;
+        const isGroupMerge = mergeNode.data.type === 'group';
         const mergeLabel = isGroupMerge ? 'Drop to merge groups (children will be combined)' : 'Drop to merge sentences';
+
+        // The ReactFlow node wrapper has CSS width = layout width (200px), but the
+        // inner motion.div renders at 220px — so we measure the card itself, not the wrapper.
+        const wrapper = containerRef.current?.querySelector(`.react-flow__node[data-id="${mergeTarget.nodeId}"]`);
+        const el = wrapper?.firstElementChild ?? wrapper;
+        if (!el) return null;
+        const rect = el.getBoundingClientRect();
+        const zoom = getZoom();
 
         return (
           <div
             style={{
               position: 'fixed',
-              left: mergeTarget.screenPosition.x,
-              top: mergeTarget.screenPosition.y,
-              width: mergeTarget.screenSize.width || 200,
-              height: mergeTarget.screenSize.height || 60,
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
               border: '3px solid #a855f7',
-              borderRadius: 10,
+              borderRadius: 24 * zoom,
               pointerEvents: 'none',
               zIndex: 9999,
               boxShadow: '0 0 20px rgba(168, 85, 247, 0.6)',
