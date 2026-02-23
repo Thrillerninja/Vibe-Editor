@@ -59,7 +59,7 @@ function getSignificantEmotions(profile, threshold = 30) {
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
  */
-export function AnimatedNodeComponent({ id, data }) {
+export function AnimatedNodeComponent({ id, data, dragging }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
@@ -69,6 +69,22 @@ export function AnimatedNodeComponent({ id, data }) {
   const [isNodeMerging, setIsNodeMerging] = useState(false);
   const [badgeTooltip, setBadgeTooltip] = useState(null);
   const [emotionTooltip, setEmotionTooltip] = useState(null);
+  const lastNodeMousePosRef = useRef(null);
+  const wasDraggingRef = useRef(false);
+
+  useEffect(() => {
+    if (dragging && !wasDraggingRef.current) {
+      // drag started — hide tooltips
+      setBadgeTooltip(null);
+      setEmotionTooltip(null);
+    } else if (!dragging && wasDraggingRef.current) {
+      // drag ended — restore node tooltip if mouse is still over the node
+      if (lastNodeMousePosRef.current && intensity > 0) {
+        setEmotionTooltip({ emotion, intensity, ...lastNodeMousePosRef.current });
+      }
+    }
+    wasDraggingRef.current = dragging;
+  }, [dragging]);
   const initialProfile = normalizeEmotionProfile(
     data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
   );
@@ -840,9 +856,9 @@ export function AnimatedNodeComponent({ id, data }) {
       <motion.div
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
-        onMouseEnter={(e) => setEmotionTooltip({ emotion, intensity, x: e.clientX, y: e.clientY })}
-        onMouseMove={(e) => setEmotionTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
-        onMouseLeave={() => setEmotionTooltip(null)}
+        onMouseEnter={(e) => { lastNodeMousePosRef.current = { x: e.clientX, y: e.clientY }; setEmotionTooltip({ emotion, intensity, x: e.clientX, y: e.clientY }); }}
+        onMouseMove={(e) => { lastNodeMousePosRef.current = { x: e.clientX, y: e.clientY }; if (!dragging) setEmotionTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null); }}
+        onMouseLeave={() => { lastNodeMousePosRef.current = null; setEmotionTooltip(null); }}
         style={{
           padding: 12,
           borderRadius: 24,
@@ -979,7 +995,7 @@ export function AnimatedNodeComponent({ id, data }) {
       </motion.div>
 
       {/* Custom tooltip for secondary emotion badges */}
-      {badgeTooltip && createPortal(
+      {badgeTooltip && !dragging && createPortal(
         <div
           style={{
             position: 'fixed',
@@ -1011,7 +1027,7 @@ export function AnimatedNodeComponent({ id, data }) {
       )}
 
       {/* Custom tooltip for the main node emotion */}
-      {emotionTooltip && !badgeTooltip && emotionTooltip.intensity > 0 && createPortal(
+      {emotionTooltip && !badgeTooltip && !dragging && emotionTooltip.intensity > 0 && createPortal(
         <div
           style={{
             position: 'fixed',
