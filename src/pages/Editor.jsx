@@ -41,6 +41,8 @@ export default function Editor() {
     // AI hierarchy depth control (3-6 levels)
     const [maxDepth, setMaxDepth] = useState(3);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isMerging, setIsMerging] = useState(false);
+    const isAIBusy = isGenerating || isMerging;
     const [hierarchyState, setHierarchyState] = useState('none'); // 'none', 'generated', 'needs-full-regen', 'has-dirty-nodes'
 
     // Depth recommendation state
@@ -682,6 +684,17 @@ const handleCommitComplete = (committedSentences) => {
 
     return (
         <div className="flex flex-col h-screen bg-gray-50">
+            {/* Full-screen interaction blocker while AI is working */}
+            {isAIBusy && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        inset: 0,
+                        zIndex: 9999,
+                        cursor: 'wait',
+                    }}
+                />
+            )}
             <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry} onImport={handleImport} onExport={handleExport} />
 
             {/* Depth Recommendation Snackbar */}
@@ -830,6 +843,7 @@ const handleCommitComplete = (committedSentences) => {
                             <TreeVisualization
                                 sentences={sentences}
                                 onTreeUpdate={handleTreeUpdate}
+                                onMergingChange={setIsMerging}
                             />
                         </div>
                     </div>

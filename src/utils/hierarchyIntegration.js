@@ -18,13 +18,13 @@ const ensureEmotionShape = (payload) => {
     if (!payload) {
         return { emotions: { ...EMPTY_EMOTION_PROFILE }, emotion: 'interest', intensity: 0 };
     }
-    
+
     // Check if emotions already exist in the payload with a valid DES structure
     const existingEmotions = payload?.emotions;
-    const hasValidEmotionStructure = existingEmotions && 
-        typeof existingEmotions === 'object' && 
+    const hasValidEmotionStructure = existingEmotions &&
+        typeof existingEmotions === 'object' &&
         Object.keys(existingEmotions).length > 0;
-    
+
     // If emotions already exist with valid structure, normalize and preserve them
     if (hasValidEmotionStructure) {
         const profile = normalizeEmotionProfile(existingEmotions);
@@ -36,7 +36,7 @@ const ensureEmotionShape = (payload) => {
             intensity: legacy.intensity,
         };
     }
-    
+
     // No existing emotions, create a default profile from legacy fields if available
     const profile = normalizeEmotionProfile(
         existingEmotions ?? profileFromLegacy(payload?.emotion, payload?.intensity)
@@ -160,19 +160,16 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
     // Build a Set of dirty root node IDs for quick lookup
     const dirtyRootSet = new Set(dirtyRootNodeIds);
 
-    // Remove all descendants of dirty root nodes
+    // Remove all descendants of dirty root nodes (traverse DOWN the tree via childIds)
     const removeDescendants = (nodeId) => {
-        const nodesToRemove = [];
-        for (const node of nodes) {
-            if (node.childIds.includes(nodeId)) {
-                // This is a child, mark for removal and recurse
-                nodesToRemove.push(node.id);
-                removeDescendants(node.id);
-            }
-        }
-        // Remove the descendants
-        for (const idToRemove of nodesToRemove) {
-            nodes = nodes.filter(n => n.id !== idToRemove);
+        const nodeToProcess = nodes.find(n => n.id === nodeId);
+        if (!nodeToProcess) return; // Leaf (sentence ID) – not a hierarchy node, nothing to remove
+
+        // Copy childIds before modifying `nodes` to avoid mutation-during-iteration issues
+        const childIds = [...nodeToProcess.childIds];
+        for (const childId of childIds) {
+            removeDescendants(childId);                             // depth-first: remove grandchildren first
+            nodes = nodes.filter(n => n.id !== childId);           // then remove the child node itself
         }
     };
 
@@ -204,7 +201,7 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                 const freshId = uuidv4();
                 const oldId = newNode.id;
                 console.warn(`${LOG_PREFIX.PARSER} Replacing colliding ID ${oldId} with fresh UUID ${freshId}`);
-                
+
                 // Add the node with fresh ID
                 newNodesToAdd.push(ensureEmotionShape({
                     id: freshId, // Use fresh UUID instead of colliding one
@@ -216,13 +213,13 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
                 }));
-                
+
                 // Track the new ID
                 newNodeIds.add(freshId);
-                
+
                 // Update any references to the old ID in other nodes we're adding
                 for (const addedNode of newNodesToAdd) {
-                    addedNode.childIds = addedNode.childIds.map(childId => 
+                    addedNode.childIds = addedNode.childIds.map(childId =>
                         childId === oldId ? freshId : childId
                     );
                 }
@@ -230,7 +227,7 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                 // Claude copied example placeholder instead of generating real UUID
                 const freshId = uuidv4();
                 console.warn(`${LOG_PREFIX.PARSER} Claude used placeholder ID ${newNode.id}, replacing with fresh UUID ${freshId}`);
-                
+
                 // Add the node with fresh ID
                 newNodesToAdd.push(ensureEmotionShape({
                     id: freshId,
@@ -242,13 +239,13 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
                 }));
-                
+
                 // Track the new ID
                 newNodeIds.add(freshId);
-                
+
                 // Update any references to the placeholder ID in other nodes we're adding
                 for (const addedNode of newNodesToAdd) {
-                    addedNode.childIds = addedNode.childIds.map(childId => 
+                    addedNode.childIds = addedNode.childIds.map(childId =>
                         childId === newNode.id ? freshId : childId
                     );
                 }
@@ -264,7 +261,7 @@ export function applyDirtySubtreeRestructure(sentences, dirtyRootNodeIds, restru
                     emotion: newNode.emotion,
                     intensity: newNode.intensity,
                 }));
-                
+
                 // Track this ID
                 newNodeIds.add(newNode.id);
             }
@@ -433,7 +430,7 @@ export function integrateHierarchy(sentences, hierarchy) {
  */
 export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     if (!sentences || sentences.length === 0) {
-        
+
         return {
             id: 'root',
             type: 'root',
@@ -541,7 +538,7 @@ export function buildTreeWithHierarchy(sentences, buildTextFromSentences) {
     const topLevelNodes = Array.from(nodeMap.values()).filter(
         node => node.level === maxLevel
     );
-    
+
     console.log(`[ROOTEMOTION] Root emotion:`, sentences);
 
     const rootMetaEmotion = sentences._hierarchyMeta && sentences._hierarchyMeta.rootEmotion;

@@ -8,7 +8,7 @@ import { useReactFlow } from 'reactflow';
 import posthog from '../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
 
-const REORDER_THRESHOLD = 60; // pixels - tighter threshold
+const REORDER_THRESHOLD = 120; // pixels - expanded hitbox for easier targeting
 
 export function useReordering() {
   const { getNodes, getEdges, setEdges } = useReactFlow();
@@ -139,12 +139,13 @@ export function useReordering() {
         const node = nodes.find((n) => n.id === nodeId);
         if (!node) continue;
 
-        const distance = Math.abs(node.position.y - currentY);
+        const nodeCenterY = node.position.y + (node.height ?? 60) / 2;
+        const distance = Math.abs(nodeCenterY - currentY);
 
         if (distance < minDistance) {
           minDistance = distance;
           closestNode = node;
-          insertBefore = currentY < node.position.y;
+          insertBefore = currentY < nodeCenterY;
         }
       }
 
