@@ -14,6 +14,8 @@ import DepthRecommendationSnackbar from '../components/DepthRecommendation/Depth
 import DepthChangeConfirmationModal from '../components/DepthRecommendation/DepthChangeConfirmationModal';
 import { shouldShowRecommendation } from '../utils/depthRecommendation';
 import getPoemLines from '../utils/poetry';
+import { parseFileContent, exportToTxt, exportToHtml, exportToPdf, downloadFile, downloadPdf } from '../utils/importExport';
+import { jsPDF } from 'jspdf';
 
 const EXAMPLE_TEXT =
     'Climate change poses significant challenges to global food security. ' +
@@ -243,6 +245,115 @@ export default function Editor() {
         addCommit([], 'Text cleared');
     }
 
+    // Handle file import
+    const handleImport = async (file) => {
+        try {
+            console.log(`[App] Importing file: ${file.name}`);
+            
+            let content = '';
+            
+            // Read file content based on type
+            if (file.type === 'application/pdf' || file.name.endsWith('.pdf')) {
+                const arrayBuffer = await file.arrayBuffer();
+                content = arrayBuffer; // Pass buffer to pdf-parse
+            } else if (
+                file.name.endsWith('.docx') || 
+                file.name.endsWith('.doc') ||
+                file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            ) {
+                const arrayBuffer = await file.arrayBuffer();
+                content = arrayBuffer; // Pass buffer to mammoth
+            } else {
+                // Text-based formats
+                content = await file.text();
+            }
+            
+            // Parse file content into sentences
+            const newSentences = await parseFileContent(file, content);
+            
+            // Create placeholder hierarchy
+            const sentencesWithHierarchy = createPlaceholderHierarchy(newSentences, maxDepth);
+            setHierarchyState('has-dirty-nodes');
+            
+            // Log event
+            posthog.capture('file_imported', {
+                file_name: file.name,
+                file_type: file.name.split('.').pop(),
+                sentence_count: newSentences.length,
+            });
+            
+            setSentences(sentencesWithHierarchy);
+            addCommit(sentencesWithHierarchy, `Imported ${file.name}`);
+        } catch (error) {
+            console.error('[App] Import error:', error);
+            posthog.capture('file_import_error', {
+                error: error.message,
+                file_name: file.name,
+            });
+            alert(`Failed to import file: ${error.message}`);
+        }
+    };
+
+// Handle file export
+    const handleExport = (fileType) => {
+        if (sentences.length === 0) {
+            alert('No content to export');
+            return;
+        }
+
+        try {
+            console.log(`[App] Exporting as ${fileType.toUpperCase()}`);
+            
+            let content;
+            let filename;
+            let mimeType;
+            
+            switch (fileType) {
+                case 'txt':
+                    content = text;
+                    filename = 'vibe-export.txt';
+                    mimeType = 'text/plain';
+                    break;
+                case 'md':
+                    content = '# Vibe Editor Export\n\n' + text;
+                    filename = 'vibe-export.md';
+                    mimeType = 'text/markdown';
+                    break;
+                case 'html':
+                    content = generateSimpleHtml(text);
+                    filename = 'vibe-export.html';
+                    mimeType = 'text/html';
+                    break;
+                case 'pdf':
+                    // Use jsPDF for native PDF generation
+                    const pdfDoc = exportToPdfSimple(text);
+                    if (pdfDoc) {
+                        downloadPdf(pdfDoc, 'vibe-export.pdf');
+                    } else {
+                        alert('Failed to generate PDF');
+                    }
+                    return;
+                default:
+                    throw new Error(`Unsupported export format: ${fileType}`);
+            }
+            
+            downloadFile(content, filename, mimeType);
+            
+            // Log event
+            posthog.capture('file_exported', {
+                file_type: fileType,
+                sentence_count: sentences.length,
+            });
+        } catch (error) {
+            console.error('[App] Export error:', error);
+            posthog.capture('file_export_error', {
+                error: error.message,
+                file_type: fileType,
+            });
+            alert(`Failed to export file: ${error.message}`);
+        }
+    };
+
     // Handle AI hierarchy generation
     const handleGenerateHierarchy = async () => {
         if (sentences.length === 0) {
@@ -439,9 +550,124 @@ export default function Editor() {
         }
     }
 
-    const handleCommitComplete = (committedSentences) => {
+const handleCommitComplete = (committedSentences) => {
         setSentences(committedSentences);
     }
+
+    // Helper function to generate simple HTML from plain text
+    const generateSimpleHtml = (text) => {
+        const paragraphs = text.split('\n\n');
+        let html = '<div class="section">\n';
+        for (const para of paragraphs) {
+            if (para.trim()) {
+                html += `<p>${escapeHtml(para.trim())}</p>\n`;
+            }
+        }
+        html += '</div>\n';
+        return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibe Editor Export</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        p { margin: 0 0 1em 0; }
+        .section { margin-bottom: 2em; }
+        .footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #eee; font-size: 0.9em; color: #666; }
+    </style>
+</head>
+<body>
+    <h1>Vibe Editor Export</h1>
+    ${html}
+    <div class="footer">
+        <p>Exported from Vibe Editor</p>
+    </div>
+</body>
+</html>`;
+    };
+
+    // Helper function to generate simple PDF from plain text
+    const exportToPdfSimple = (text) => {
+        try {
+            const doc = new jsPDF({
+                orientation: 'portrait',
+                unit: 'mm',
+                format: 'a4'
+            });
+            
+            const pageWidth = 210;
+            const pageHeight = 297;
+            const margin = 20;
+            const lineHeight = 7;
+            const fontSize = 11;
+            const titleFontSize = 18;
+            
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(fontSize);
+            
+            let y = margin;
+            
+            // Add title
+            doc.setFontSize(titleFontSize);
+            doc.setFont('helvetica', 'bold');
+            doc.text('Vibe Editor Export', pageWidth / 2, y, { align: 'center' });
+            y += lineHeight * 2;
+            
+            // Reset font for content
+            doc.setFontSize(fontSize);
+            doc.setFont('helvetica', 'normal');
+            
+            // Process text line by line
+            const lines = text.split('\n');
+            for (const line of lines) {
+                if (!line.trim()) {
+                    y += lineHeight;
+                    continue;
+                }
+                
+                if (y > pageHeight - margin - lineHeight) {
+                    doc.addPage();
+                    y = margin;
+                }
+                
+                const wrappedLines = doc.splitTextToSize(line, pageWidth - (margin * 2));
+                for (const wrappedLine of wrappedLines) {
+                    if (y > pageHeight - margin - lineHeight) {
+                        doc.addPage();
+                        y = margin;
+                    }
+                    doc.text(wrappedLine, margin, y);
+                    y += lineHeight;
+                }
+            }
+            
+            // Add footer
+            doc.setFontSize(9);
+            doc.setFont('helvetica', 'italic');
+            doc.text('Exported from Vibe Editor', pageWidth / 2, pageHeight - 10, { align: 'center' });
+            
+            return doc;
+        } catch (error) {
+            console.error('[App] PDF generation error:', error);
+            return null;
+        }
+    };
+
+    // Escape HTML special characters
+    const escapeHtml = (text) => {
+        if (!text) return '';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
 
     const floatingButtonStyle = {
         width: '44px',
@@ -469,7 +695,7 @@ export default function Editor() {
                     }}
                 />
             )}
-            <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry} />
+            <LogoMenu maxDepth={maxDepth} setMaxDepth={setMaxDepth} onInsertPoetry={insertPoetry} isLoadingPoetry={isLoadingPoetry} onImport={handleImport} onExport={handleExport} />
 
             {/* Depth Recommendation Snackbar */}
             <DepthRecommendationSnackbar

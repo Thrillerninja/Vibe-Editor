@@ -9,7 +9,6 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Editor />} />
-        <Route path="/stats" element={<Stats />} />
       </Routes>
     </BrowserRouter>
   );
