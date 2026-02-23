@@ -59,7 +59,7 @@ function mergeEmotionProfiles(profile1, profile2) {
  * TreeInner - Main tree visualization logic
  * Now works with sentences array as SSOT
  */
-export function TreeInner({ sentences, onTreeUpdate }) {
+export function TreeInner({ sentences, onTreeUpdate, onMergingChange }) {
   console.log('[TreeInner] Component rendering with', sentences.length, 'sentences');
 
   // ReactFlow state
@@ -649,6 +649,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       // Set merging state to show spinner
       setIsMerging(true);
       setMergingNodeId(mergedId);
+      onMergingChange?.(true);
 
       // Call AI to get intelligent merge (async, don't block UI)
       console.log(`${LOG_PREFIX.DRAG} Starting AI merge in background...`);
@@ -687,6 +688,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       } finally {
         setIsMerging(false);
         setMergingNodeId(null);
+        onMergingChange?.(false);
       }
     },
     [onTreeUpdate]
