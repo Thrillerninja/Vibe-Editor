@@ -573,9 +573,14 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       console.log(`${LOG_PREFIX.DRAG} Merged emotion profile:`, mergedEmotions);
 
       // Remove both old sentences and insert merged one at target position
+      const draggedIndex = current.indexOf(draggedSentence);
       const targetIndex = current.indexOf(targetSentence);
+      // After filtering out both sentences, each removal shifts subsequent indices left by 1.
+      // When the dragged sentence came BEFORE the target, one element before targetIndex was
+      // removed, so the correct insertion index in the filtered array is targetIndex - 1.
+      const insertIndex = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
       const filtered = current.filter(s => s.id !== draggedId && s.id !== targetId);
-      filtered.splice(targetIndex, 0, mergedSentence);
+      filtered.splice(insertIndex, 0, mergedSentence);
 
       // Update hierarchy metadata
       let updatedSentences = filtered;
