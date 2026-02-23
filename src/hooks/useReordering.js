@@ -8,7 +8,7 @@ import { useReactFlow } from 'reactflow';
 import posthog from '../utils/posthog';
 import { LOGGING_ENABLED, LOG_PREFIX } from '../utils/constants';
 
-const REORDER_THRESHOLD = 60; // pixels - tighter threshold
+const REORDER_THRESHOLD = 120; // pixels - expanded hitbox for easier targeting
 
 export function useReordering() {
   const { getNodes, getEdges, setEdges } = useReactFlow();
