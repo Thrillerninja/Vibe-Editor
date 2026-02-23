@@ -1011,7 +1011,7 @@ export function AnimatedNodeComponent({ id, data }) {
       )}
 
       {/* Custom tooltip for the main node emotion */}
-      {emotionTooltip && !badgeTooltip && createPortal(
+      {emotionTooltip && !badgeTooltip && emotionTooltip.intensity > 0 && createPortal(
         <div
           style={{
             position: 'fixed',

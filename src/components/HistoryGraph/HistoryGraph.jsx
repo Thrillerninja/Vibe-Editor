@@ -497,31 +497,37 @@ const HistoryGraph = forwardRef(({
       {/* Custom tooltip rendered absolutely within the container */}
       {tooltip.visible && tooltip.node && (
         <div
-          className="pointer-events-none absolute z-50 text-xs text-white bg-black bg-opacity-90 px-3 py-2 rounded shadow"
+          className="pointer-events-none absolute"
           style={{
             left: tooltip.x,
             top: tooltip.y,
             transform: `translate(${tooltip.x > containerWidth / 2 ? '-100%' : '0%'}, -120%)`,
             marginLeft: tooltip.x > containerWidth / 2 ? '-10px' : '10px',
-            whiteSpace: 'normal',
+            whiteSpace: 'nowrap',
+            zIndex: 50,
+            background: 'rgba(17, 24, 39, 0.92)',
+            color: '#fff',
+            borderRadius: 10,
+            padding: '6px 12px',
+            fontSize: 12,
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(4px)',
           }}
           role="status"
           aria-hidden={false}
         >
-          <div className="flex items-start gap-2">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
             <span style={{
               width: 10,
               height: 10,
-              borderRadius: 6,
+              borderRadius: 5,
               background: laneColors[(tooltip.node.lane ?? 0) % laneColors.length],
               display: 'inline-block',
-              marginTop: 3
+              flexShrink: 0,
             }} aria-hidden />
             <div>
-              <div
-                className="text-sm font-medium text-white leading-tight">{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
-              <div
-                className="text-[11px] text-gray-200 mt-0.5">{new Date(tooltip.node.ts).toLocaleString()}</div>
+              <div style={{ fontWeight: 500, fontSize: 13 }}>{`Edit #${tooltip.node.i + 1}: ${tooltip.node.title}`}</div>
+              <div style={{ fontSize: 11, color: '#d1d5db', marginTop: 2 }}>{new Date(tooltip.node.ts).toLocaleString()}</div>
             </div>
           </div>
         </div>
