@@ -175,10 +175,7 @@ export function TreeInner({ sentences, onTreeUpdate }) {
     };
   }, []); // Empty deps - cleanup only on unmount
 
-  // Track previous sentences to prevent unnecessary layout updates
-  const prevSentencesRef = useRef(null);
-
-  // Apply ELK layout when sentences actually change
+  // Apply ELK layout when sentences change (or re-render triggers the effect)
   useEffect(() => {
     // Don't update layout while dragging
     if (isDraggingRef.current) {
@@ -186,8 +183,8 @@ export function TreeInner({ sentences, onTreeUpdate }) {
       return;
     }
 
-    // Check if sentences actually changed (avoid re-layout on re-renders)
-    // Include hierarchy metadata since that affects the tree structure
+    // Build a key for the current sentences so the async applyLayout can
+    // verify the data hasn't changed *again* by the time ELK finishes running.
     const sentencesKey = JSON.stringify({
       sentences: sentences.map(s => ({
         id: s.id,
@@ -204,13 +201,6 @@ export function TreeInner({ sentences, onTreeUpdate }) {
         rootTitle: sentences._hierarchyMeta.rootTitle
       } : null
     });
-
-    if (prevSentencesRef.current === sentencesKey) {
-      console.log(`${LOG_PREFIX.LAYOUT} Sentences unchanged, skipping layout`);
-      return;
-    }
-
-    prevSentencesRef.current = sentencesKey;
 
     const applyLayout = async () => {
       // Rebuild tree inside effect to avoid stale closure
