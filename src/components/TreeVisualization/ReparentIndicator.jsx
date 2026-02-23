@@ -30,7 +30,7 @@ export function ReparentIndicator({ targetNode, screenPosition }) {
           width: width,
           height: height,
           border: '3px solid #10b981',
-          borderRadius: 10,
+          borderRadius: 24,
           pointerEvents: 'none',
           zIndex: 999,
           boxShadow: '0 0 20px rgba(16, 185, 129, 0.6), inset 0 0 20px rgba(16, 185, 129, 0.1)',
@@ -86,7 +86,7 @@ export function ReparentIndicator({ targetNode, screenPosition }) {
             boxShadow: '0 0 10px rgba(16, 185, 129, 0.8)',
           }}
         />
-        
+
         {/* Label */}
         <div
           style={{

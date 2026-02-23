@@ -45,7 +45,7 @@ function getBorderColor(emotion, intensity, type) {
 function getSignificantEmotions(profile, threshold = 30) {
   const normalized = normalizeEmotionProfile(profile);
   const secondary = getSecondaryEmotions(normalized);
-  
+
   // Enrich with colors
   return secondary.map(item => {
     const colors = EMOTION_COLORS[item.emotion];
@@ -59,7 +59,7 @@ function getSignificantEmotions(profile, threshold = 30) {
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
  */
-export function AnimatedNodeComponent({ id, data }) {
+export function AnimatedNodeComponent({ id, data, dragging }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
@@ -67,6 +67,24 @@ export function AnimatedNodeComponent({ id, data }) {
   const [nodeModified, setNodeModified] = useState(data.isDirty);
   // Check for merging state from data prop
   const [isNodeMerging, setIsNodeMerging] = useState(false);
+  const [badgeTooltip, setBadgeTooltip] = useState(null);
+  const [emotionTooltip, setEmotionTooltip] = useState(null);
+  const lastNodeMousePosRef = useRef(null);
+  const wasDraggingRef = useRef(false);
+
+  useEffect(() => {
+    if (dragging && !wasDraggingRef.current) {
+      // drag started — hide tooltips
+      setBadgeTooltip(null);
+      setEmotionTooltip(null);
+    } else if (!dragging && wasDraggingRef.current) {
+      // drag ended — restore node tooltip if mouse is still over the node
+      if (lastNodeMousePosRef.current && intensity > 0) {
+        setEmotionTooltip({ emotion, intensity, ...lastNodeMousePosRef.current });
+      }
+    }
+    wasDraggingRef.current = dragging;
+  }, [dragging]);
   const initialProfile = normalizeEmotionProfile(
     data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
   );
@@ -838,6 +856,9 @@ export function AnimatedNodeComponent({ id, data }) {
       <motion.div
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
+        onMouseEnter={(e) => { lastNodeMousePosRef.current = { x: e.clientX, y: e.clientY }; setEmotionTooltip({ emotion, intensity, x: e.clientX, y: e.clientY }); }}
+        onMouseMove={(e) => { lastNodeMousePosRef.current = { x: e.clientX, y: e.clientY }; if (!dragging) setEmotionTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null); }}
+        onMouseLeave={() => { lastNodeMousePosRef.current = null; setEmotionTooltip(null); }}
         style={{
           padding: 12,
           borderRadius: 24,
@@ -930,7 +951,9 @@ export function AnimatedNodeComponent({ id, data }) {
             {significantEmotions.slice(0, 5).map((emotionData, idx) => (
               <div
                 key={emotionData.emotion}
-                title={getSecondaryEmotionTooltip(emotionData.emotion, emotionData.intensity)}
+                onMouseEnter={(e) => setBadgeTooltip({ emotion: emotionData.emotion, intensity: emotionData.intensity, color: emotionData.color, x: e.clientX, y: e.clientY })}
+                onMouseMove={(e) => setBadgeTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
+                onMouseLeave={() => setBadgeTooltip(null)}
                 style={{
                   width: 40,
                   height: 40,
@@ -939,12 +962,15 @@ export function AnimatedNodeComponent({ id, data }) {
                   border: '4px solid #fff',
                   boxShadow: '0 4px 8px rgba(0, 0, 0, 0.25)',
                   pointerEvents: 'auto',
+                  cursor: 'default',
                 }}
               />
             ))}
             {significantEmotions.length > 5 && (
               <div
-                title={`${significantEmotions.length - 5} more secondary emotions`}
+                onMouseEnter={(e) => setBadgeTooltip({ emotion: null, intensity: null, color: '#9ca3af', x: e.clientX, y: e.clientY, label: `${significantEmotions.length - 5} more secondary emotions` })}
+                onMouseMove={(e) => setBadgeTooltip((t) => t ? { ...t, x: e.clientX, y: e.clientY } : null)}
+                onMouseLeave={() => setBadgeTooltip(null)}
                 style={{
                   width: 40,
                   height: 40,
@@ -967,6 +993,69 @@ export function AnimatedNodeComponent({ id, data }) {
           </div>
         )}
       </motion.div>
+
+      {/* Custom tooltip for secondary emotion badges */}
+      {badgeTooltip && !dragging && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: badgeTooltip.x,
+            top: badgeTooltip.y,
+            transform: 'translate(-50%, -130%)',
+            pointerEvents: 'none',
+            zIndex: 99999,
+            background: 'rgba(17, 24, 39, 0.92)',
+            color: '#fff',
+            borderRadius: 10,
+            padding: '6px 12px',
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 5, background: badgeTooltip.color, display: 'inline-block', flexShrink: 0 }} />
+            <div style={{ fontWeight: 500, fontSize: 13 }}>
+              {badgeTooltip.label
+                ? badgeTooltip.label
+                : `${EMOTION_LABELS[badgeTooltip.emotion] || badgeTooltip.emotion} ${Math.round(badgeTooltip.intensity)}%`}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Custom tooltip for the main node emotion */}
+      {emotionTooltip && !badgeTooltip && !dragging && emotionTooltip.intensity > 0 && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: emotionTooltip.x,
+            top: emotionTooltip.y,
+            transform: 'translate(-50%, -130%)',
+            pointerEvents: 'none',
+            zIndex: 99999,
+            background: 'rgba(17, 24, 39, 0.92)',
+            color: '#fff',
+            borderRadius: 10,
+            padding: '6px 12px',
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+            backdropFilter: 'blur(4px)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+            <span style={{ width: 10, height: 10, borderRadius: 5, background: emotionColor, display: 'inline-block', flexShrink: 0 }} />
+            <div style={{ fontWeight: 500, fontSize: 13 }}>
+              {`${EMOTION_LABELS[emotionTooltip.emotion] || emotionTooltip.emotion} ${Math.round(emotionTooltip.intensity)}%`}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {dialog}
     </>
   );
