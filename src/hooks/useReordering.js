@@ -139,12 +139,13 @@ export function useReordering() {
         const node = nodes.find((n) => n.id === nodeId);
         if (!node) continue;
 
-        const distance = Math.abs(node.position.y - currentY);
+        const nodeCenterY = node.position.y + (node.height ?? 60) / 2;
+        const distance = Math.abs(nodeCenterY - currentY);
 
         if (distance < minDistance) {
           minDistance = distance;
           closestNode = node;
-          insertBefore = currentY < node.position.y;
+          insertBefore = currentY < nodeCenterY;
         }
       }
 
