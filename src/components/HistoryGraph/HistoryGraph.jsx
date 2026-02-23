@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef, useEffect } from 'react';
 import { deepCloneSentences } from '../../utils/deepClone';
 import { computeSentenceDiff, hasChanges } from '../../utils/diffUtils';
 import DiffView from './DiffView';
@@ -22,6 +22,43 @@ const HistoryGraph = forwardRef(({
   const [redoStack, setRedoStack] = useState([]);
   const [isCommitPreviewOpen, setIsCommitPreviewOpen] = useState(false);
   const [commitTitle, setCommitTitle] = useState('');
+  const isHistoryInitialized = useRef(false);
+
+  useEffect(() => {
+    if (isHistoryInitialized.current) {
+      return;
+    }
+    const savedHistory = localStorage.getItem('history');
+    const savedHeadIndex = localStorage.getItem('headIndex');
+    const savedRedoStack = localStorage.getItem('redoStack');
+    // parsed values
+    const parsedHistory = savedHistory ? JSON.parse(savedHistory) : null;
+    const parsedHeadIndex = savedHeadIndex ? JSON.parse(savedHeadIndex) : null;
+    const parsedRedoStack = savedRedoStack ? JSON.parse(savedRedoStack) : null;
+
+    if (savedHistory) {
+      setHistory(parsedHistory);
+    }
+    if (savedHeadIndex) {
+      setHeadIndex(parsedHeadIndex);
+    }
+    if (savedRedoStack) {
+      setRedoStack(parsedRedoStack);
+    }
+    if (parsedHeadIndex === -1 || parsedHeadIndex === null || (parsedHistory && parsedHistory.length <= 0)) {
+      setHeadIndex(-1);
+      setRedoStack([]);
+      setHistory([]);
+      addCommit([], 'Initial state');
+    }
+    isHistoryInitialized.current = true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('history', JSON.stringify(history));
+    localStorage.setItem('headIndex', JSON.stringify(headIndex));
+    localStorage.setItem('redoStack', JSON.stringify(redoStack));
+  }, [history, headIndex, redoStack]);
 
   const commitDiff = useMemo(() => {
     const oldSentences = (headIndex !== null && history[headIndex]) ? history[headIndex].data : [];
@@ -46,10 +83,10 @@ const HistoryGraph = forwardRef(({
         const newCommit = [{ id, ts, data: clonedData, title, parentId, branchId, isManual }];
         setHeadIndex(0);
         return newCommit;
+      } else if (headIndex !== null) {
+        branchId = h[headIndex].branchId ?? 0;
+        parentId = h[headIndex].id;
       }
-
-      branchId = h[headIndex].branchId ?? 0;
-      parentId = h[headIndex].id;
 
       // Check if parent has other children (successors) in current history
       const parentHasOtherChildren = h.some((item, idx) => idx !== headIndex && item.parentId === parentId);
@@ -295,46 +332,6 @@ const HistoryGraph = forwardRef(({
       <div className={`w-full ${className}`}>
         <div className="flex items-center justify-between mb-2">
           <div className="text-sm font-medium text-gray-700">Edit history</div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-              <button
-                onClick={handleUndo}
-                disabled={!canUndo}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                title="Undo (go to previous edit)"
-                aria-label="Undo"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
-                </svg>
-              </button>
-              <button
-                onClick={handleRedo}
-                disabled={!canRedo}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                title="Redo (go to next edit)"
-                aria-label="Redo"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 10h-10a8 8 0 00-8 8v2m18-10l-6 6m6-6l-6-6" />
-                </svg>
-              </button>
-            </div>
-            <div className="flex items-center gap-1 border-r border-gray-300 pr-2">
-              <button
-                onClick={handleCommit}
-                disabled={!canCommit}
-                className="p-1.5 rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200 disabled:opacity-30 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:hover:bg-gray-200 disabled:text-gray-400"
-                title="Commit current changes"
-                aria-label="Commit"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </button>
-            </div>
-            <div className="text-xs text-gray-500">Edits: 0</div>
-          </div>
         </div>
         <div className="flex items-center justify-center text-sm text-gray-500 p-4">No history yet</div>
       </div>

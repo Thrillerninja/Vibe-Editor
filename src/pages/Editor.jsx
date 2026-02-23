@@ -28,11 +28,26 @@ const EXAMPLE_TEXT =
 
 export default function Editor() {
     const historyGraphRef = useRef(null);
-    const initialCommitAdded = useRef(false);
+    const isInitialized = useRef(false);
     useUserIdentification();
 
     // SSOT: Store sentences as the primary data structure
     const [sentences, setSentences] = useState([]);
+
+    useEffect(() => {
+        if (isInitialized.current) {
+            return;
+        }
+        const savedSentences = localStorage.getItem('sentences');
+        if (savedSentences) {
+            setSentences(JSON.parse(savedSentences));
+        }
+        isInitialized.current = true;
+    }, []);
+
+    useEffect(() => {
+        localStorage.setItem('sentences', JSON.stringify(sentences));
+    }, [sentences]);
 
     // Derived state: text is built from sentences
     const text = useMemo(() => buildTextFromSentences(sentences), [sentences]);
@@ -93,14 +108,6 @@ export default function Editor() {
             setHierarchyState('has-dirty-nodes');
         }
     }, [sentences.length, maxDepth]); // Only depend on length and maxDepth, not _hierarchyMeta
-
-    // Add initial commit on mount
-    useEffect(() => {
-        if (!initialCommitAdded.current && historyGraphRef.current) {
-            historyGraphRef.current.addCommit([], "Initial state");
-            initialCommitAdded.current = true;
-        }
-    }, []);
 
     // Update hierarchy state based on current sentences
     useEffect(() => {
