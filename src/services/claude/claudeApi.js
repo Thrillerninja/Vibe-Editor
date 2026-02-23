@@ -100,7 +100,7 @@ export async function updateDirtyNodes(sentences, hierarchyMeta, dirtyNodeIds, d
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 4096,
             temperature: 0,
             messages: [{
@@ -177,7 +177,7 @@ Sentences:\n${sentences.map(s => `- (${s.id}) ${s.content}`).join('\n')}`;
     console.log('[Claude Service] Emotion evaluation prompt constructed', prompt);
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 4096,
             messages: [{
                 role: 'user',
@@ -239,7 +239,7 @@ Nodes:\n${nodeTextBlocks}`;
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 2048,
             messages: [{ role: 'user', content: prompt }]
         });
@@ -364,7 +364,7 @@ Original sentence: "${sentence}"`;
     console.log('[Claude Service] Rewrite prompt constructed', prompt);
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
                 role: 'user',
@@ -438,7 +438,7 @@ Output format: ["rewritten version 1", "rewritten version 2", "rewritten version
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
                 role: 'user',
@@ -536,7 +536,7 @@ Merged sentence:`;
 
     try {
         const message = await client.messages.create({
-            model: 'claude-3-5-haiku-20241022',
+            model: 'claude-haiku-4-5-20251001',
             max_tokens: 1024,
             messages: [{
                 role: 'user',
