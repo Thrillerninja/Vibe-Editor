@@ -1,7 +1,6 @@
 import React, { useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { deepCloneSentences } from '../../utils/deepClone';
 import { computeSentenceDiff, hasChanges } from '../../utils/diffUtils';
-import { clearDirtyFlags } from '../../utils/dirtyTracking';
 import DiffView from './DiffView';
 
 // Responsive git-style history graph.
@@ -136,11 +135,8 @@ const HistoryGraph = forwardRef(({
 
   const handleConfirmCommit = () => {
     if (hasChanges(commitDiff)) {
-      // If there are changes, clear all dirty flags and commit
-      let cleaned = sentences.map(s => ({ ...s, isDirty: false }));
-      cleaned = clearDirtyFlags(cleaned);
-      addCommit(cleaned, commitTitle || 'Manual commit', { isManual: true });
-      onCommitComplete(cleaned);
+      addCommit(sentences, commitTitle || 'Manual commit', { isManual: true });
+      onCommitComplete(sentences);
     }
     setIsCommitPreviewOpen(false);
     setCommitTitle('');
