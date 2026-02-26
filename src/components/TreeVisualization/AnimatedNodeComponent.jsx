@@ -59,7 +59,7 @@ function getSignificantEmotions(profile, threshold = 30) {
 /**
  * AnimatedNodeComponent - Renders a single node in the tree
  */
-export function AnimatedNodeComponent({ id, data, dragging }) {
+export function AnimatedNodeComponent({ id, data, dragging, xPos, yPos }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
@@ -85,6 +85,16 @@ export function AnimatedNodeComponent({ id, data, dragging }) {
     }
     wasDraggingRef.current = dragging;
   }, [dragging]);
+
+  // Clear tooltips when this node is repositioned (e.g. after a reorder/reparent of
+  // another node), because the mouseleave event is never fired in that case.
+  useEffect(() => {
+    if (!dragging) {
+      setBadgeTooltip(null);
+      setEmotionTooltip(null);
+      lastNodeMousePosRef.current = null;
+    }
+  }, [xPos, yPos]); // eslint-disable-line react-hooks/exhaustive-deps
   const initialProfile = normalizeEmotionProfile(
     data.emotions ?? profileFromLegacy(data.emotion, data.intensity)
   );
