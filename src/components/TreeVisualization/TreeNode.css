@@ -27,11 +27,15 @@
 
 .animated-border-svg {
   position: absolute;
-  inset: -6px;
-  width: calc(100% + 12px);
-  height: calc(100% + 12px);
+  /*
+    The SVG is positioned relative to the padding box of the node (the nearest
+    positioned ancestor). The border is 3px, so we shift by -3px to align the
+    SVG exactly with the outer border edge on all four sides.
+  */
+  top: -3px;
+  left: -3px;
   pointer-events: none;
-  /* Ensure it sits nicely around the node */
+  /* width/height are set as explicit SVG attributes via ResizeObserver */
   z-index: 1;
 }
 
@@ -41,9 +45,9 @@
   stroke-width: 3;
   stroke-dasharray: 10 6;
   animation: marching-ants 1s linear infinite;
-  rx: 30px;
-  /* node-radius (24) + padding (6) */
-  ry: 30px;
+  /* Match the node's borderRadius: 24px */
+  rx: 24px;
+  ry: 24px;
 }
 
 @keyframes marching-ants {

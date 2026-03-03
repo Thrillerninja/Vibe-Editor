@@ -61,6 +61,23 @@ function getSignificantEmotions(profile, threshold = 30) {
  */
 export function AnimatedNodeComponent({ id, data, dragging, xPos, yPos }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+
+  // ── Measured node dimensions for the SVG animated border ──────────────────
+  // We use a ResizeObserver so the SVG viewport always matches the node's
+  // actual rendered size, even after a merge makes the label longer/taller.
+  const [nodeDims, setNodeDims] = useState({ width: 220, height: 60 });
+  const motionDivRef = useRef(null);
+
+  useEffect(() => {
+    const el = motionDivRef.current;
+    if (!el) return;
+    const measure = () => setNodeDims({ width: el.offsetWidth, height: el.offsetHeight });
+    measure(); // initial measurement
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []); // runs once; ResizeObserver handles all subsequent size changes
+
   const [nodeText, setNodeText] = useState(data.content || data.label || "");
   const [previousText, setPreviousText] = useState(data.content || data.label || "");
   const [isNodeRewriting, setIsNodeRewriting] = useState(false);
@@ -864,6 +881,7 @@ export function AnimatedNodeComponent({ id, data, dragging, xPos, yPos }) {
   return (
     <>
       <motion.div
+        ref={motionDivRef}
         transition={{ type: 'spring', stiffness: 520, damping: 44 }}
         onDoubleClick={() => setIsDialogOpen(true)}
         onMouseEnter={(e) => { lastNodeMousePosRef.current = { x: e.clientX, y: e.clientY }; setEmotionTooltip({ emotion, intensity, x: e.clientX, y: e.clientY }); }}
@@ -911,12 +929,30 @@ export function AnimatedNodeComponent({ id, data, dragging, xPos, yPos }) {
             <div className="modified-indicator" title="This node has been modified.">
               !
             </div>
-            {/* SVG based animated border for proper rounded corners */}
-            <svg className="animated-border-svg">
+            {/*
+              SVG animated border (marching ants).
+              Explicit pixel attributes derived from ResizeObserver ensure the
+              SVG viewport always matches the node's actual rendered size —
+              including after a merge that makes the combined label taller.
+              SVG attributes do not support calc(), and CSS %-based sizing on
+              <rect> is relative to the SVG viewport which can be stale.
+            */}
+            <svg
+              className="animated-border-svg"
+              width={nodeDims.width}
+              height={nodeDims.height}
+            >
+              {/*
+                SVG is the same size as the node's border box (offsetWidth/Height).
+                x/y = 1.5 (half stroke-width) keeps the stroke fully inside the viewport.
+                width/height = offsetDim - 3 so the stroke outer edge aligns with
+                the node's outer border edge on all four sides.
+              */}
               <rect
-                x="3" y="3"
-                width="calc(100% - 6px)"
-                height="calc(100% - 6px)"
+                x="1.5"
+                y="1.5"
+                width={Math.max(0, nodeDims.width - 3)}
+                height={Math.max(0, nodeDims.height - 3)}
                 className="animated-border-rect"
               />
             </svg>
